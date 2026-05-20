@@ -1,0 +1,250 @@
+#!/bin/sh
+# mw — Mac-Window_Share CLI (Mac client side)
+# Subcommands: mount | umount | status | open | doctor | keep-alive
+#
+# Idempotent: mount/umount are safe to call regardless of current state.
+# All commands return 0 on success, non-zero on error.
+
+set -u
+
+SHARE_HOST="${MW_SHARE_HOST:-192.168.50.1}"
+SHARE_NAME="${MW_SHARE_NAME:-Mac-Window_Share}"
+SHARE_USER="${MW_SHARE_USER:-macshare}"
+MOUNT_POINT="${MW_MOUNT_POINT:-/Volumes/Mac-Window_Share}"
+INTERFACE="${MW_INTERFACE:-en10}"
+LOG_DIR="${MW_LOG_DIR:-$HOME/Library/Logs/MacWindowShare}"
+
+SMB_URL="//${SHARE_USER}@${SHARE_HOST}/${SHARE_NAME}"
+
+log() {
+    mkdir -p "$LOG_DIR"
+    printf '%s  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG_DIR/mw.log"
+}
+
+is_mounted() {
+    /sbin/mount | /usr/bin/grep -q " on ${MOUNT_POINT} "
+}
+
+# Also detect Finder-style /Volumes mount of same share (so we don't double-mount).
+finder_mounted_path() {
+    /sbin/mount | /usr/bin/awk -v share="${SHARE_NAME}" '
+        $0 ~ "//.*@.*/" share " on " { for (i=1;i<=NF;i++) if ($i=="on") { print $(i+1); exit } }'
+}
+
+any_mounted() {
+    is_mounted && return 0
+    [ -n "$(finder_mounted_path)" ]
+}
+
+effective_mount_point() {
+    if is_mounted; then
+        printf '%s' "$MOUNT_POINT"
+    else
+        finder_mounted_path
+    fi
+}
+
+is_port_open() {
+    /usr/bin/nc -z -G 2 "$SHARE_HOST" 445 >/dev/null 2>&1
+}
+
+# URL-encode all bytes except RFC 3986 unreserved set.
+url_encode() {
+    /usr/bin/perl -MURI::Escape -e 'print uri_escape($ARGV[0])' "$1" 2>/dev/null \
+        || printf '%s' "$1"
+}
+
+# Primary mount path: AppleScript's `mount volume` → NetAuthAgent → /Volumes.
+# Works for user-foreground invocations (Desktop app, terminal).
+try_mount_via_osascript() {
+    /usr/bin/osascript -e "mount volume \"smb://${SHARE_HOST}/${SHARE_NAME}\"" \
+        >/dev/null 2>>"$LOG_DIR/mw.log"
+    i=0
+    while [ $i -lt 6 ]; do
+        any_mounted && return 0
+        /bin/sleep 0.5
+        i=$((i+1))
+    done
+    return 1
+}
+
+# Fallback mount path: extract password from keychain, mount_smbfs to ~/mnt.
+# Works in LaunchAgent context (no AppleEvents/TCC dependency).
+try_mount_via_smbfs() {
+    pass=$(/usr/bin/security find-internet-password -s "$SHARE_HOST" -a "$SHARE_USER" -w 2>/dev/null)
+    [ -z "$pass" ] && { log "fallback: no keychain entry"; return 1; }
+    alt_mp="$HOME/mnt/Mac-Window_Share"
+    /bin/mkdir -p "$alt_mp" || { log "fallback: mkdir $alt_mp failed"; return 1; }
+    enc_pass=$(url_encode "$pass")
+    /sbin/mount_smbfs "//${SHARE_USER}:${enc_pass}@${SHARE_HOST}/${SHARE_NAME}" "$alt_mp" 2>>"$LOG_DIR/mw.log"
+}
+
+cmd_mount() {
+    if any_mounted; then
+        echo "Already mounted at $(effective_mount_point)"
+        log "mount: already mounted at $(effective_mount_point)"
+        return 0
+    fi
+    if ! is_port_open; then
+        echo "ERROR: cannot reach ${SHARE_HOST}:445 (10GbE link or firewall?)" >&2
+        log "mount: port 445 unreachable"
+        return 2
+    fi
+
+    if try_mount_via_osascript && any_mounted; then
+        mp=$(effective_mount_point)
+        echo "Mounted at $mp"
+        log "mount: success via osascript ($mp)"
+        return 0
+    fi
+
+    if try_mount_via_smbfs && any_mounted; then
+        mp=$(effective_mount_point)
+        echo "Mounted at $mp (fallback)"
+        log "mount: success via smbfs fallback ($mp)"
+        return 0
+    fi
+
+    echo "ERROR: mount failed (both osascript and smbfs paths). Run 'mw doctor'." >&2
+    log "mount: all paths failed"
+    return 3
+}
+
+cmd_umount() {
+    if ! any_mounted; then
+        echo "Not mounted."
+        return 0
+    fi
+    target=$(effective_mount_point)
+    if /sbin/umount "$target" 2>>"$LOG_DIR/mw.log"; then
+        echo "Unmounted: $target"
+        log "umount: success ($target)"
+        return 0
+    else
+        echo "ERROR: umount failed. Try: diskutil unmount force '$target'" >&2
+        log "umount: failed ($target)"
+        return 1
+    fi
+}
+
+cmd_status() {
+    if any_mounted; then
+        active_mp=$(effective_mount_point)
+        mount_state="mounted at $active_mp"
+    else
+        active_mp=""
+        mount_state="not mounted"
+    fi
+    if is_port_open; then
+        port_state="open"
+    else
+        port_state="closed/unreachable"
+    fi
+    link_state=$(/sbin/ifconfig "$INTERFACE" 2>/dev/null | /usr/bin/awk '/status:/ {print $2}')
+    [ -z "$link_state" ] && link_state="unknown"
+    media=$(/sbin/ifconfig "$INTERFACE" 2>/dev/null | /usr/bin/awk -F: '/media:/ {print $2}' | /usr/bin/sed 's/^ *//')
+    [ -z "$media" ] && media="unknown"
+    my_ip=$(/sbin/ifconfig "$INTERFACE" 2>/dev/null | /usr/bin/awk '/inet / {print $2}')
+    [ -z "$my_ip" ] && my_ip="unassigned"
+
+    if [ -n "$active_mp" ]; then
+        free=$(/bin/df -h "$active_mp" 2>/dev/null | /usr/bin/awk 'NR==2 {print $4}')
+        used=$(/bin/df -h "$active_mp" 2>/dev/null | /usr/bin/awk 'NR==2 {print $3}')
+        size=$(/bin/df -h "$active_mp" 2>/dev/null | /usr/bin/awk 'NR==2 {print $2}')
+        disk_line="  disk:   $used used / $size total ($free free)"
+    else
+        disk_line="  disk:   (n/a — not mounted)"
+    fi
+
+    cat <<EOF
+Mac-Window_Share status
+-----------------------
+  share:  $SMB_URL
+  mount:  $mount_state
+  default mp: $MOUNT_POINT
+  port:   ${SHARE_HOST}:445 $port_state
+  link:   $INTERFACE $link_state, $media
+  my IP:  $my_ip
+$disk_line
+EOF
+}
+
+cmd_open() {
+    cmd_mount >/dev/null || return $?
+    /usr/bin/open "$(effective_mount_point)"
+}
+
+cmd_doctor() {
+    echo "=== Mac-Window_Share diagnostics ==="
+    echo
+    echo "[interface] $INTERFACE"
+    /sbin/ifconfig "$INTERFACE" 2>&1 | /usr/bin/awk '/status|media|inet /'
+    echo
+    echo "[route] 192.168.50.1"
+    /sbin/route -n get "$SHARE_HOST" 2>&1 | /usr/bin/grep -E 'interface|gateway|destination'
+    echo
+    echo "[arp]"
+    /usr/sbin/arp -n "$SHARE_HOST" 2>&1
+    echo
+    echo "[ping x3]"
+    /sbin/ping -c 3 -W 1000 "$SHARE_HOST" 2>&1 | /usr/bin/tail -4
+    echo
+    echo "[tcp 445]"
+    /usr/bin/nc -vz -G 2 "$SHARE_HOST" 445 2>&1
+    echo
+    echo "[mount]"
+    if any_mounted; then
+        /sbin/mount | /usr/bin/grep -E " on $MOUNT_POINT | on /Volumes/$SHARE_NAME "
+    else
+        echo "(not mounted; expected mount point: $MOUNT_POINT)"
+    fi
+    echo
+    echo "[recent log: $LOG_DIR/mw.log]"
+    [ -f "$LOG_DIR/mw.log" ] && /usr/bin/tail -10 "$LOG_DIR/mw.log" || echo "(no log yet)"
+}
+
+cmd_keep_alive() {
+    # Used by LaunchAgent. Silent on success, logs on failure.
+    if any_mounted; then
+        return 0
+    fi
+    if ! is_port_open; then
+        log "keep-alive: skip, port 445 unreachable"
+        return 0
+    fi
+    log "keep-alive: not mounted, attempting mount"
+    cmd_mount >/dev/null 2>&1
+}
+
+usage() {
+    cat <<EOF
+mw — Mac-Window_Share CLI
+
+USAGE
+  mw mount        Mount the share (idempotent)
+  mw umount       Unmount the share
+  mw status       Print mount/link/port summary
+  mw open         Mount if needed, then open in Finder
+  mw doctor       Detailed network/mount diagnostics
+  mw keep-alive   Internal (LaunchAgent): mount if dropped
+
+CONFIG (override via env)
+  MW_SHARE_HOST=$SHARE_HOST
+  MW_SHARE_NAME=$SHARE_NAME
+  MW_SHARE_USER=$SHARE_USER
+  MW_MOUNT_POINT=$MOUNT_POINT
+  MW_INTERFACE=$INTERFACE
+  MW_LOG_DIR=$LOG_DIR
+EOF
+}
+
+case "${1:-}" in
+    mount)      cmd_mount ;;
+    umount|unmount) cmd_umount ;;
+    status)     cmd_status ;;
+    open)       cmd_open ;;
+    doctor)     cmd_doctor ;;
+    keep-alive) cmd_keep_alive ;;
+    ""|-h|--help|help) usage ;;
+    *) echo "Unknown command: $1" >&2; usage >&2; exit 64 ;;
+esac

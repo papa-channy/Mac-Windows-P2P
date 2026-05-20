@@ -1,0 +1,26 @@
+[package]
+name = "shareguard"
+version = "0.1.0"
+edition = "2021"
+description = "Mac<->Windows local-transfer engine (see SHAREGUARD_SPEC.md)"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "shareguard"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+hex = "0.4"
+thiserror = "1.0"
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+walkdir = "2.5"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

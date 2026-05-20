@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mac-Window 공유</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon" id="brand-icon"></div>
+        <div class="brand-text">
+          <div class="brand-title">Mac-Window</div>
+          <div class="brand-subtitle">공유 관리자</div>
+        </div>
+      </div>
+
+      <div class="nav-pinned" id="nav-pinned"></div>
+
+      <nav class="nav" id="nav"></nav>
+
+      <div class="nav-tools" id="nav-tools"></div>
+
+      <button id="refresh-btn" class="refresh" title="새로고침">
+        <span class="refresh-icon" id="refresh-icon"></span>
+        <span>새로고침</span>
+      </button>
+
+      <button id="settings-btn" class="settings-btn" title="설정">
+        <span class="settings-icon" id="settings-icon"></span>
+        <span>설정</span>
+      </button>
+
+      <div class="status" id="status">초기화 중…</div>
+    </aside>
+
+    <main class="main">
+      <!-- ITEMS PANEL: incoming / outgoing / received -->
+      <section id="panel-items" class="panel">
+        <header class="main-header">
+          <div>
+            <h2 id="title">항목을 선택하세요</h2>
+            <div id="subtitle" class="subtitle"></div>
+          </div>
+          <div class="header-actions">
+            <button id="reveal-btn" class="ghost-btn hidden" title="탐색기에서 열기">📂 폴더 열기</button>
+          </div>
+        </header>
+
+        <div class="items-container">
+          <ul id="items" class="items"></ul>
+          <div id="empty" class="empty hidden">
+            <div class="empty-icon">📭</div>
+            <div class="empty-title">아직 항목이 없어요</div>
+            <div class="empty-hint">왼쪽 사이드바의 "빠른 전송"에서 파일을 골라 보내거나, 창에 끌어다 놓으세요.</div>
+          </div>
+        </div>
+
+        <div class="hint-bar">
+          <span class="hint-icon">↓</span>
+          <span>파일/폴더를 창에 드래그하면 MacBook으로 보내요</span>
+        </div>
+      </section>
+
+      <!-- TREE PANEL: quick file picker -->
+      <section id="panel-tree" class="panel hidden">
+        <header class="main-header">
+          <div>
+            <h2>🚀 빠른 전송</h2>
+            <div class="subtitle">폴더를 더블클릭하면 그 위치 기준으로 다시 펼쳐요. 행 위에서 → 버튼으로 바로 전송.</div>
+          </div>
+        </header>
+
+        <div class="tree-toolbar">
+          <button id="tree-up" class="ghost-btn" title="상위 폴더로">← 상위</button>
+          <button id="tree-home" class="ghost-btn" title="홈 폴더로">🏠 홈</button>
+          <button id="tree-desktop" class="ghost-btn" title="데스크탑">🖥 데스크탑</button>
+          <div id="tree-shortcuts" class="tree-shortcuts"></div>
+          <div id="tree-path" class="tree-path"></div>
+        </div>
+
+        <div class="tree-container">
+          <div id="tree" class="tree"></div>
+        </div>
+
+        <div class="drop-zone-section">
+          <div id="drop-zone" class="drop-zone-inline" title="클릭해서 파일 선택, 또는 여기로 드래그">
+            <div class="drop-zone-icon-big">⬇</div>
+            <div class="drop-zone-body">
+              <div class="drop-zone-title">파일/폴더를 여기로 드래그</div>
+              <div class="drop-zone-sub">바탕화면/탐색기/위 트리 어디서든. 여러 개를 한 번에 놓으면 자동으로 <b>❔ 미분류</b>로 보내요.</div>
+            </div>
+            <button class="primary-btn" id="drop-zone-pick">📂 파일 선택</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- NOTES PANEL: shared notepad (Evernote-style) -->
+      <section id="panel-notes" class="panel hidden">
+        <header class="main-header">
+          <div>
+            <h2>📝 공유 메모</h2>
+            <div class="subtitle">셰어를 통해 양쪽이 같은 메모 편집. 입력 시 자동 저장 (0.6초 디바운스).</div>
+          </div>
+          <div class="header-actions">
+            <button id="new-note-btn" class="primary-btn">＋ 새 메모</button>
+          </div>
+        </header>
+        <div class="notes-body">
+          <aside class="notes-list-pane">
+            <div id="notes-list" class="notes-list"></div>
+          </aside>
+          <div class="notes-editor-pane">
+            <div id="notes-empty" class="empty">
+              <div class="empty-icon">📝</div>
+              <div class="empty-title">메모를 선택하거나 새로 만드세요</div>
+              <div class="empty-hint">우측 상단 ＋ 새 메모로 시작.</div>
+            </div>
+            <div id="notes-editor" class="notes-editor hidden">
+              <input type="text" id="note-title" class="note-title-input" placeholder="제목" autocomplete="off">
+              <div id="note-meta" class="note-meta"></div>
+              <textarea id="note-body" class="note-body-input" placeholder="여기에 작성…"></textarea>
+              <div class="note-actions">
+                <button id="note-delete" class="ghost-btn">🗑 삭제</button>
+                <span id="note-save-status" class="settings-hint"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CLIPBOARD PANEL: unified timeline of both OS clipboards -->
+      <section id="panel-clipboard" class="panel hidden">
+        <header class="main-header">
+          <div>
+            <h2>📋 클립보드 (양쪽 통합)</h2>
+            <div class="subtitle">양쪽 호스트가 OS 클립보드를 1.5초마다 자동 기록. 항목 클릭 → 내 OS 클립보드로 복사.</div>
+          </div>
+          <div class="header-actions">
+            <button id="clip-refresh" class="ghost-btn">↻ 다시 읽기</button>
+            <button id="clip-clear" class="ghost-btn">🗑 내 기록 지우기</button>
+          </div>
+        </header>
+        <div class="clip-timeline-body">
+          <div id="clip-timeline" class="clip-timeline"></div>
+        </div>
+      </section>
+
+      <!-- SETTINGS PANEL -->
+      <section id="panel-settings" class="panel hidden">
+        <header class="main-header">
+          <div>
+            <h2>⚙ 설정</h2>
+            <div class="subtitle">앱 동작과 외관 — 변경 즉시 자동 저장</div>
+          </div>
+        </header>
+        <div class="settings-body">
+
+          <section class="settings-section">
+            <h3>트리 탐색</h3>
+            <div class="settings-row">
+              <div class="settings-label">탐색 깊이</div>
+              <div class="settings-control">
+                <div class="depth-stepper">
+                  <button id="depth-dec" class="step-btn">−</button>
+                  <span id="depth-value" class="depth-value">4</span>
+                  <button id="depth-inc" class="step-btn">+</button>
+                </div>
+                <span class="settings-hint">1 ~ 10단계. 깊을수록 한 번에 더 많이 보임 (느려질 수 있음).</span>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">단축 폴더</div>
+              <div class="settings-control">
+                <div id="shortcuts-list" class="shortcuts-list"></div>
+                <button id="add-shortcut" class="ghost-btn">＋ 폴더 추가</button>
+                <span class="settings-hint">추가한 폴더는 상단 도구바에 칩으로 나타나요.</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h3>네트워크 (10GbE 직결)</h3>
+            <div class="settings-row">
+              <div class="settings-label">Mac 측 IP</div>
+              <div class="settings-control">
+                <input id="remote-host" type="text" class="text-input" placeholder="192.168.50.2">
+                <span class="settings-hint">직결 링크의 Mac 쪽 주소.</span>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label"></div>
+              <div class="settings-control">
+                <div class="btn-row">
+                  <button id="check-conn" class="primary-btn">🔌 연결 확인</button>
+                  <button id="speed-test" class="ghost-btn">⏱ 속도 측정 (100MB)</button>
+                </div>
+                <div id="conn-result" class="result-card hidden"></div>
+                <div id="speed-result" class="result-card hidden"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h3>정책 & 프로필 (양쪽 공유)</h3>
+            <div class="settings-row">
+              <div class="settings-label">네트워크 모드</div>
+              <div class="settings-control">
+                <div class="theme-options">
+                  <label class="theme-opt">
+                    <input type="radio" name="netmode" value="closed">
+                    <span class="theme-opt-name">닫힘 (closed)</span>
+                    <span class="theme-opt-meta">10GbE 직결 신뢰망 · .env / API 키 통과</span>
+                  </label>
+                  <label class="theme-opt">
+                    <input type="radio" name="netmode" value="open">
+                    <span class="theme-opt-name">열림 (open)</span>
+                    <span class="theme-opt-meta">노출망 · 모든 시크릿 차단</span>
+                  </label>
+                </div>
+                <span class="settings-hint">SSH 키 · 인증서 · 모바일 프로비저닝은 어느 모드든 차단됩니다.</span>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">언어 프리셋</div>
+              <div class="settings-control">
+                <div id="presets-info" class="result-card"></div>
+                <span class="settings-hint">감지된 프로젝트 언어로 자동 적용. 정식 enforcement는 <code>shareguard send</code> Rust 구현에서.</span>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">호스트 프로필</div>
+              <div class="settings-control">
+                <div class="btn-row">
+                  <button id="publish-profile-btn" class="primary-btn">📤 내 프로필 게시</button>
+                  <button id="refresh-profiles-btn" class="ghost-btn">↻ 게시된 프로필 다시 로드</button>
+                </div>
+                <div id="profiles-list" class="result-card"></div>
+                <span class="settings-hint">셰어 <code>00_System/10_Config/profiles/</code> 에 호스트 정보 저장. Mac도 동일하게 자기 프로필 게시하면 여기 같이 보임.</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h3>외관</h3>
+            <div class="settings-row">
+              <div class="settings-label">아이콘 테마</div>
+              <div class="settings-control">
+                <div class="theme-options" id="theme-options"></div>
+                <button id="install-theme" class="ghost-btn">📂 VSCode 아이콘 테마 추가</button>
+                <span class="settings-hint">
+                  VSCode 마켓플레이스에서 받은 <b>Catppuccin Icons</b>, <b>Material Icon Theme</b> 등의
+                  확장 폴더를 추가하세요. 폴더 안에서 <code>icon-theme.json</code>을 자동으로 찾아요.
+                  <br>(VSIX는 ZIP으로 풀어서 <code>extension/</code> 폴더를 추가)
+                </span>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Drag overlay (full window) -->
+  <div id="drop-overlay" class="drop-overlay hidden">
+    <div class="drop-card">
+      <div class="drop-icon">↓</div>
+      <div class="drop-title">MacBook으로 보내기</div>
+      <div class="drop-hint">놓으면 카테고리 선택 창이 열려요</div>
+    </div>
+  </div>
+
+  <!-- Category picker after drop -->
+  <div id="cat-picker" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3>MacBook으로 보내기</h3>
+        <button class="modal-close" data-close="cat-picker">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="caption">전송 대상</div>
+        <div id="cat-picker-target" class="target-card"></div>
+
+        <div class="caption" style="margin-top:18px">카테고리</div>
+        <select id="cat-picker-select" class="select"></select>
+      </div>
+      <div class="modal-footer">
+        <button class="ghost-btn" data-close="cat-picker">취소</button>
+        <button id="cat-picker-send" class="primary-btn">MacBook으로 전송</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Item details modal -->
+  <div id="details" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3 id="details-title">상세 정보</h3>
+        <button class="modal-close" data-close="details">✕</button>
+      </div>
+      <div id="details-body" class="modal-body"></div>
+      <div class="modal-footer">
+        <button id="details-open" class="ghost-btn">열기</button>
+        <button id="details-reveal" class="primary-btn">탐색기에서 보기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toasts" class="toasts"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

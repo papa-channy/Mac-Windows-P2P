@@ -1,0 +1,6 @@
+# shareguard project — exclude build artifacts from any future share transfer
+target/
+**/*.rs.bk
+**/*.pdb
+**/*.exe
+**/*.dll
