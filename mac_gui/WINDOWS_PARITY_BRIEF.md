@@ -615,6 +615,244 @@ Use .env.example / 1Password / Doppler instead.
 
 ---
 
+---
+
+## 12. 공유 메모 (`00_System/60_Notes/`)
+
+Evernote 스타일의 호스트 간 공유 메모장. 양쪽이 같은 메모를 편집, 마지막 저장이 winner.
+
+### 12.1 디렉터리
+
+```
+00_System/60_Notes/
+└── <note-id>.json          ← 메모 1개 = 1 파일
+```
+
+`<note-id>` 형식: `note-<uuid-simple>` (32자 hex, 하이픈 없이). 새 메모 생성 시 UUIDv4 simple로 부여.
+
+### 12.2 메모 JSON 스키마 (v1)
+
+```json
+{
+  "schema_version": 1,
+  "id": "note-7d9a8b3c4e1f2a5b6c7d8e9f0a1b2c3d",
+  "title": "회의 메모 - 2026-05-20",
+  "body": "마크다운 또는 plain text. 길이 제한 없음.",
+  "created_at": "2026-05-20T22:00:00+09:00",
+  "updated_at": "2026-05-21T01:23:45+09:00",
+  "updated_by": {
+    "host": "DESKTOP-Q0S7LSQ",
+    "os": "windows"
+  }
+}
+```
+
+**갱신 규칙**:
+- `created_at` 은 처음 생성된 호스트가 박은 값 그대로 유지 (재기록 X)
+- `updated_at`, `updated_by` 는 매 save 시 덮어씀
+- `body` 는 plain text (마크다운 렌더링은 클라이언트가 알아서)
+- `title` 이 비어있어도 OK — UI에서 "(제목 없음)" 으로 표시
+
+### 12.3 동시 편집 충돌 정책 (현재)
+
+- **last-write-wins**: 두 호스트가 동시 수정 → 더 늦은 `updated_at` 이 디스크에 남음
+- 충돌 감지/머지는 v1 비스코프. 양쪽 동시 편집은 운영자가 회피
+- 향후 (v2): pre-save 비교, 충돌 시 `<id>.<host>.conflict.json` 으로 분기 저장 가능
+
+### 12.4 자동 저장 디바운스
+
+UI는 입력 정지 후 **600ms 디바운스**로 저장 호출. 너무 빠른 저장은 SMB 트래픽 + 파일시스템 이벤트 폭주. Mac UI도 같은 디바운스 권장.
+
+### 12.5 삭제
+
+`delete_note(id)` → 해당 `<id>.json` 파일 즉시 삭제. 휴지통 없음. 양쪽 모두 즉시 사라짐 (파일 watcher 이벤트로 갱신).
+
+### 12.6 Mac 측 구현 체크리스트 (메모)
+
+- [ ] `list_notes()` → 디렉터리 스캔, body는 snippet(160자)으로 잘라서 반환
+- [ ] `get_note(id)` → 단일 JSON 읽기
+- [ ] `save_note(id, title, body)` → id 없으면 신규 UUID 부여, `created_at` 보존, `updated_*` 갱신
+- [ ] `delete_note(id)` → 파일 삭제
+- [ ] 600ms 디바운스로 자동저장
+- [ ] 파일 watcher 받으면 list 새로고침 (별도 §14)
+
+---
+
+## 13. 공유 클립보드 (`00_System/70_Clipboard/`)
+
+**모델**: 양쪽이 자기 OS 클립보드를 자동 기록 → 통합 타임라인 → 클릭 한 번으로 내 OS 클립보드에 복사. 송수신 모델 아님.
+
+### 13.1 디렉터리
+
+```
+00_System/70_Clipboard/
+├── <hostname>.history.jsonl   ← Windows host's clip history
+└── <hostname>.history.jsonl   ← Mac host's clip history
+```
+
+`<hostname>` 은 영숫자 + `-_` 만 남긴 sanitized 호스트명 (Windows: `COMPUTERNAME`, Mac: `scutil --get LocalHostName` 또는 `hostname` 결과).
+
+### 13.2 JSONL 한 줄 스키마
+
+```json
+{"ts":"2026-05-21T01:23:45+09:00","host":"chans-MacBook-Pro","os":"macos","content":"https://github.com/...","kind":"text","len":42}
+```
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `ts` | string (RFC3339 + tz) | 기록 시점 |
+| `host` | string | 원본 호스트명 (sanitize 안 한 값) |
+| `os` | `"windows"` \| `"macos"` \| `"linux"` | 호스트 OS |
+| `content` | string | 클립보드 텍스트 (UTF-8) |
+| `kind` | `"text"` | v1은 텍스트만. 향후 `"image"`, `"file-ref"` 등 |
+| `len` | int | content 의 unicode codepoint 수 (truncate 판단용) |
+
+### 13.3 자동 기록 알고리즘 (양쪽 동일)
+
+```text
+loop:
+  sleep 1.5s
+  text = read_os_clipboard_text()
+  if text empty: continue
+  if text == last_known: continue
+  if text.codepoints > 32000:
+    text = take_first(32000) + "\n…(truncated)"
+  append_line_to(<own_host>.history.jsonl, entry)
+  rotate(<own_host>.history.jsonl, max_lines=200)
+  last_known = text
+```
+
+**중요**:
+- 자기 호스트 파일에만 append. 다른 호스트 파일은 절대 건드리지 말 것.
+- 200줄 회전 (오래된 줄 잘라냄, 파일 끝 200줄만 유지).
+- empty / 동일값 skip → 불필요한 중복 방지.
+- 32K 코드포인트 초과 시 truncate + 마커.
+
+### 13.4 OS 클립보드 접근
+
+| OS | 권장 방법 |
+|---|---|
+| **Windows** | `tauri-plugin-clipboard-manager` (Rust) — 내부적으로 `arboard` 크레이트 사용. 모든 스레드에서 호출 가능. |
+| **macOS** | `NSPasteboard.general.string(forType: .string)` (Swift) — `changeCount` 폴링으로 변경 감지 가능 (효율적). |
+
+Mac 측은 `changeCount` 활용 가능하면 1.5초 폴링 대신 changeCount 변경 시점에만 read → 더 가볍게 구현 가능. JSONL append 시점은 동일.
+
+### 13.5 통합 타임라인 읽기
+
+```text
+list_clipboard_entries(limit=200):
+  all = []
+  for f in glob("70_Clipboard/*.history.jsonl"):
+    for line in read_lines(f):
+      if not line.strip(): skip
+      all.append(parse_json(line))
+  sort all by ts desc
+  return all[:limit]
+```
+
+UI는 모든 호스트의 항목을 하나의 시간순 리스트로 보여줌. OS 배지 (`Win` 파랑 / `Mac` 초록) 로 출처 구분.
+
+### 13.6 클릭 → 내 OS 클립보드로 복사
+
+행 클릭 시 그 entry의 `content` 를 자기 OS 클립보드에 write. 그 즉시 자기 폴러가 변경 감지 → 자기 history 에 새 entry append. **이 자체 피드백 1회는 의도된 동작** (사용자가 "재복사" 신호로 받아들임).
+
+### 13.7 비-노이즈 정책
+
+- 빈 텍스트: append 안 함
+- 직전 값과 동일: append 안 함
+- ≥32K chars 길이: truncate
+- 비-텍스트 (이미지/파일 리스트 등): v1 skip. v2에서 `kind: image` 등 확장
+
+### 13.8 Mac 측 구현 체크리스트 (클립보드)
+
+- [ ] 백그라운드 폴러 시작 (앱 launch 직후)
+- [ ] `changeCount` 또는 1.5초 polling 으로 변경 감지
+- [ ] 자기 호스트의 `<hostname>.history.jsonl` 에 append
+- [ ] 200줄 회전 자동
+- [ ] 32K codepoint 초과 truncate
+- [ ] `list_clipboard_entries(limit)` 명령 — 모든 호스트 jsonl 머지
+- [ ] `copy_to_os_clipboard(text)` 명령 — `NSPasteboard.setString`
+- [ ] `clear_own_clipboard_history()` 명령 — 자기 jsonl만 삭제 (다른 호스트 거 보존)
+
+---
+
+## 14. 파일 시스템 watcher (`share-changed` 이벤트)
+
+**폴링 X, watcher O**. 변경 발생 시점에만 UI 갱신.
+
+### 14.1 Windows 구현 (참고)
+
+Rust `notify` 크레이트 (`ReadDirectoryChangesW` 래퍼). 별도 thread에서 watch:
+
+```text
+watch_paths:
+  - share/10_Exchange/           (recursive)
+  - share/00_System/70_Clipboard/  (recursive)
+  - share/00_System/60_Notes/    (recursive)
+  - share/00_System/10_Config/profiles/
+debounce: 400ms per topic
+emit "share-changed" → frontend with payload { topic, path }
+```
+
+### 14.2 Mac 구현 권장
+
+`FSEvents` API 또는 Swift의 `DispatchSource.makeFileSystemObjectSource`. 동일한 watch_paths 셋 + 동일 topic 분류:
+
+| 경로 패턴 | topic |
+|---|---|
+| `.../10_Exchange/...` | `transfers` |
+| `.../70_Clipboard/...` | `clipboard` |
+| `.../60_Notes/...` | `notes` |
+| `.../profiles/...` | `profiles` |
+
+### 14.3 이벤트 페이로드
+
+```json
+{"topic": "transfers", "path": "/Volumes/Mac-Window_Share/10_Exchange/20_Windows_to_Mac/20_Ready/30_Documents/2026-05-21__documents__foo__v01.txt"}
+```
+
+### 14.4 프론트엔드 처리
+
+| topic | 해야할 행동 |
+|---|---|
+| `transfers` | 받기/보낸 것/받은 기록 전체 카운트 + 항목 리스트 새로고침 |
+| `clipboard` | 클립보드 타임라인 새로고침 (현재 패널 보고있는 경우만 즉시 그림) |
+| `notes` | 메모 리스트 새로고침 (현재 편집 중 메모는 본인이 저장 중이라면 충돌 주의 — 13초 cooldown 권장) |
+| `profiles` | 설정 패널 보고있을 때만 게시된 프로필 리스트 새로고침 |
+
+### 14.5 디바운스
+
+토픽당 400ms. 한 번의 사용자 액션(예: shareguard send) 이 여러 파일을 동시에 만들 수 있어서 (manifest + checksum + log + 본체 = 4개) 한 번에 묶음. Mac 측도 동일 디바운스 권장.
+
+### 14.6 SMB 마운트에서의 한계
+
+- **Windows 측**: 셰어가 로컬 NTFS — `ReadDirectoryChangesW` 정상 동작. Mac이 SMB로 write 해도 NTFS 레벨에서 이벤트 잡힘.
+- **Mac 측**: 셰어가 SMB mount — `FSEvents` 가 SMB 마운트에서 동작 안 할 수 있음 (Apple 문서 참고). 대안: `kqueue`, 또는 그래도 안 되면 5~10초 폴링 fallback.
+
+Mac 측에서 watcher 신뢰성이 떨어진다면 폴링 fallback으로 자동 전환 권장 (실패 감지 + 운영자에게 한 줄 노티).
+
+### 14.7 Mac 측 구현 체크리스트 (watcher)
+
+- [ ] 4개 watch 경로 등록
+- [ ] 토픽별 400ms 디바운스
+- [ ] `share-changed` 이벤트 emit (Tauri 또는 Mac native IPC, frontend가 받을 수 있게)
+- [ ] SMB watcher 동작 안 할 시 폴링 fallback (간격 5~10초)
+
+---
+
+## 15. 자동 갱신 정책 종합
+
+| 시그널 | 대응 | 주기 |
+|---|---|---|
+| 다른 호스트가 셰어에 파일 추가/수정/삭제 | watcher 이벤트 → 토픽별 갱신 | 이벤트 즉시 (≤400ms 디바운스) |
+| 자기 OS 클립보드 변경 | 폴러 → 자기 history jsonl append | 1.5초 |
+| watcher 실패 (SMB 등) | 30초 fallback 폴링 (silent) | 30s |
+| 사용자가 새로고침 버튼 누름 | refreshAll() | 즉시 |
+
+폴링 첫번째 옵션 아님. Watcher 가 메인 메커니즘.
+
+---
+
 ## 부록 B — 변경 이력
 
 | 날짜 | 변경 |
@@ -622,3 +860,4 @@ Use .env.example / 1Password / Doppler instead.
 | 2026-05-17 | 초안. Windows 측 phase-1 shim 완료 기준. |
 | 2026-05-17 | 멀티파일 → `unclassified` 자동분류 추가. |
 | 2026-05-20 | v2 contract: 공유 정책 (policy.json), 언어 프리셋, 호스트 프로필, 닫힘/열림 네트워크 시크릿 정책, line-ending annotation 추가. |
+| 2026-05-21 | §12 공유 메모, §13 클립보드 자동기록 모델, §14 파일 watcher, §15 자동 갱신 정책 추가. |

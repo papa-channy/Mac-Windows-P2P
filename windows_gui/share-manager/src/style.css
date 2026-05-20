@@ -520,75 +520,71 @@ button { font-family: inherit; }
   align-items: center;
 }
 
-/* ─── Clipboard panel ─────────────────────────────────────────── */
-#panel-clipboard .clip-body {
+/* ─── Clipboard panel (unified timeline) ──────────────────────── */
+.clip-timeline-body {
   flex: 1;
   overflow-y: auto;
-  padding: 22px 28px 32px;
+  padding: 18px 24px 32px;
   max-width: 900px;
   margin: 0 auto;
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
 }
-.clip-section { display: flex; flex-direction: column; gap: 10px; }
-.clip-meta { font-size: 11.5px; color: var(--text-sec); }
-.clip-current-text {
-  width: 100%;
-  min-height: 120px;
-  max-height: 280px;
+.clip-timeline { display: flex; flex-direction: column; gap: 6px; }
+.clip-entry {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 12px 14px;
-  font-family: Consolas, "SF Mono", monospace;
-  font-size: 12px;
-  color: var(--text-pri);
-  resize: vertical;
-  outline: none;
-  line-height: 1.55;
+  padding: 11px 14px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, transform 0.05s;
 }
-.clip-history { display: flex; flex-direction: column; gap: 6px; }
-.clip-history-item {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 10px 14px;
+.clip-entry:hover {
+  background: var(--surface-hi);
+  border-color: var(--text-dim);
+}
+.clip-entry:active { transform: scale(0.998); }
+.clip-entry-head {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-sec);
+  margin-bottom: 5px;
 }
-.clip-history-item-text {
-  flex: 1;
-  font-size: 11.5px;
+.clip-entry-os {
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  font-family: "Segoe UI Variable", system-ui, sans-serif;
+}
+.clip-entry-os-win {
+  background: rgba(10, 132, 255, 0.13);
+  color: #0a84ff;
+}
+.clip-entry-os-mac {
+  background: rgba(45, 164, 78, 0.13);
+  color: #2da44e;
+}
+.clip-entry-host {
   font-family: Consolas, "SF Mono", monospace;
-  color: var(--text-pri);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-.clip-history-item-meta {
   font-size: 10.5px;
-  color: var(--text-sec);
-  flex-shrink: 0;
 }
-.clip-history-item-restore {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-sec);
-  border-radius: 5px;
-  padding: 3px 10px;
-  font-size: 11.5px;
-  cursor: pointer;
-  flex-shrink: 0;
+.clip-entry-time { margin-left: auto; font-variant-numeric: tabular-nums; }
+.clip-entry-text {
+  font-size: 12.5px;
+  color: var(--text-pri);
+  font-family: Consolas, "SF Mono", monospace;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
 }
-.clip-history-item-restore:hover {
-  background: var(--accent);
-  color: white;
-  border-color: var(--accent);
-}
+.clip-entry-text.url { color: var(--accent); }
 
 /* ─── Settings panel ──────────────────────────────────────────── */
 .settings-body {

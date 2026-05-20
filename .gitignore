@@ -43,3 +43,6 @@ node_modules/
 ._*
 Thumbs.db
 desktop.ini
+
+# Vendored VSCode icon themes (downloaded from marketplace, not source)
+windows_gui/themes/

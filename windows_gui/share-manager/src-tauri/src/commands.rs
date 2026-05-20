@@ -926,6 +926,92 @@ fn rotate_jsonl(path: &Path, max_lines: usize) -> std::io::Result<()> {
     std::fs::write(path, lines.join("\n") + "\n")
 }
 
+// ─── File watcher (replaces UI polling) ────────────────────────
+fn classify_event_path(p: &Path) -> &'static str {
+    let s = p.to_string_lossy();
+    let has = |needle: &str| s.contains(needle);
+    if has("\\10_Exchange\\") || has("/10_Exchange/") { return "transfers"; }
+    if has("\\70_Clipboard\\") || has("/70_Clipboard/") { return "clipboard"; }
+    if has("\\60_Notes\\") || has("/60_Notes/") { return "notes"; }
+    if has("\\profiles\\") || has("/profiles/") { return "profiles"; }
+    ""
+}
+
+pub fn start_file_watcher(app: tauri::AppHandle) {
+    use notify::{recommended_watcher, EventKind, RecursiveMode, Watcher};
+    use tauri::Emitter;
+
+    std::thread::spawn(move || {
+        let share = crate::share::share_root();
+        let watch_paths: Vec<PathBuf> = vec![
+            share.join("10_Exchange"),
+            share.join("00_System").join("70_Clipboard"),
+            share.join("00_System").join("60_Notes"),
+            share.join("00_System").join("10_Config").join("profiles"),
+        ];
+        for p in &watch_paths {
+            let _ = std::fs::create_dir_all(p);
+        }
+
+        let (tx, rx) = std::sync::mpsc::channel::<notify::Result<notify::Event>>();
+        let mut watcher = match recommended_watcher(tx) {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("watcher init failed: {e}");
+                return;
+            }
+        };
+        for p in &watch_paths {
+            if let Err(e) = watcher.watch(p, RecursiveMode::Recursive) {
+                eprintln!("watch {} failed: {e}", p.display());
+            }
+        }
+
+        use std::collections::HashMap;
+        let mut last_emit: HashMap<&'static str, std::time::Instant> = HashMap::new();
+        let debounce = std::time::Duration::from_millis(400);
+
+        for res in rx {
+            let event = match res {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            if !matches!(
+                event.kind,
+                EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+            ) {
+                continue;
+            }
+            let mut topics_fired: std::collections::HashSet<&'static str> =
+                std::collections::HashSet::new();
+            for p in &event.paths {
+                let topic = classify_event_path(p);
+                if topic.is_empty() || topics_fired.contains(topic) {
+                    continue;
+                }
+                topics_fired.insert(topic);
+                let now = std::time::Instant::now();
+                if let Some(prev) = last_emit.get(topic) {
+                    if now.duration_since(*prev) < debounce {
+                        continue;
+                    }
+                }
+                last_emit.insert(topic, now);
+                let _ = app.emit(
+                    "share-changed",
+                    serde_json::json!({
+                        "topic": topic,
+                        "path": p.to_string_lossy(),
+                    }),
+                );
+            }
+        }
+
+        // Keep the watcher alive for the lifetime of the thread (rx drop ends loop).
+        let _ = watcher;
+    });
+}
+
 pub fn start_clipboard_poller(app: tauri::AppHandle) {
     use tauri_plugin_clipboard_manager::ClipboardExt;
     std::thread::spawn(move || {

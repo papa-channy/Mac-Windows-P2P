@@ -64,7 +64,7 @@ const state = {
   treePath: null,
   settings: null,
   notes:     { list: [], selectedId: null, current: null, saveTimer: null },
-  clipboard: { current: null, history: [], pollTimer: null },
+  clipboard: { entries: [], pollTimer: null, autoTimer: null },
 };
 
 // Defaults applied if backend returns nothing (shouldn't happen but be safe)
@@ -123,12 +123,9 @@ const $noteDelete   = document.getElementById('note-delete');
 const $noteSaveStatus = document.getElementById('note-save-status');
 // Clipboard refs
 const $panelClipboard = document.getElementById('panel-clipboard');
-const $clipCurrentMeta = document.getElementById('clip-current-meta');
-const $clipCurrentText = document.getElementById('clip-current-text');
-const $clipPush     = document.getElementById('clip-push');
-const $clipPull     = document.getElementById('clip-pull');
-const $clipRefresh  = document.getElementById('clip-refresh');
-const $clipHistory  = document.getElementById('clip-history');
+const $clipTimeline   = document.getElementById('clip-timeline');
+const $clipRefresh    = document.getElementById('clip-refresh');
+const $clipClear      = document.getElementById('clip-clear');
 const $nav     = document.getElementById('nav');
 const $items   = document.getElementById('items');
 const $empty   = document.getElementById('empty');
@@ -893,88 +890,81 @@ async function deleteCurrentNote() {
   } catch (e) { toast('삭제 실패: ' + e, 'error'); }
 }
 
-// ─── Shared clipboard ───────────────────────────────────────────
+// ─── Clipboard (unified timeline) ───────────────────────────────
 async function refreshClipboard() {
   try {
-    state.clipboard.current = await invoke('read_shared_clipboard');
-    state.clipboard.history = await invoke('list_clipboard_history', { limit: 20 });
+    state.clipboard.entries = await invoke('list_clipboard_entries', { limit: 200 });
     renderClipboardPanel();
   } catch (e) {
     console.warn('clipboard refresh:', e);
   }
 }
 
+function osBadge(os) {
+  if (os === 'windows') return { cls: 'clip-entry-os-win', label: 'Win' };
+  if (os === 'macos')   return { cls: 'clip-entry-os-mac', label: 'Mac' };
+  return { cls: '', label: (os || '?').toUpperCase() };
+}
+
+function looksLikeUrl(s) {
+  return /^https?:\/\//i.test((s || '').trim());
+}
+
 function renderClipboardPanel() {
-  const c = state.clipboard.current;
-  if (!c || c.empty) {
-    $clipCurrentText.value = '';
-    $clipCurrentMeta.textContent = '(공유 클립보드 비어있음)';
-  } else {
-    $clipCurrentText.value = c.content || '';
-    const from = c.from && c.from.host ? `${c.from.host} (${c.from.os || '?'})` : '?';
-    $clipCurrentMeta.textContent = `From: ${from}  ·  ${fmtFull(c.created_at)}`;
-  }
-  $clipHistory.innerHTML = '';
-  if (state.clipboard.history.length === 0) {
-    const ph = document.createElement('div');
-    ph.style.cssText = 'padding:14px;text-align:center;font-size:11.5px;color:var(--text-sec)';
-    ph.textContent = '아직 기록이 없어요.';
-    $clipHistory.appendChild(ph);
+  $clipTimeline.innerHTML = '';
+  if (state.clipboard.entries.length === 0) {
+    $clipTimeline.innerHTML = `
+      <div class="empty" style="padding:40px 24px;">
+        <div class="empty-icon">📋</div>
+        <div class="empty-title">아직 기록이 없어요</div>
+        <div class="empty-hint">어디서든 텍스트를 복사하면 양쪽 호스트가 자동으로 기록해요.</div>
+      </div>`;
     return;
   }
-  for (const h of state.clipboard.history) {
+  for (const e of state.clipboard.entries) {
     const el = document.createElement('div');
-    el.className = 'clip-history-item';
-    const flat = (h.content || '').replace(/\s+/g, ' ');
-    const from = h.from && h.from.host ? h.from.host : '?';
+    el.className = 'clip-entry';
+    const badge = osBadge(e.os);
+    const content = e.content || '';
+    const preview = content.length > 600 ? content.slice(0, 600) + '…' : content;
+    const urlClass = looksLikeUrl(content) ? ' url' : '';
     el.innerHTML = `
-      <div class="clip-history-item-text" title="${escape(h.content || '')}">${escape(flat)}</div>
-      <div class="clip-history-item-meta">${escape(from)} · ${escape(fmtRelative(h.created_at))}</div>
-      <button class="clip-history-item-restore" title="이 항목으로 공유 클립보드 복원">↶ 복원</button>
+      <div class="clip-entry-head">
+        <span class="clip-entry-os ${badge.cls}">${escape(badge.label)}</span>
+        <span class="clip-entry-host" title="${escape(e.host || '')}">${escape(e.host || '?')}</span>
+        <span class="clip-entry-time">${escape(fmtRelative(e.ts))}</span>
+      </div>
+      <div class="clip-entry-text${urlClass}" title="${escape(content)}">${escape(preview)}</div>
     `;
-    el.querySelector('.clip-history-item-restore').addEventListener('click', async () => {
+    el.addEventListener('click', async () => {
       try {
-        await invoke('write_shared_clipboard', { content: h.content || '' });
-        await refreshClipboard();
-        toast('히스토리 항목으로 복원됨', 'success');
-      } catch (e) { toast('복원 실패: ' + e, 'error'); }
+        await invoke('copy_to_os_clipboard', { text: content });
+        toast('내 OS 클립보드로 복사됨', 'success');
+      } catch (err) { toast('복사 실패: ' + err, 'error'); }
     });
-    $clipHistory.appendChild(el);
+    $clipTimeline.appendChild(el);
   }
-}
-
-async function pushOsClipboardToShare() {
-  try {
-    const clip = window.__TAURI__.clipboardManager;
-    if (!clip) { toast('clipboard plugin 없음', 'error'); return; }
-    const text = await clip.readText();
-    if (!text || !text.trim()) { toast('OS 클립보드 비어있음', 'error'); return; }
-    await invoke('write_shared_clipboard', { content: text });
-    await refreshClipboard();
-    toast('공유로 보냈어요', 'success');
-  } catch (e) { toast('실패: ' + e, 'error'); }
-}
-
-async function pullShareToOsClipboard() {
-  try {
-    const c = state.clipboard.current;
-    if (!c || c.empty || !c.content) { toast('공유 클립보드가 비어있어요', 'error'); return; }
-    const clip = window.__TAURI__.clipboardManager;
-    if (!clip) { toast('clipboard plugin 없음', 'error'); return; }
-    await clip.writeText(c.content);
-    toast('OS 클립보드에 복사됨', 'success');
-  } catch (e) { toast('실패: ' + e, 'error'); }
 }
 
 function startClipboardPolling() {
   if (state.clipboard.pollTimer) return;
-  state.clipboard.pollTimer = setInterval(refreshClipboard, 3000);
+  refreshClipboard();
+  state.clipboard.pollTimer = setInterval(refreshClipboard, 2000);
 }
 function stopClipboardPolling() {
   if (state.clipboard.pollTimer) {
     clearInterval(state.clipboard.pollTimer);
     state.clipboard.pollTimer = null;
   }
+}
+
+async function clearOwnClipboardHistory() {
+  if (!window.confirm('내(이 호스트의) 클립보드 기록을 모두 지울까요? (Mac 측 기록은 그대로 유지)')) return;
+  try {
+    await invoke('clear_own_clipboard_history');
+    await refreshClipboard();
+    toast('내 클립보드 기록 지움', 'success');
+  } catch (e) { toast('실패: ' + e, 'error'); }
 }
 
 function refreshIconsInView() {
@@ -1436,9 +1426,8 @@ $noteBody.addEventListener('input', onNoteEdited);
 $noteDelete.addEventListener('click', deleteCurrentNote);
 
 // Clipboard wiring
-$clipPush.addEventListener('click', pushOsClipboardToShare);
-$clipPull.addEventListener('click', pullShareToOsClipboard);
 $clipRefresh.addEventListener('click', refreshClipboard);
+$clipClear.addEventListener('click', clearOwnClipboardHistory);
 
 setupModals();
 setupHeaderActions();
@@ -1454,4 +1443,32 @@ document.getElementById('settings-icon').innerHTML = svgIcon('settings');
   renderTools();
   await refreshAll().catch(e => { console.error('initial refresh failed:', e); setStatus('초기화 실패: ' + e); });
   await setupDragDrop().catch(e => console.error('drag-drop setup failed:', e));
+
+  // File-watcher driven refresh (no polling). Rust emits "share-changed"
+  // events with topic ∈ {transfers, clipboard, notes, profiles}. Frontend
+  // refreshes only the relevant slice and only if it's visible-ish.
+  try {
+    const { listen } = window.__TAURI__.event;
+    await listen('share-changed', (event) => {
+      const topic = event && event.payload && event.payload.topic;
+      if (!topic) return;
+      switch (topic) {
+        case 'transfers':
+          refreshAll().catch(() => {});
+          break;
+        case 'clipboard':
+          refreshClipboard().catch(() => {});
+          break;
+        case 'notes':
+          loadNotesList().catch(() => {});
+          break;
+        case 'profiles':
+          if (state.view === VIEW_SETTINGS) refreshProfilesList().catch(() => {});
+          break;
+      }
+    });
+  } catch (e) {
+    console.warn('file watcher event listen failed; falling back to slow poll:', e);
+    setInterval(() => refreshAll().catch(() => {}), 30000);
+  }
 })();

@@ -10,6 +10,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             commands::start_clipboard_poller(app.handle().clone());
+            commands::start_file_watcher(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
