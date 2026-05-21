@@ -1,0 +1,18 @@
+[
+  {
+    "version": "0.1.0",
+    "date": "2026-05-21",
+    "title": "첫 정식 릴리스 — Tauri + React 로 재구축",
+    "highlights": [
+      "Mac GUI 를 Rust Tauri v2 + React 로 재구축 (Windows 측과 동일 구조)",
+      "Swift TransferCore 로직을 Rust 로 1:1 포팅 — SHA-256 / 네이밍 / RAW_SECRET / manifest 직렬화 16개 단위 테스트 통과",
+      "Finder 우클릭 송신: 소형 Swift Service vendor (SendToWindowsLauncher.app) 가 Tauri 본체 spawn",
+      "FSEvents 기반 셰어 watcher + SMB 폴링 fallback (§14.6)",
+      "NSPasteboard 폴링으로 클립보드 자동 기록 → 양 OS 공유 타임라인",
+      "Developer ID 코드 서명 + Apple 노타라이즈 + DMG staple — Gatekeeper 무경고 배포",
+      "Tauri 업데이터: 다음 릴리스부터 앱 내에서 자동 갱신",
+      "바탕화면 바로가기: 첫 실행 시 ~/Desktop/share-manager.app 심볼릭 링크 자동 생성 (업데이트 시에도 살아있음)"
+    ],
+    "notes": "내부 리뷰용 첫 빌드. 다음 릴리스에서 Send 다이얼로그 / drag-drop batch / Sent view UI 마무리 예정."
+  }
+]

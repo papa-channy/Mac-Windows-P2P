@@ -52,12 +52,49 @@ fi
 launchctl bootstrap "gui/$UID" "$LAUNCH_AGENT_PLIST"
 launchctl enable "gui/$UID/$LAUNCH_AGENT_LABEL" 2>/dev/null || true
 
+# Optional: build + install the share-manager (Tauri) GUI and the
+# send-to-windows-launcher Service vendor when their source trees exist
+# next to this script (i.e. running install.sh from a working dev checkout).
+SHARE_MANAGER_DIR="$SCRIPT_DIR/share-manager"
+LAUNCHER_DIR="$SCRIPT_DIR/send-to-windows-launcher"
+
+if [ -d "$SHARE_MANAGER_DIR/src-tauri" ]; then
+    echo
+    echo "==> share-manager source tree detected — building (cargo tauri build)"
+    if command -v cargo-tauri >/dev/null 2>&1 || cargo tauri --version >/dev/null 2>&1; then
+        (cd "$SHARE_MANAGER_DIR" && cargo tauri build --bundles app)
+        BUNDLE_APP="$SHARE_MANAGER_DIR/src-tauri/target/release/bundle/macos/share-manager.app"
+        if [ -d "$BUNDLE_APP" ]; then
+            mkdir -p "$HOME/Applications"
+            rm -rf "$HOME/Applications/share-manager.app"
+            cp -R "$BUNDLE_APP" "$HOME/Applications/share-manager.app"
+            echo "    installed → ~/Applications/share-manager.app"
+        else
+            echo "    (build finished but bundle missing at expected path: $BUNDLE_APP)"
+        fi
+    else
+        echo "    skip — install tauri-cli first: cargo install tauri-cli --version '^2'"
+    fi
+fi
+
+if [ -d "$LAUNCHER_DIR/Sources" ]; then
+    echo
+    echo "==> send-to-windows-launcher source tree detected — building"
+    sh "$LAUNCHER_DIR/scripts/install.sh"
+fi
+
 echo
 echo "✓ Installed."
 echo "  CLI:          $LOCAL_LIB/mw"
 echo "  Desktop App:  $DESKTOP_APP"
 echo "  LaunchAgent:  $LAUNCH_AGENT_PLIST"
 echo "  Logs:         $LOCAL_LOGS/"
+if [ -d "$HOME/Applications/share-manager.app" ]; then
+    echo "  GUI:          ~/Applications/share-manager.app"
+fi
+if [ -d "$HOME/Applications/SendToWindowsLauncher.app" ]; then
+    echo "  Service:      ~/Applications/SendToWindowsLauncher.app"
+fi
 echo
 echo "Try:"
 echo "  $LOCAL_LIB/mw status"
