@@ -1534,6 +1534,144 @@ pub fn list_git_status() -> Result<Vec<HostGitSnapshot>, String> {
     Ok(out)
 }
 
+// ─── Commit logs (for the per-repo graph) ─────────────────────
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CommitNode {
+    pub sha: String,
+    pub parents: Vec<String>,
+    pub msg: String,
+    pub author: String,
+    pub date: String,
+}
+
+fn repo_commit_log(repo: &Path, branch: &str, n: usize) -> Vec<CommitNode> {
+    // %H sha, %P parents(space-sep), %s subject, %an author, %cI committer ISO date
+    let fmt = "--format=%H%x1f%P%x1f%s%x1f%an%x1f%cI";
+    let count = format!("-{n}");
+    let raw = match run_git(repo, &["log", &count, fmt, branch]) {
+        Some(s) => s,
+        None => return Vec::new(),
+    };
+    raw.lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| {
+            let p: Vec<&str> = l.split('\u{1f}').collect();
+            if p.len() != 5 {
+                return None;
+            }
+            let parents = p[1].split_whitespace().map(|s| s.to_string()).collect();
+            Some(CommitNode {
+                sha: p[0].to_string(),
+                parents,
+                msg: p[2].to_string(),
+                author: p[3].to_string(),
+                date: p[4].to_string(),
+            })
+        })
+        .collect()
+}
+
+/// Branches worth logging for a repo: default + current (deduped).
+fn graph_branches(repo: &Path, status: &RepoStatus) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if status.branch != "?" && !status.branch.is_empty() {
+        out.push(status.branch.clone());
+    }
+    // default branch from origin/HEAD if resolvable
+    if let Some(def) = run_git(repo, &["rev-parse", "--abbrev-ref", "origin/HEAD"]) {
+        let def = def.trim_start_matches("origin/").to_string();
+        if !def.is_empty() && !out.contains(&def) {
+            out.push(def);
+        }
+    }
+    out
+}
+
+/// Single disk walk: status snapshot + commit-log file, both published.
+#[tauri::command]
+pub fn scan_and_publish_git(app: tauri::AppHandle) -> Result<usize, String> {
+    let settings = load_settings(app);
+    let exclude: std::collections::HashSet<String> =
+        settings.git.exclude_dirs.iter().map(|s| s.to_lowercase()).collect();
+
+    let mut roots: Vec<PathBuf> = Vec::new();
+    for c in b'C'..=b'Z' {
+        let d = PathBuf::from(format!("{}:\\", c as char));
+        if d.exists() {
+            roots.push(d);
+        }
+    }
+    for r in &settings.git.extra_roots {
+        let p = PathBuf::from(r);
+        if p.exists() && !roots.iter().any(|x| x == &p) {
+            roots.push(p);
+        }
+    }
+
+    let mut found: Vec<PathBuf> = Vec::new();
+    for root in &roots {
+        scan_root_for_repos(root, &exclude, &mut found);
+    }
+    found.sort();
+
+    let mut statuses: Vec<RepoStatus> = Vec::new();
+    // logs: owner_repo (or path) → branch → [CommitNode]
+    let mut logs: std::collections::BTreeMap<String, std::collections::BTreeMap<String, Vec<CommitNode>>> =
+        std::collections::BTreeMap::new();
+
+    for p in &found {
+        let st = repo_status_at(p);
+        let key = st.owner_repo.clone().unwrap_or_else(|| st.path.clone());
+        let mut by_branch = std::collections::BTreeMap::new();
+        for b in graph_branches(p, &st) {
+            let log = repo_commit_log(p, &b, 50);
+            if !log.is_empty() {
+                by_branch.insert(b, log);
+            }
+        }
+        if !by_branch.is_empty() {
+            logs.insert(key, by_branch);
+        }
+        statuses.push(st);
+    }
+
+    // publish status
+    publish_git_status(statuses)?;
+    // publish logs
+    let host = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "windows".into());
+    let safe = host_id_safe(&host);
+    let safe = if safe.is_empty() { "windows".to_string() } else { safe };
+    let logdoc = serde_json::json!({
+        "schema_version": 1, "host": host, "os": "windows",
+        "scanned_at": chrono::Local::now().to_rfc3339(), "logs": logs,
+    });
+    std::fs::write(
+        git_share_dir().join(format!("{safe}.git-log.json")),
+        serde_json::to_string(&logdoc).unwrap_or_default(),
+    ).map_err(|e| e.to_string())?;
+
+    Ok(found.len())
+}
+
+#[tauri::command]
+pub fn list_git_logs() -> Result<serde_json::Value, String> {
+    let dir = git_share_dir();
+    let mut hosts = serde_json::Map::new();
+    for e in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
+        let p = e.path();
+        let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+        if name.ends_with(".git-log.json") {
+            if let Ok(raw) = std::fs::read_to_string(&p) {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+                    let host = v.get("host").and_then(|x| x.as_str()).unwrap_or(name).to_string();
+                    hosts.insert(host, v);
+                }
+            }
+        }
+    }
+    Ok(serde_json::Value::Object(hosts))
+}
+
 // ─── Git credentials (PAT in OS keychain) + SSH + API validation ──
 const KEYRING_SERVICE: &str = "mac-window-git";
 const KEYRING_USER: &str = "github-pat";
@@ -1741,6 +1879,170 @@ pub fn read_remote_cache() -> Result<serde_json::Value, String> {
     serde_json::from_str(&raw).map_err(|e| e.to_string())
 }
 
+// Fetch up to 50 remote commits for a branch via the GitHub API.
+fn fetch_remote_commits(token: &str, owner_repo: &str, branch: &str) -> Vec<CommitNode> {
+    let url = format!("https://api.github.com/repos/{owner_repo}/commits?sha={branch}&per_page=50");
+    let v = match gh_get(token, &url) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    let arr = match v.as_array() {
+        Some(a) => a,
+        None => return Vec::new(),
+    };
+    arr.iter()
+        .map(|c| {
+            let sha = c.get("sha").and_then(|x| x.as_str()).unwrap_or("").to_string();
+            let parents = c.get("parents").and_then(|p| p.as_array())
+                .map(|a| a.iter().filter_map(|x| x.get("sha").and_then(|s| s.as_str()).map(|s| s.to_string())).collect())
+                .unwrap_or_default();
+            let commit = c.get("commit");
+            let msg = commit.and_then(|cm| cm.get("message")).and_then(|x| x.as_str())
+                .unwrap_or("").lines().next().unwrap_or("").to_string();
+            let author = commit.and_then(|cm| cm.get("author")).and_then(|a| a.get("name")).and_then(|x| x.as_str()).unwrap_or("").to_string();
+            let date = commit.and_then(|cm| cm.get("author")).and_then(|a| a.get("date")).and_then(|x| x.as_str()).unwrap_or("").to_string();
+            CommitNode { sha, parents, msg, author, date }
+        })
+        .filter(|c| !c.sha.is_empty())
+        .collect()
+}
+
+/// Merge Win-local + Mac-local + remote commit histories for one repo into
+/// a per-branch graph: ordered commit nodes (source-tagged), pointers,
+/// common ancestor, and ahead/behind vs remote. Returns JSON for the UI.
+#[tauri::command]
+pub fn build_repo_graph(owner_repo: String) -> Result<serde_json::Value, String> {
+    use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+
+    // 1) gather local logs per host: host → {os, branch → [CommitNode]}
+    let logs_doc = list_git_logs()?;
+    // host meta + per-branch commits
+    let mut hosts: Vec<(String, String)> = Vec::new(); // (host, os)
+    // (host, branch) → Vec<CommitNode>
+    let mut local: HashMap<(String, String), Vec<CommitNode>> = HashMap::new();
+    let mut branches: BTreeSet<String> = BTreeSet::new();
+    if let Some(obj) = logs_doc.as_object() {
+        for (host, doc) in obj {
+            let os = doc.get("os").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let repo_logs = doc.get("logs").and_then(|l| l.get(&owner_repo));
+            if let Some(byb) = repo_logs.and_then(|r| r.as_object()) {
+                hosts.push((host.clone(), os));
+                for (branch, arr) in byb {
+                    branches.insert(branch.clone());
+                    let commits: Vec<CommitNode> = serde_json::from_value(arr.clone()).unwrap_or_default();
+                    local.insert((host.clone(), branch.clone()), commits);
+                }
+            }
+        }
+    }
+    if hosts.is_empty() {
+        return Err("이 레포의 커밋 로그가 아직 없어요 (스캔 필요)".into());
+    }
+
+    // 2) remote commits per branch (live API; best-effort)
+    let token = get_token();
+    let mut remote: HashMap<String, Vec<CommitNode>> = HashMap::new();
+    let mut default_branch = String::new();
+    if let Some(tok) = &token {
+        if let Ok(meta) = gh_get(tok, &format!("https://api.github.com/repos/{owner_repo}")) {
+            default_branch = meta.get("default_branch").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        }
+        if !default_branch.is_empty() { branches.insert(default_branch.clone()); }
+        for b in branches.iter() {
+            let rc = fetch_remote_commits(tok, &owner_repo, b);
+            if !rc.is_empty() { remote.insert(b.clone(), rc); }
+        }
+    }
+
+    // 3) build per-branch graph
+    let mut per_branch = serde_json::Map::new();
+    for branch in branches.iter() {
+        // collect node set with source tags + the per-source sha lists (newest-first)
+        let mut node: BTreeMap<String, CommitNode> = BTreeMap::new();
+        let mut src_in: HashMap<String, HashSet<String>> = HashMap::new(); // source key → shas
+        let mut order_hint: HashMap<String, usize> = HashMap::new(); // sha → min index across sources (newest)
+
+        let mut add_source = |key: &str, commits: &[CommitNode], node: &mut BTreeMap<String, CommitNode>, src_in: &mut HashMap<String, HashSet<String>>, order_hint: &mut HashMap<String, usize>| {
+            let set = src_in.entry(key.to_string()).or_default();
+            for (i, c) in commits.iter().enumerate() {
+                node.entry(c.sha.clone()).or_insert_with(|| c.clone());
+                set.insert(c.sha.clone());
+                let e = order_hint.entry(c.sha.clone()).or_insert(usize::MAX);
+                if i < *e { *e = i; }
+            }
+        };
+
+        let mut pointers = serde_json::Map::new();
+        // remote
+        if let Some(rc) = remote.get(branch) {
+            add_source("remote", rc, &mut node, &mut src_in, &mut order_hint);
+            if let Some(tip) = rc.first() { pointers.insert("remote".into(), serde_json::json!(tip.sha)); }
+        }
+        // each host
+        for (host, _os) in &hosts {
+            if let Some(commits) = local.get(&(host.clone(), branch.clone())) {
+                add_source(host, commits, &mut node, &mut src_in, &mut order_hint);
+                if let Some(tip) = commits.first() { pointers.insert(host.clone(), serde_json::json!(tip.sha)); }
+            }
+        }
+
+        // ordered list: newest-first by date desc (fallback order_hint)
+        let mut shas: Vec<String> = node.keys().cloned().collect();
+        shas.sort_by(|a, b| {
+            let da = node.get(a).map(|n| n.date.clone()).unwrap_or_default();
+            let db = node.get(b).map(|n| n.date.clone()).unwrap_or_default();
+            db.cmp(&da).then(order_hint.get(a).cmp(&order_hint.get(b)))
+        });
+
+        // common ancestor: newest sha present in ALL available sources
+        let source_keys: Vec<String> = src_in.keys().cloned().collect();
+        let common_ancestor = shas.iter().find(|s| source_keys.iter().all(|k| src_in.get(k).map(|set| set.contains(*s)).unwrap_or(false))).cloned();
+
+        // ahead/behind vs remote per host (approx via set difference)
+        let mut summary = serde_json::Map::new();
+        let empty = HashSet::new();
+        let rset = src_in.get("remote").unwrap_or(&empty);
+        for (host, _os) in &hosts {
+            if let Some(hset) = src_in.get(host) {
+                let ahead = hset.iter().filter(|s| !rset.contains(*s)).count();
+                let behind = if rset.is_empty() { 0 } else { rset.iter().filter(|s| !hset.contains(*s)).count() };
+                summary.insert(host.clone(), serde_json::json!({ "ahead": ahead, "behind": behind, "has_remote": !rset.is_empty() }));
+            }
+        }
+
+        // commit rows
+        let commits_json: Vec<serde_json::Value> = shas.iter().map(|s| {
+            let n = &node[s];
+            let mut inmap = serde_json::Map::new();
+            for k in &source_keys { inmap.insert(k.clone(), serde_json::json!(src_in.get(k).map(|set| set.contains(s)).unwrap_or(false))); }
+            let tips: Vec<String> = pointers.iter().filter(|(_, v)| v.as_str() == Some(s.as_str())).map(|(k, _)| k.clone()).collect();
+            serde_json::json!({
+                "sha": s, "short": &s[..s.len().min(7)],
+                "parents": n.parents, "msg": n.msg, "author": n.author, "date": n.date,
+                "in": inmap, "tips": tips,
+                "ancestor": Some(s) == common_ancestor.as_ref().map(|x| x),
+            })
+        }).collect();
+
+        per_branch.insert(branch.clone(), serde_json::json!({
+            "commits": commits_json,
+            "pointers": pointers,
+            "common_ancestor": common_ancestor,
+            "summary": summary,
+        }));
+    }
+
+    let hosts_json: Vec<serde_json::Value> = hosts.iter().map(|(h, o)| serde_json::json!({"host": h, "os": o})).collect();
+    Ok(serde_json::json!({
+        "owner_repo": owner_repo,
+        "default_branch": default_branch,
+        "branches": branches.iter().cloned().collect::<Vec<_>>(),
+        "hosts": hosts_json,
+        "has_token": token.is_some(),
+        "per_branch": per_branch,
+    }))
+}
+
 // ─── File watcher (replaces UI polling) ────────────────────────
 fn classify_event_path(p: &Path) -> &'static str {
     let s = p.to_string_lossy();
@@ -1754,7 +2056,7 @@ fn classify_event_path(p: &Path) -> &'static str {
 }
 
 pub fn start_file_watcher(app: tauri::AppHandle) {
-    use notify::{recommended_watcher, RecursiveMode, Watcher};
+    use notify::{recommended_watcher, EventKind, RecursiveMode, Watcher};
     use tauri::Emitter;
 
     std::thread::spawn(move || {
@@ -1784,143 +2086,49 @@ pub fn start_file_watcher(app: tauri::AppHandle) {
             }
         }
 
+        use std::collections::HashMap;
+        let mut last_emit: HashMap<&'static str, std::time::Instant> = HashMap::new();
         let debounce = std::time::Duration::from_millis(400);
-        run_event_loop(rx, debounce, |topic| {
-            let _ = app.emit("share-changed", serde_json::json!({ "topic": topic }));
-        });
+
+        for res in rx {
+            let event = match res {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            if !matches!(
+                event.kind,
+                EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+            ) {
+                continue;
+            }
+            let mut topics_fired: std::collections::HashSet<&'static str> =
+                std::collections::HashSet::new();
+            for p in &event.paths {
+                let topic = classify_event_path(p);
+                if topic.is_empty() || topics_fired.contains(topic) {
+                    continue;
+                }
+                topics_fired.insert(topic);
+                let now = std::time::Instant::now();
+                if let Some(prev) = last_emit.get(topic) {
+                    if now.duration_since(*prev) < debounce {
+                        continue;
+                    }
+                }
+                last_emit.insert(topic, now);
+                let _ = app.emit(
+                    "share-changed",
+                    serde_json::json!({
+                        "topic": topic,
+                        "path": p.to_string_lossy(),
+                    }),
+                );
+            }
+        }
 
         // Keep the watcher alive for the lifetime of the thread (rx drop ends loop).
         let _ = watcher;
     });
-}
-
-/// Drain watcher events and call `emit(topic)` with leading + trailing debounce.
-///
-/// The earlier leading-only debounce dropped every event within 400ms of the
-/// first, *including* the event fired when a freshly-copied file finally became
-/// visible. Over SMB the first notification can arrive before the directory
-/// entry is readable by `list_transfers`, so that leading refresh sees nothing
-/// and the trailing (swallowed) event never re-runs it — the item only appears
-/// after a restart. Small files (e.g. `.html`) are hit hardest because their
-/// whole write completes inside one debounce window; larger files (`.pdf`) emit
-/// a later event outside the window that happens to refresh.
-///
-/// Fix: emit immediately on the first event of a burst (responsiveness), then
-/// emit once more after `debounce` of silence (correctness — the file is now
-/// fully visible). Extracted from `start_file_watcher` so it can be unit-tested.
-fn run_event_loop<F: FnMut(&str)>(
-    rx: std::sync::mpsc::Receiver<notify::Result<notify::Event>>,
-    debounce: std::time::Duration,
-    mut emit: F,
-) {
-    use notify::EventKind;
-    use std::collections::HashSet;
-    use std::sync::mpsc::RecvTimeoutError;
-
-    let mut pending: HashSet<&'static str> = HashSet::new();
-    loop {
-        let res = if pending.is_empty() {
-            match rx.recv() {
-                Ok(r) => r,
-                Err(_) => break, // sender dropped
-            }
-        } else {
-            match rx.recv_timeout(debounce) {
-                Ok(r) => r,
-                // Burst settled (or shutting down) — trailing refresh.
-                Err(RecvTimeoutError::Timeout) => {
-                    for topic in pending.drain() {
-                        emit(topic);
-                    }
-                    continue;
-                }
-                Err(RecvTimeoutError::Disconnected) => {
-                    for topic in pending.drain() {
-                        emit(topic);
-                    }
-                    break;
-                }
-            }
-        };
-        let event = match res {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        if !matches!(
-            event.kind,
-            EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
-        ) {
-            continue;
-        }
-        for p in &event.paths {
-            let topic = classify_event_path(p);
-            if topic.is_empty() {
-                continue;
-            }
-            // Leading edge: first sighting of this topic in the current burst.
-            if pending.insert(topic) {
-                emit(topic);
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod watcher_tests {
-    use super::*;
-    use notify::event::CreateKind;
-    use notify::{Event, EventKind};
-    use std::sync::{Arc, Mutex};
-    use std::time::Duration;
-
-    fn create_event(path: &str) -> notify::Result<Event> {
-        Ok(Event::new(EventKind::Create(CreateKind::Any)).add_path(PathBuf::from(path)))
-    }
-
-    // A single isolated event must produce BOTH a leading and a trailing emit.
-    // The trailing one is the regression guard: it is what picks up a small file
-    // (e.g. .html) that only becomes visible after the leading refresh ran.
-    #[test]
-    fn single_event_emits_leading_and_trailing() {
-        let (tx, rx) = std::sync::mpsc::channel();
-        let emits = Arc::new(Mutex::new(Vec::<String>::new()));
-        let sink = emits.clone();
-        let handle = std::thread::spawn(move || {
-            run_event_loop(rx, Duration::from_millis(80), |t| {
-                sink.lock().unwrap().push(t.to_string());
-            });
-        });
-
-        tx.send(create_event("/srv/share/10_Exchange/10_Mac_to_Windows/90_Received/docs/x.html"))
-            .unwrap();
-        std::thread::sleep(Duration::from_millis(220)); // > debounce
-
-        let n = emits.lock().unwrap().iter().filter(|t| *t == "transfers").count();
-        assert_eq!(n, 2, "expected leading + trailing refresh, got {n}");
-
-        drop(tx);
-        handle.join().unwrap();
-    }
-
-    // Paths outside the watched roots never emit.
-    #[test]
-    fn unclassified_paths_are_ignored() {
-        let (tx, rx) = std::sync::mpsc::channel();
-        let emits = Arc::new(Mutex::new(Vec::<String>::new()));
-        let sink = emits.clone();
-        let handle = std::thread::spawn(move || {
-            run_event_loop(rx, Duration::from_millis(80), |t| {
-                sink.lock().unwrap().push(t.to_string());
-            });
-        });
-
-        tx.send(create_event("/srv/share/00_System/99_Unwatched/x.html")).unwrap();
-        std::thread::sleep(Duration::from_millis(180));
-        assert!(emits.lock().unwrap().is_empty());
-
-        drop(tx);
-        handle.join().unwrap();
-    }
 }
 
 fn images_dir() -> PathBuf {

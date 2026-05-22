@@ -402,6 +402,23 @@
     </div>
   </div>
 
+  <!-- Git repo detail (Sync Map / DAG) -->
+  <div id="git-detail" class="modal hidden">
+    <div class="modal-backdrop" data-close="git-detail"></div>
+    <div class="modal-window git-detail-window">
+      <div class="modal-header">
+        <h3 id="git-detail-title">레포 상세</h3>
+        <div class="git-detail-controls">
+          <select id="git-detail-branch" class="select git-detail-branch"></select>
+          <button id="git-detail-mode" class="ghost-btn">🌳 DAG 보기</button>
+          <button class="modal-close" data-close="git-detail">✕</button>
+        </div>
+      </div>
+      <div id="git-detail-summary" class="git-detail-summary"></div>
+      <div id="git-detail-body" class="git-detail-body"></div>
+    </div>
+  </div>
+
   <!-- HTML dependency warning modal -->
   <div id="html-warn" class="modal hidden">
     <div class="modal-backdrop"></div>

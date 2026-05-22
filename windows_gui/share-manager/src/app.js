@@ -85,6 +85,7 @@ const state = {
   clipboard: { entries: [], pollTimer: null, autoTimer: null },
   log:       { category: null, hubOpen: false, entries: [] },
   git:       { snapshots: [], remote: {}, scanning: false, fetchingRemote: false },
+  gitDetail: { ownerRepo: null, graph: null, branch: null, mode: 'sync' },
 };
 
 // Defaults applied if backend returns nothing (shouldn't happen but be safe)
@@ -119,6 +120,12 @@ const $gitList     = document.getElementById('git-list');
 const $gitScan     = document.getElementById('git-scan');
 const $gitFetchRemote = document.getElementById('git-fetch-remote');
 const $gitRefresh  = document.getElementById('git-refresh');
+const $gitDetail        = document.getElementById('git-detail');
+const $gitDetailTitle   = document.getElementById('git-detail-title');
+const $gitDetailBranch  = document.getElementById('git-detail-branch');
+const $gitDetailMode    = document.getElementById('git-detail-mode');
+const $gitDetailSummary = document.getElementById('git-detail-summary');
+const $gitDetailBody    = document.getElementById('git-detail-body');
 const $panelItems = document.getElementById('panel-items');
 const $panelTree  = document.getElementById('panel-tree');
 const $tree       = document.getElementById('tree');
@@ -1398,11 +1405,10 @@ async function scanGitNow() {
   state.git.scanning = true;
   $gitScan.disabled = true;
   $gitScan.textContent = '⏳ 스캔 중…';
-  setStatus('Git 레포 전체 디스크 스캔 중… (수 분 걸릴 수 있어요)');
+  setStatus('Git 레포 전체 디스크 스캔 중… (커밋 로그 포함, 수 분 걸릴 수 있어요)');
   try {
-    const repos = await invoke('scan_git_repos');
-    await invoke('publish_git_status', { repos });
-    toast(`${repos.length}개 레포 스캔·게시 완료`, 'success');
+    const count = await invoke('scan_and_publish_git');
+    toast(`${count}개 레포 스캔·게시 완료 (커밋 로그 포함)`, 'success');
     await refreshGit();
   } catch (e) {
     toast('스캔 실패: ' + e, 'error');
@@ -1555,10 +1561,124 @@ function renderGitPanel() {
     }
 
     const card = document.createElement('div');
-    card.className = 'git-repo' + (inSync ? '' : ' warn');
-    card.innerHTML = `<div class="git-repo-head"><span class="git-repo-name">${escape(entry.label)}</span>${statusBadge}</div>${remoteRow}${hostRows}${prRows}`;
+    card.className = 'git-repo' + (inSync ? '' : ' warn') + (entry.ownerRepo ? ' clickable' : '');
+    const hint = entry.ownerRepo ? '<span class="git-repo-open">상세 보기 →</span>' : '';
+    card.innerHTML = `<div class="git-repo-head"><span class="git-repo-name">${escape(entry.label)}</span>${hint}${statusBadge}</div>${remoteRow}${hostRows}${prRows}`;
+    if (entry.ownerRepo) {
+      card.addEventListener('click', () => openGitDetail(entry.ownerRepo));
+    }
     $gitList.appendChild(card);
   }
+}
+
+// ─── Git repo detail (Sync Map / DAG) ──────────────────────────
+async function openGitDetail(ownerRepo) {
+  state.gitDetail = { ownerRepo, graph: null, branch: null, mode: 'sync' };
+  $gitDetailTitle.textContent = '🌿 ' + ownerRepo;
+  $gitDetailBranch.innerHTML = '';
+  $gitDetailSummary.innerHTML = '';
+  $gitDetailMode.textContent = '🌳 DAG 보기';
+  $gitDetailBody.innerHTML = '<div class="git-detail-loading">그래프 계산 중… (원격 조회 포함)</div>';
+  $gitDetail.classList.remove('hidden');
+  try {
+    const graph = await invoke('build_repo_graph', { ownerRepo });
+    state.gitDetail.graph = graph;
+    const branches = graph.branches || [];
+    const def = (graph.default_branch && branches.includes(graph.default_branch)) ? graph.default_branch : branches[0];
+    state.gitDetail.branch = def;
+    $gitDetailBranch.innerHTML = branches.map(b => `<option value="${escape(b)}"${b === def ? ' selected' : ''}>${escape(b)}</option>`).join('');
+    renderGitDetailBody();
+  } catch (e) {
+    $gitDetailBody.innerHTML = `<div class="git-detail-loading">실패: ${escape(String(e))}</div>`;
+  }
+}
+
+function gitDetailHostMeta(host) {
+  const or = state.gitDetail.ownerRepo;
+  const snap = state.git.snapshots.find(s => s.host === host);
+  if (!snap) return null;
+  return (snap.repos || []).find(r => r.owner_repo === or) || null;
+}
+
+function gitSrcLabel(key, graph) {
+  if (key === 'remote') return { icon: '📦', cls: 'remote' };
+  const h = (graph.hosts || []).find(x => x.host === key);
+  const os = h ? h.os : '';
+  if (os === 'macos') return { icon: '🍎', cls: 'mac' };
+  if (os === 'windows') return { icon: '🪟', cls: 'win' };
+  return { icon: '•', cls: '' };
+}
+
+function renderGitDetailBody() {
+  const graph = state.gitDetail.graph;
+  const branch = state.gitDetail.branch;
+  if (!graph || !branch) return;
+  const pb = (graph.per_branch || {})[branch];
+  const srcKeys = ['remote', ...(graph.hosts || []).map(h => h.host)];
+  let chips = '';
+  for (const k of srcKeys) {
+    const lbl = gitSrcLabel(k, graph);
+    if (k === 'remote') {
+      const tip = pb && pb.pointers && pb.pointers.remote;
+      chips += `<span class="git-chip ${lbl.cls}">${lbl.icon} GitHub ${tip ? ('· ' + tip.slice(0, 7)) : (graph.has_token ? '(브랜치 없음)' : '(토큰 필요)')}</span>`;
+    } else {
+      const s = pb && pb.summary && pb.summary[k];
+      const meta = gitDetailHostMeta(k);
+      let rel = '';
+      if (s && s.has_remote) {
+        if (!s.ahead && !s.behind) rel = ' · = 원격';
+        else rel = ` ·${s.ahead ? ' ↑' + s.ahead : ''}${s.behind ? ' ↓' + s.behind : ''}`;
+      }
+      const dirty = meta ? `${meta.dirty ? ' · dirty ' + meta.dirty : ''}${meta.unpushed ? ' · ↑' + meta.unpushed + ' 미푸시' : ''}` : '';
+      chips += `<span class="git-chip ${lbl.cls}">${lbl.icon} ${escape(k)}${rel}${dirty}</span>`;
+    }
+  }
+  $gitDetailSummary.innerHTML = chips;
+  if (state.gitDetail.mode === 'dag') { renderGitDag(pb, graph); return; }
+  renderGitSyncMap(pb, graph);
+}
+
+function renderGitSyncMap(pb, graph) {
+  if (!pb || !pb.commits || !pb.commits.length) {
+    $gitDetailBody.innerHTML = '<div class="git-detail-loading">이 브랜치의 커밋 데이터가 없어요. (스캔/토큰 확인)</div>';
+    return;
+  }
+  const srcKeys = ['remote', ...(graph.hosts || []).map(h => h.host)];
+  let rows = '';
+  for (const c of pb.commits) {
+    let dots = '';
+    for (const k of srcKeys) {
+      const present = c.in && c.in[k];
+      const lbl = gitSrcLabel(k, graph);
+      dots += `<span class="git-dot ${lbl.cls} ${present ? 'on' : 'off'}" title="${escape(k)}${present ? ' 있음' : ' 없음'}">${present ? '●' : '·'}</span>`;
+    }
+    let pills = '';
+    for (const t of (c.tips || [])) {
+      const lbl = gitSrcLabel(t, graph);
+      const label = t === 'remote' ? ('origin/' + (graph.default_branch || branch)) : (t + ' HEAD');
+      pills += `<span class="git-pill ${lbl.cls}">${lbl.icon} ${escape(label)}</span>`;
+    }
+    const anc = c.ancestor ? '<span class="git-anc">⊥ 공통 조상</span>' : '';
+    rows += `
+      <div class="git-commit-row${c.ancestor ? ' ancestor' : ''}" data-sha="${escape(c.sha)}" title="클릭: SHA 복사">
+        <span class="git-dots">${dots}</span>
+        <span class="git-csha">${escape(c.short)}</span>
+        <span class="git-cmsg">${escape(c.msg)}</span>
+        <span class="git-cpills">${pills}${anc}</span>
+        <span class="git-cmeta">${escape(c.author)} · ${escape(fmtRelative(c.date))}</span>
+      </div>`;
+  }
+  $gitDetailBody.innerHTML = `<div class="git-syncmap">${rows}</div>`;
+  $gitDetailBody.querySelectorAll('.git-commit-row').forEach(el => {
+    el.addEventListener('click', async () => {
+      const sha = el.getAttribute('data-sha');
+      try { await invoke('copy_to_os_clipboard', { text: sha }); toast('SHA 복사됨: ' + sha.slice(0, 7), 'success'); } catch (_) {}
+    });
+  });
+}
+
+function renderGitDag(pb, graph) {
+  $gitDetailBody.innerHTML = '<div class="git-detail-loading">DAG 보기는 다음 단계(5d)에서 추가됩니다 — 지금은 Sync Map을 사용하세요.</div>';
 }
 
 function renderNav() {
@@ -2043,6 +2163,12 @@ $logRefresh.addEventListener('click', () => renderLogView());
 $gitScan.addEventListener('click', scanGitNow);
 $gitFetchRemote.addEventListener('click', fetchRemoteNow);
 $gitRefresh.addEventListener('click', refreshGit);
+$gitDetailBranch.addEventListener('change', () => { state.gitDetail.branch = $gitDetailBranch.value; renderGitDetailBody(); });
+$gitDetailMode.addEventListener('click', () => {
+  state.gitDetail.mode = state.gitDetail.mode === 'sync' ? 'dag' : 'sync';
+  $gitDetailMode.textContent = state.gitDetail.mode === 'sync' ? '🌳 DAG 보기' : '📊 Sync Map 보기';
+  renderGitDetailBody();
+});
 $treeUp.addEventListener('click', navigateTreeUp);
 $treeHome.addEventListener('click', navigateTreeHome);
 $treeDesktop.addEventListener('click', navigateTreeDesktop);

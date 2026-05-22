@@ -1057,6 +1057,13 @@ JSONL 공통: `{ ts, host, os, event, ... }`. `send_ok`(source/category/transfer
 ### 18.5 직결 트리거 (Stage 4)
 백그라운드 reachability 폴러(peer TCP 445/share 경로). down→up 전이 시 자기 스냅샷 증분 재게시(mtime 변경 + 원격 SHA 변경 레포만) + `"git"` 토픽. 각 OS self-refresh.
 
+### 18.7 레포 상세 그래프 (Stage 5, Windows 선구현)
+레포 클릭 → 원격/Mac/Win 3소스 커밋 이력을 한 화면에. **Rust 자료처리 + Win 바닐라SVG/HTML, Mac React** (동일 JSON 계약).
+- **커밋 로그 게시**: `90_Git/<host>.git-log.json` = `{schema_version, host, os, scanned_at, logs:{<owner_repo>:{<branch>:[CommitNode]}}}`. `CommitNode{sha,parents[],msg,author,date}`. default+현재 브랜치, 각 최근 50. `scan_and_publish_git`이 status+log를 한 walk로 게시.
+- **`build_repo_graph(owner_repo)`**: 모든 호스트 git-log + 원격 커밋(`GET /repos/{o}/{r}/commits?sha={branch}&per_page=50`) 병합 → `per_branch{<b>:{commits:[{sha,short,parents,msg,author,date,in:{src:bool},tips:[src],ancestor:bool}], pointers:{src:sha}, common_ancestor, summary:{host:{ahead,behind,has_remote}}}}, hosts, default_branch, branches`. (출처 key: "remote" + 각 host명. host os는 hosts[]에서.)
+- **Sync Map**(기본): 커밋 행마다 출처 점(📦/🍎/🪟) + tip 포인터 알약 + 공통조상 강조 + 상단 호스트 요약칩(ahead/behind/dirty/미푸시). **DAG 토글**(5d): 레인 그래프.
+- 미푸시는 origin에 없어 정밀 Mac↔Win diff 불가 → ahead/behind는 집합차 근사 + "발산" 표기.
+
 ### 18.6 Mac 체크리스트
 - [ ] `90_Git/<host>.git-status.json` 동일 스키마 게시 (`os:"macos"`)
 - [ ] 로컬 스캔(~ + 추가 루트), git CLI 메타데이터
