@@ -91,11 +91,21 @@ if [ ! -d "$SM_APP_SRC" ]; then
     exit 1
 fi
 
-echo "==> verify share-manager.app signature"
-codesign --verify --deep --strict --verbose=2 "$SM_APP_SRC"
-if ! codesign --display --verbose=2 "$SM_APP_SRC" 2>&1 | grep -q "Authority=Developer ID Application"; then
-    echo "ERROR: share-manager.app was not signed with Developer ID." >&2
-    echo "       Make sure APPLE_SIGNING_IDENTITY is exported before tauri build." >&2
+# Always re-deep-sign with our explicit settings. Tauri's own signing
+# behavior between cli versions has been inconsistent (sometimes ad-hoc,
+# sometimes missing the timestamp), so we don't trust it. sign-app.sh
+# is idempotent — re-running just replaces the signature.
+echo "==> deep-sign share-manager.app via sign-app.sh (idempotent)"
+sh "$HERE_SCRIPTS/sign-app.sh" "$SM_APP_SRC" "$SM_DIR/src-tauri/Entitlements.plist"
+
+echo "==> final verify"
+# Stash codesign output first — piping `codesign -dvv | grep -q` under
+# `set -o pipefail` propagates SIGPIPE back to codesign as a non-zero
+# exit, which is wrongly treated as a verify failure.
+SIG_INFO="$(codesign -dvv "$SM_APP_SRC" 2>&1)"
+if ! printf '%s\n' "$SIG_INFO" | grep -q "Authority=Developer ID Application"; then
+    echo "ERROR: share-manager.app still lacks a Developer ID Authority line." >&2
+    printf '%s\n' "$SIG_INFO" | head -10 >&2
     exit 1
 fi
 
