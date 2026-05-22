@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- WebKit (WKWebView) needs JIT + unsigned executable memory under
+         Hardened Runtime. Without these, the web frontend fails to load. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- Spawning child processes (`/sbin/mount`, `mw` CLI, etc.) — required
+         because Hardened Runtime restricts exec by default. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!-- Network client (SMB share over LAN, future updater). -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- The app is NOT sandboxed (no app-sandbox key). Direct distribution
+         via Developer ID does not require sandboxing. -->
+</dict>
+</plist>

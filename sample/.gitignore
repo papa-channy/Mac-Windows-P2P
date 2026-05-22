@@ -1,0 +1,3 @@
+# Swift build artifacts — sample/ holds reference source only, not binaries
+send_to_windows/.build/
+send_to_windows/dist/
