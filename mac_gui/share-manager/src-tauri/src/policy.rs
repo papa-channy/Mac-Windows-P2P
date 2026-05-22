@@ -181,6 +181,39 @@ fn sw_vers() -> Option<String> {
     if s.is_empty() { None } else { Some(format!("macOS {s}")) }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::ENV_LOCK;
+    use serde_json::json;
+
+    #[test]
+    fn save_then_load_roundtrip() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("MW_SHARE_ROOT", tmp.path());
+
+        save(json!({"schema_version": 1, "network_mode": "open"})).unwrap();
+        let p = load().unwrap();
+        assert_eq!(p.get("network_mode").and_then(|v| v.as_str()), Some("open"));
+        assert_eq!(p.get("schema_version").and_then(|v| v.as_u64()), Some(1));
+
+        std::env::remove_var("MW_SHARE_ROOT");
+    }
+
+    #[test]
+    fn load_returns_err_when_missing() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("MW_SHARE_ROOT", tmp.path());
+
+        let err = load().unwrap_err();
+        assert!(err.contains("없음"));
+
+        std::env::remove_var("MW_SHARE_ROOT");
+    }
+}
+
 pub fn list_language_presets() -> Result<Vec<serde_json::Value>, String> {
     let dir = crate::share::share_root()
         .join("00_System")

@@ -102,3 +102,35 @@ pub fn delete(id: &str) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::ENV_LOCK;
+
+    #[test]
+    fn save_list_get_delete_roundtrip() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("MW_SHARE_ROOT", tmp.path());
+
+        let saved = save(None, "회의록".into(), "본문 내용".into()).unwrap();
+        let id = saved.get("id").and_then(|v| v.as_str()).unwrap().to_string();
+        assert!(id.starts_with("note-"));
+
+        let listed = list().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].get("title").and_then(|v| v.as_str()), Some("회의록"));
+        // List view strips body and substitutes snippet
+        assert!(listed[0].get("body").is_none());
+        assert_eq!(listed[0].get("snippet").and_then(|v| v.as_str()), Some("본문 내용"));
+
+        let fetched = get(&id).unwrap();
+        assert_eq!(fetched.get("body").and_then(|v| v.as_str()), Some("본문 내용"));
+
+        delete(&id).unwrap();
+        assert_eq!(list().unwrap().len(), 0);
+
+        std::env::remove_var("MW_SHARE_ROOT");
+    }
+}

@@ -9,6 +9,14 @@ mod share;
 mod transfer;
 mod watcher;
 
+#[cfg(test)]
+pub(crate) mod test_util {
+    //! Shared serialization point for tests that mutate process env (e.g.
+    //! `$MW_SHARE_ROOT`, `$HOME`). Acquire this before touching env vars.
+    use std::sync::Mutex;
+    pub static ENV_LOCK: Mutex<()> = Mutex::new(());
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()

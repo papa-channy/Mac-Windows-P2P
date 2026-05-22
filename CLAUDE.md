@@ -150,6 +150,26 @@ curl -fsSL https://github.com/papa-channy/Mac-Windows-P2P/releases/latest/downlo
 # Roll back: download the prior DMG and overwrite /Applications/share-manager.app
 ```
 
+## Known issues
+
+### Updater + DMG distribution require a public repo
+
+GitHub Releases public download URLs (`releases/latest/download/...`)
+return 404 on private repos — only authenticated API calls (e.g.
+`gh release download`) work. This breaks the Tauri updater client AND
+direct DMG download links.
+
+**Resolution applied (2026-05-22)**: repo flipped to public via
+`gh repo edit papa-channy/Mac-Windows-P2P --visibility public`. All
+release artifacts now resolve with HTTP 200. If a future fork wants to
+stay private, route updater artifacts through S3 / Cloudflare R2 /
+personal hosting instead of `releases/.../download/`.
+
+The frontend correctly reports "확인 실패" on any updater fetch error
+via `checkForUpdateDetailed()` in `src/lib/updater.ts` — distinguishes
+up-to-date / available / error so the user never sees a misleading
+"최신 버전입니다" when the endpoint is actually unreachable.
+
 ## What NOT to do
 
 - **Never** commit `~/.tauri/share-manager.key` or the keychain dump.

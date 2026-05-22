@@ -17,7 +17,6 @@ export function UpdaterBanner({ update, onDismiss }: Props) {
     setInstalling(true);
     try {
       await update.install((d, t) => setProgress({ d, t }));
-      // install() ends by relaunch() — execution typically stops here
     } catch (e) {
       console.error("update install failed:", e);
       setInstalling(false);
@@ -30,7 +29,7 @@ export function UpdaterBanner({ update, onDismiss }: Props) {
     <div className="updater-banner">
       <span className="updater-emoji">⬆</span>
       <div className="updater-body">
-        <div className="updater-line">
+        <div>
           새 버전 <strong>v{update.version}</strong> 이 준비됐어요
         </div>
         {installing && (
@@ -41,12 +40,8 @@ export function UpdaterBanner({ update, onDismiss }: Props) {
       </div>
       {!installing && (
         <>
-          <button className="primary" onClick={start}>
-            지금 설치
-          </button>
-          <button className="ghost" onClick={onDismiss}>
-            나중에
-          </button>
+          <button className="primary-btn" onClick={start}>지금 설치</button>
+          <button className="ghost-btn" onClick={onDismiss}>나중에</button>
         </>
       )}
     </div>

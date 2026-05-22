@@ -58,22 +58,26 @@ pub fn dir_hash(folder: &Path) -> Result<DirectoryDigest, TransferError> {
     for entry in WalkDir::new(&base).into_iter() {
         let entry = entry.map_err(|e| TransferError::io_msg(format!("enumerate: {e}")))?;
         if !entry.file_type().is_file() { continue; }
-        // Skip hidden files at any depth (.DS_Store etc) — matches Swift's
-        // `[.skipsHiddenFiles]` enumerator option.
-        if entry
+
+        let rel = entry
             .path()
+            .strip_prefix(&base)
+            .map_err(|_| TransferError::io_msg(format!("relativize: {}", entry.path().display())))?;
+
+        // Skip hidden files at any depth INSIDE the folder root (.git/, .DS_Store)
+        // — matches Swift's `[.skipsHiddenFiles]` enumerator. Critical: check
+        // relative-path components only, never the absolute path's prefix,
+        // which on macOS can include /private/tmp/.tmpXXX during testing.
+        if rel
             .components()
             .any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
         {
             continue;
         }
+
         let meta = entry
             .metadata()
             .map_err(|e| TransferError::io_msg(format!("metadata: {e}")))?;
-        let rel = entry
-            .path()
-            .strip_prefix(&base)
-            .map_err(|_| TransferError::io_msg(format!("relativize: {}", entry.path().display())))?;
         let mut rel_s = rel.to_string_lossy().replace('\\', "/");
         rel_s = rel_s.nfc().collect();
         raw.push((rel_s, entry.path().to_path_buf(), meta.len()));

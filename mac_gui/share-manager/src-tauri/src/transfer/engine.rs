@@ -39,6 +39,7 @@ pub struct TransferRequest {
     pub now: DateTime<Local>,
 }
 
+#[derive(Debug)]
 pub struct TransferOutcome {
     pub transfer_id: String,
     pub destination: PathBuf,
@@ -352,4 +353,293 @@ fn atomic_write(path: &Path, data: &[u8]) -> Result<(), TransferError> {
     fs::rename(&tmp, path)
         .map_err(|e| TransferError::io(format!("rename → {}", path.display()), e))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    //! Engine integration tests. Each test builds its own TempDir-backed
+    //! TransferRequest and asserts on the on-disk artifacts. No env
+    //! variables touched, so tests run in parallel safely.
+
+    use super::*;
+    use crate::share::{category_by_key, Direction};
+    use sha2::Digest;
+    use std::io::Write as _;
+    use tempfile::TempDir;
+
+    fn make_request(share: &TempDir, source: PathBuf, cat_key: &str, overwrite: bool) -> TransferRequest {
+        TransferRequest {
+            source,
+            category: category_by_key(cat_key).expect("known category"),
+            direction: Direction::MacToWindows,
+            share_root: share.path().to_path_buf(),
+            source_host: "test-host".into(),
+            source_user: "tester".into(),
+            batch_name: None,
+            version: 1,
+            overwrite_if_exists: overwrite,
+            now: Local::now(),
+        }
+    }
+
+    fn write_file(path: &Path, content: &[u8]) {
+        let mut f = std::fs::File::create(path).unwrap();
+        f.write_all(content).unwrap();
+    }
+
+    #[test]
+    fn file_mode_produces_all_artifacts() {
+        let share = tempfile::tempdir().unwrap();
+        let src_dir = tempfile::tempdir().unwrap();
+        let source = src_dir.path().join("note.txt");
+        write_file(&source, b"hello world");
+
+        let req = make_request(&share, source.clone(), "documents", false);
+        let out = send(&req).expect("send file");
+
+        // (a) destination file present with original bytes
+        assert!(out.destination.exists());
+        assert_eq!(std::fs::read(&out.destination).unwrap(), b"hello world");
+        assert!(out.destination
+            .file_name().unwrap().to_string_lossy()
+            .ends_with("__documents__note__v01.txt"));
+
+        // (b) manifest parses correctly
+        let manifest_raw = std::fs::read(&out.manifest_path).unwrap();
+        let parsed = manifest::decode(&manifest_raw).expect("manifest decode");
+        assert_eq!(parsed.schema_version, 1);
+        assert_eq!(parsed.mode, "file");
+        assert_eq!(parsed.direction, "mac_to_windows");
+        assert_eq!(parsed.files.len(), 1);
+        assert_eq!(parsed.files[0].sha256, hashing::sha256_file(&out.destination).unwrap());
+        assert_eq!(parsed.totals.bytes_out, 11);
+
+        // (c) sidecar matches `<sha>  <name>\n` exactly
+        let sidecar = std::fs::read_to_string(&out.sidecar_path).unwrap();
+        let expected = format!("{}  {}\n", out.sha256, out.destination.file_name().unwrap().to_string_lossy());
+        assert_eq!(sidecar, expected);
+
+        // (d) log: three lines, first contains "context-menu send:"
+        let log = std::fs::read_to_string(&out.log_path).unwrap();
+        let lines: Vec<&str> = log.lines().collect();
+        assert_eq!(lines.len(), 3);
+        assert!(lines[0].contains("context-menu send:"));
+        assert!(lines[2].contains(&format!("transfer_id={}", out.transfer_id)));
+    }
+
+    #[test]
+    fn directory_mode_walks_and_dir_hashes() {
+        let share = tempfile::tempdir().unwrap();
+        let src_dir = tempfile::tempdir().unwrap();
+        let folder = src_dir.path().join("myrepo");
+        std::fs::create_dir_all(folder.join("sub")).unwrap();
+        write_file(&folder.join("a.txt"), b"AAA");
+        write_file(&folder.join("sub/b.txt"), b"BBB");
+        write_file(&folder.join("sub/c.txt"), b"CCC");
+
+        let req = make_request(&share, folder, "repos", false);
+        let out = send(&req).expect("send dir");
+
+        assert!(out.destination.is_dir());
+        assert_eq!(out.mode, "directory");
+
+        // Recompute dir-hash and compare. NFC ordering must match.
+        let digest = hashing::dir_hash(&out.destination).unwrap();
+        assert_eq!(digest.combined, out.sha256);
+        assert_eq!(digest.total_bytes, 9);
+
+        // Sidecar should have one line per file + one combined-hash line
+        let sidecar = std::fs::read_to_string(&out.sidecar_path).unwrap();
+        let line_count = sidecar.lines().count();
+        assert_eq!(line_count, 3 + 1);
+        assert!(sidecar.contains("# combined dir-hash"));
+        assert!(sidecar.contains(&out.sha256));
+    }
+
+    #[test]
+    fn raw_secret_block_top_level() {
+        let share = tempfile::tempdir().unwrap();
+        let src_dir = tempfile::tempdir().unwrap();
+        let source = src_dir.path().join(".env");
+        write_file(&source, b"SECRET=1");
+
+        let req = make_request(&share, source, "documents", false);
+        let err = send(&req).unwrap_err();
+        match err {
+            TransferError::RawSecretBlocked { rule, .. } => {
+                assert!(rule.contains(".env"));
+            }
+            other => panic!("expected RawSecretBlocked, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn raw_secret_block_inside_directory() {
+        let share = tempfile::tempdir().unwrap();
+        let src_dir = tempfile::tempdir().unwrap();
+        let folder = src_dir.path().join("creds-folder");
+        std::fs::create_dir_all(&folder).unwrap();
+        write_file(&folder.join("readme.md"), b"docs");
+        write_file(&folder.join("service-account-prod.json"), b"{}");
+
+        let req = make_request(&share, folder, "documents", false);
+        let err = send(&req).unwrap_err();
+        assert!(matches!(err, TransferError::RawSecretBlocked { .. }));
+    }
+
+    #[test]
+    fn destination_exists_returns_signal_not_error() {
+        let share = tempfile::tempdir().unwrap();
+        let src_dir = tempfile::tempdir().unwrap();
+        let source = src_dir.path().join("twice.txt");
+        write_file(&source, b"first");
+        let req1 = make_request(&share, source.clone(), "documents", false);
+        send(&req1).expect("first send");
+        // Same source path on the same day → identical destination name.
+        let req2 = make_request(&share, source.clone(), "documents", false);
+        let err = send(&req2).unwrap_err();
+        assert!(matches!(err, TransferError::DestinationExists { .. }));
+        assert_eq!(err.exit_code(), 0, "DestinationExists is a signal, not a failure");
+    }
+
+    #[test]
+    fn overwrite_if_exists_replaces() {
+        let share = tempfile::tempdir().unwrap();
+        let src_dir = tempfile::tempdir().unwrap();
+        let source = src_dir.path().join("update.txt");
+
+        write_file(&source, b"v1 content");
+        let req1 = make_request(&share, source.clone(), "documents", false);
+        let out1 = send(&req1).expect("first send");
+        assert_eq!(std::fs::read(&out1.destination).unwrap(), b"v1 content");
+
+        // Modify source, resend with overwrite=true
+        write_file(&source, b"v2 content");
+        let req2 = make_request(&share, source.clone(), "documents", true);
+        let out2 = send(&req2).expect("overwrite send");
+        assert_eq!(out1.destination, out2.destination);
+        assert_eq!(std::fs::read(&out2.destination).unwrap(), b"v2 content");
+    }
+
+    #[test]
+    fn share_not_mounted_returns_typed_error() {
+        let src_dir = tempfile::tempdir().unwrap();
+        let source = src_dir.path().join("orphan.txt");
+        write_file(&source, b"x");
+
+        let req = TransferRequest {
+            source,
+            category: category_by_key("documents").unwrap(),
+            direction: Direction::MacToWindows,
+            share_root: PathBuf::from("/this/definitely/does/not/exist/anywhere"),
+            source_host: "h".into(),
+            source_user: "u".into(),
+            batch_name: None,
+            version: 1,
+            overwrite_if_exists: false,
+            now: Local::now(),
+        };
+        let err = send(&req).unwrap_err();
+        assert!(matches!(err, TransferError::ShareNotMounted { .. }));
+    }
+
+    /// E2E send against the real share if mounted. Cleans up after itself.
+    /// Skipped (returns OK) when /Volumes/Mac-Window_Share isn't present so
+    /// CI / unmounted dev machines stay green.
+    #[test]
+    fn e2e_send_against_real_share_if_mounted() {
+        let share = PathBuf::from("/Volumes/Mac-Window_Share");
+        if !share.exists() {
+            eprintln!("[e2e] share not mounted at {} — skipping", share.display());
+            return;
+        }
+
+        let src_dir = tempfile::tempdir().unwrap();
+        let source = src_dir.path().join(format!("e2e-{}.txt", Uuid::new_v4().simple()));
+        let payload = format!("e2e smoke {}", Local::now().to_rfc3339());
+        write_file(&source, payload.as_bytes());
+
+        let req = TransferRequest {
+            source: source.clone(),
+            category: category_by_key("documents").unwrap(),
+            direction: Direction::MacToWindows,
+            share_root: share.clone(),
+            source_host: "e2e-test".into(),
+            source_user: "tester".into(),
+            batch_name: None,
+            version: 1,
+            overwrite_if_exists: false,
+            now: Local::now(),
+        };
+        let out = send(&req).expect("e2e send");
+
+        // Hard assertions on share-side artifacts
+        assert!(out.destination.exists(), "destination missing: {}", out.destination.display());
+        assert!(out.manifest_path.exists(), "manifest missing: {}", out.manifest_path.display());
+        assert!(out.sidecar_path.exists(), "sidecar missing: {}", out.sidecar_path.display());
+        assert!(out.log_path.exists(), "log missing: {}", out.log_path.display());
+
+        // Manifest must decode and match
+        let m = manifest::decode(&std::fs::read(&out.manifest_path).unwrap()).unwrap();
+        assert_eq!(m.transfer_id, out.transfer_id);
+        assert_eq!(m.direction, "mac_to_windows");
+        assert_eq!(m.files[0].sha256, out.sha256);
+
+        // shasum -a 256 cross-check
+        let recomputed = hashing::sha256_file(&out.destination).unwrap();
+        assert_eq!(recomputed, out.sha256, "destination file hash drifted");
+
+        // Sidecar exact format
+        let sidecar = std::fs::read_to_string(&out.sidecar_path).unwrap();
+        let expected_line = format!(
+            "{}  {}\n",
+            out.sha256,
+            out.destination.file_name().unwrap().to_string_lossy()
+        );
+        assert_eq!(sidecar, expected_line);
+
+        // Log has 3 lines
+        let log_lines = std::fs::read_to_string(&out.log_path).unwrap().lines().count();
+        assert_eq!(log_lines, 3);
+
+        eprintln!("[e2e] OK — transfer_id: {}", out.transfer_id);
+        eprintln!("[e2e]   destination: {}", out.destination.display());
+        eprintln!("[e2e]   manifest:    {}", out.manifest_path.display());
+
+        // Cleanup so we don't pollute the share
+        let _ = std::fs::remove_file(&out.destination);
+        let _ = std::fs::remove_file(&out.manifest_path);
+        let _ = std::fs::remove_file(&out.sidecar_path);
+        let _ = std::fs::remove_file(&out.log_path);
+    }
+
+    #[test]
+    fn manifest_combined_dir_hash_matches_hand_computed() {
+        // Deterministic algorithm sanity: build a folder, hand-compute the
+        // combined hash via the §4.4 spec, and assert the engine result
+        // matches byte-for-byte.
+        let share = tempfile::tempdir().unwrap();
+        let src_dir = tempfile::tempdir().unwrap();
+        let folder = src_dir.path().join("smol");
+        std::fs::create_dir_all(&folder).unwrap();
+        write_file(&folder.join("z.txt"), b"zzz");
+        write_file(&folder.join("a.txt"), b"aaa");
+
+        // engine answer
+        let req = make_request(&share, folder.clone(), "data", false);
+        let out = send(&req).expect("send");
+
+        // hand-compute on the (sorted lex) order: a.txt, z.txt
+        let sha_a = hex::encode(sha2::Sha256::digest(b"aaa"));
+        let sha_z = hex::encode(sha2::Sha256::digest(b"zzz"));
+        let mut buf = Vec::new();
+        for (rel, sha) in [("a.txt", sha_a), ("z.txt", sha_z)] {
+            buf.extend_from_slice(rel.as_bytes());
+            buf.push(0);
+            buf.extend_from_slice(sha.as_bytes());
+            buf.push(0x0A);
+        }
+        let expected = hex::encode(sha2::Sha256::digest(&buf));
+        assert_eq!(out.sha256, expected, "engine dir-hash diverged from §4.4 spec");
+    }
 }

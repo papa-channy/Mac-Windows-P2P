@@ -79,16 +79,44 @@ fn parse_mount_output() -> Option<PathBuf> {
     let out = Command::new("/sbin/mount").output().ok()?;
     if !out.status.success() { return None; }
     let s = String::from_utf8_lossy(&out.stdout);
-    for line in s.lines() {
-        if !line.contains("/Mac-Window_Share") { continue; }
-        // Format: "//user@host/Mac-Window_Share on /Volumes/Mac-Window_Share (smbfs, ...)"
-        let on = line.find(" on ")?;
-        let rest = &line[on + 4..];
-        let paren = rest.find('(')?;
-        let path = rest[..paren].trim();
-        if !path.is_empty() {
-            return Some(PathBuf::from(path));
-        }
+    s.lines().find_map(parse_mount_line)
+}
+
+/// Parse a single `/sbin/mount` output line and extract our share's mount
+/// point. Returns Some(path) only when the line references Mac-Window_Share.
+///
+/// Expected format:
+///   "//user@host/Mac-Window_Share on /Volumes/Mac-Window_Share (smbfs, ...)"
+pub fn parse_mount_line(line: &str) -> Option<PathBuf> {
+    if !line.contains("/Mac-Window_Share") { return None; }
+    let on = line.find(" on ")?;
+    let rest = &line[on + 4..];
+    let paren = rest.find('(')?;
+    let path = rest[..paren].trim();
+    if path.is_empty() { return None; }
+    Some(PathBuf::from(path))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_typical_smb_line() {
+        let line = "//chan@DESKTOP-Q0S7LSQ/Mac-Window_Share on /Volumes/Mac-Window_Share (smbfs, nodev, nosuid)";
+        assert_eq!(parse_mount_line(line), Some(PathBuf::from("/Volumes/Mac-Window_Share")));
     }
-    None
+
+    #[test]
+    fn parses_custom_mount_point() {
+        let line = "//u@h/Mac-Window_Share on /Users/chan/mnt/Mac-Window_Share (smbfs)";
+        assert_eq!(parse_mount_line(line), Some(PathBuf::from("/Users/chan/mnt/Mac-Window_Share")));
+    }
+
+    #[test]
+    fn returns_none_for_unrelated_mounts() {
+        assert_eq!(parse_mount_line("/dev/disk1s1 on / (apfs, local)"), None);
+        assert_eq!(parse_mount_line(""), None);
+        assert_eq!(parse_mount_line("garbage"), None);
+    }
 }

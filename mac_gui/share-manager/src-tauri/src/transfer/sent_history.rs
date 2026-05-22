@@ -25,9 +25,15 @@ pub struct SentHistoryEntry {
 }
 
 pub fn path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_default();
-    PathBuf::from(home)
-        .join("Library")
+    // Fail-safe: if HOME is unset (shouldn't happen in production), fall
+    // back to the system temp dir so we don't end up writing a CWD-relative
+    // "Library/..." into wherever the binary is running.
+    let base = std::env::var("HOME")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    base.join("Library")
         .join("Logs")
         .join("MacWindowShare")
         .join("sent.jsonl")

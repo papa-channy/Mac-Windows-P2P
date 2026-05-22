@@ -94,6 +94,56 @@ pub fn remove() -> Result<(), String> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::ENV_LOCK;
+
+    /// RAII guard that restores $HOME on drop. Critical: leaving HOME unset
+    /// would cause subsequent tests (which write to $HOME/Library/...) to
+    /// fall back to a CWD-relative `Library/` directory and pollute the
+    /// crate root.
+    struct HomeGuard(Option<String>);
+    impl HomeGuard {
+        fn set(p: &std::path::Path) -> Self {
+            let prev = std::env::var("HOME").ok();
+            std::env::set_var("HOME", p);
+            Self(prev)
+        }
+    }
+    impl Drop for HomeGuard {
+        fn drop(&mut self) {
+            match &self.0 {
+                Some(v) => std::env::set_var("HOME", v),
+                None => std::env::remove_var("HOME"),
+            }
+        }
+    }
+
+    #[test]
+    fn current_status_absent_when_link_missing() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let _home = HomeGuard::set(tmp.path());
+
+        assert_eq!(current_status(), AliasStatus::Absent);
+        std::fs::create_dir_all(tmp.path().join("Desktop")).unwrap();
+        assert_eq!(current_status(), AliasStatus::Absent);
+    }
+
+    #[test]
+    fn current_status_blocked_by_real_file() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let _home = HomeGuard::set(tmp.path());
+
+        let desk = tmp.path().join("Desktop");
+        std::fs::create_dir_all(&desk).unwrap();
+        std::fs::create_dir_all(desk.join("share-manager.app")).unwrap();
+        assert_eq!(current_status(), AliasStatus::BlockedByFile);
+    }
+}
+
 /// Called from `setup()`. Idempotent and never errors — failures (e.g. dev
 /// build running from cargo target dir) are logged via eprintln but don't
 /// block startup.

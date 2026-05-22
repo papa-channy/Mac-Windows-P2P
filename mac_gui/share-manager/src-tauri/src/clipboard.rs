@@ -146,3 +146,33 @@ pub fn clear_own_history() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::ENV_LOCK;
+
+    #[test]
+    fn append_then_list_roundtrip() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("MW_SHARE_ROOT", tmp.path());
+
+        append_entry("hello world").unwrap();
+        append_entry("두번째 항목").unwrap();
+
+        let entries = list_entries(10).unwrap();
+        assert_eq!(entries.len(), 2);
+        // newest first
+        assert_eq!(entries[0].get("content").and_then(|v| v.as_str()), Some("두번째 항목"));
+        assert_eq!(entries[0].get("os").and_then(|v| v.as_str()), Some("macos"));
+        assert_eq!(entries[0].get("kind").and_then(|v| v.as_str()), Some("text"));
+        assert_eq!(entries[0].get("len").and_then(|v| v.as_u64()), Some(6));
+
+        // clear_own_history removes only this host's file
+        clear_own_history().unwrap();
+        assert_eq!(list_entries(10).unwrap().len(), 0);
+
+        std::env::remove_var("MW_SHARE_ROOT");
+    }
+}
