@@ -28,6 +28,8 @@ serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 walkdir = "2"
 anyhow = "1"
+keyring = "3"
+ureq = { version = "2", features = ["json"] }
 
 [profile.release]
 lto = true

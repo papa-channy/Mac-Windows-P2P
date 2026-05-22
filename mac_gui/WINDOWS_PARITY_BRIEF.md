@@ -1017,6 +1017,54 @@ JSONL 공통: `{ ts, host, os, event, ... }`. `send_ok`(source/category/transfer
 
 ---
 
+## 18. Git 상태 대시보드 (3-way repo sync) — 단계별, Windows 선구현
+
+직결망으로 두 머신의 git 레포 상태(원격 / Mac-로컬 / Win-로컬)를 비교해 머지충돌·잘못된 상태 작업을 사전 발견하는 대시보드. v1 = 니즈 1~6, 이후 7(머지충돌 예측)·8(룰베이스 복구)은 고도화.
+
+### 18.1 셰어 디렉터리 + 스냅샷 (Stage 1)
+```
+00_System/90_Git/<sanitized-host>.git-status.json
+```
+각 OS가 자기 로컬 레포를 스캔해 게시 (프로필 게시 패턴과 동일). 스키마:
+```json
+{ "schema_version":1, "host":"DESKTOP-Q0S7LSQ", "os":"windows", "scanned_at":"RFC3339",
+  "repos":[{
+    "owner_repo":"papa-channy/Mac-Windows-P2P",  // origin URL → owner/repo 정규화 (없으면 null)
+    "path":"D:\\dev\\Mac-Windows-P2P", "branch":"main", "head":"<sha40>",
+    "upstream":"origin/main",            // 없으면 null
+    "dirty":0, "dirty_files":[],         // git status --porcelain 라인
+    "unpushed":0, "ahead":0, "behind":0, // rev-list --left-right --count @{u}...HEAD
+    "stash":0, "remote_url":"https://github.com/...",
+    "last_commit":{"sha","msg","date"} }] }
+```
+- **스캔**: 전체 디스크 walk(시스템/`node_modules`/`target`/`.git` 등 제외, 설정 `git.exclude_dirs`), `.git` 보유 폴더 = 레포. 각 레포는 `git -C` 셸아웃으로 위 필드 추출.
+- **게시 토큰 금지**: 스냅샷엔 메타데이터만. 자격증명은 키체인만(§18.3).
+- **watcher**: `90_Git` 변경 시 `share-changed` 토픽 `"git"` emit.
+- **Mac 미러**: `<mac-host>.git-status.json` 동일 스키마로 게시. `os:"macos"`. 드라이브 walk 대신 `~`(+추가 루트) walk.
+
+### 18.2 대시보드 (Stage 1: 2-way 로컬 → Stage 3: 3-way)
+`owner_repo` 기준 양쪽 스냅샷 병합. 레포별로 호스트 행(OS배지·브랜치·HEAD·dirty/미푸시/뒤처짐 플래그). HEAD가 호스트마다 다르거나 dirty/미푸시 있으면 "⚠ 불일치", 전부 같고 깨끗하면 "✓ 동기화됨". Stage 3에서 원격 컬럼 추가.
+
+### 18.3 자격증명 (Stage 2) — PAT + SSH, **OS 키체인 전용**
+- **PAT**(fine-grained, 읽기전용): GitHub API(레포목록/PR/원격브랜치/compare). Windows=Credential Manager, Mac=Keychain (`keyring` crate, service `mac-window-git`). settings.json·셰어에 절대 미저장.
+- **SSH 키**(ed25519): `git fetch`로 원격 객체 확보(정밀 ahead/behind, 후일 머지예측). 공개키는 사용자가 GitHub에 등록.
+- Settings에 "Git" 섹션: PAT 입력(마스킹)+검증(`GET /user`+`/user/orgs`), SSH 공개키 생성/표시.
+- **검증 시 소유 owner 추출**: `login` + org logins → 비밀 아닌 `git.owners`(settings)에 캐시. 대시보드 "내 레포만"(`git.only_mine`, 기본 on) 토글이 owner ∈ owners 인 레포만 표시(서드파티 클론·null-origin 숨김). **Classic PAT(`repo`+`read:org`) 하나로 개인+org 커버**; fine-grained는 owner당 토큰 1개.
+
+### 18.4 원격 인지 (Stage 3)
+`GET /user/repos`(owner+org) 레포목록 → 로컬 클론과 `owner_repo` 매칭. `GET /repos/{o}/{r}/branches`,`/pulls`. 푸시된 SHA는 `compare` API로 정확 ahead/behind. **미푸시 커밋은 origin에 없어 Mac↔Win 정밀 diff 불가 → "발산 위험(미푸시 N)"으로만 표기.**
+
+### 18.5 직결 트리거 (Stage 4)
+백그라운드 reachability 폴러(peer TCP 445/share 경로). down→up 전이 시 자기 스냅샷 증분 재게시(mtime 변경 + 원격 SHA 변경 레포만) + `"git"` 토픽. 각 OS self-refresh.
+
+### 18.6 Mac 체크리스트
+- [ ] `90_Git/<host>.git-status.json` 동일 스키마 게시 (`os:"macos"`)
+- [ ] 로컬 스캔(~ + 추가 루트), git CLI 메타데이터
+- [ ] PAT/SSH 키체인 등록 UI + API(레포목록/PR/compare)
+- [ ] 직결 up 트리거 폴러 + 증분 재게시
+
+---
+
 ## 부록 B — 변경 이력
 
 | 날짜 | 변경 |
@@ -1027,3 +1075,4 @@ JSONL 공통: `{ ts, host, os, event, ... }`. `send_ok`(source/category/transfer
 | 2026-05-21 | §12 공유 메모, §13 클립보드 자동기록 모델, §14 파일 watcher, §15 자동 갱신 정책 추가. |
 | 2026-05-22 | §13.9 이미지 스키마 v2 정렬(size_bytes/content/len), §16 verify_transfer + transfer_id + dir-hash 호환 계약 추가. Windows v0.2 parity 완료. |
 | 2026-05-22 | §17 로그 허브(80_Logs), 수신 자동검증 + ✓/✗ 배지 + integrity 설정, 이미지 압축 보관(compress action), 클립보드 썸네일 깜빡임 수정. Windows v0.3. |
+| 2026-05-23 | §18 Git 상태 대시보드 계약 추가 (Stage1: 90_Git 스냅샷 + 로컬 스캔 + 2-way 대시보드, Windows 선구현). 사이드바 영어화(In/Out/카테고리/Notes/Refresh 등). |

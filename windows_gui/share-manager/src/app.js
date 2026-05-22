@@ -59,6 +59,7 @@ const ICONS = {
   'alert-triangle': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
   'image': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>',
   'file-clock': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 22h2a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v3"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><circle cx="8" cy="16" r="6"/><path d="M9.5 17.5 8 16.25V14"/></svg>',
+  'git-branch': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>',
 };
 
 function svgIcon(name) {
@@ -71,6 +72,7 @@ const VIEW_NOTES     = 'notes';
 const VIEW_CLIPBOARD = 'clipboard';
 const VIEW_SETTINGS  = 'settings';
 const VIEW_LOG       = 'log';
+const VIEW_GIT       = 'git';
 
 const state = {
   view: VIEW_TREE,
@@ -82,6 +84,7 @@ const state = {
   notes:     { list: [], selectedId: null, current: null, saveTimer: null },
   clipboard: { entries: [], pollTimer: null, autoTimer: null },
   log:       { category: null, hubOpen: false, entries: [] },
+  git:       { snapshots: [], scanning: false },
 };
 
 // Defaults applied if backend returns nothing (shouldn't happen but be safe)
@@ -91,6 +94,7 @@ const DEFAULT_SETTINGS = {
   network: { remote_host: '192.168.50.2' },
   appearance: { icon_theme: 'default', icon_themes: [], icon_theme_path: null },
   integrity: { auto_verify_on_receive: true, show_manual_button: true },
+  git: { extra_roots: [], exclude_dirs: [], scan_enabled: true, owners: [], only_mine: true },
 };
 
 // Cached policy from shared policy.json (loaded on settings open)
@@ -109,6 +113,11 @@ const $logTitle    = document.getElementById('log-title');
 const $logSubtitle = document.getElementById('log-subtitle');
 const $logList     = document.getElementById('log-list');
 const $logRefresh  = document.getElementById('log-refresh');
+const $panelGit    = document.getElementById('panel-git');
+const $gitSubtitle = document.getElementById('git-subtitle');
+const $gitList     = document.getElementById('git-list');
+const $gitScan     = document.getElementById('git-scan');
+const $gitRefresh  = document.getElementById('git-refresh');
 const $panelItems = document.getElementById('panel-items');
 const $panelTree  = document.getElementById('panel-tree');
 const $tree       = document.getElementById('tree');
@@ -139,6 +148,16 @@ const $themeGitUrl  = document.getElementById('theme-git-url');
 const $themeGitAdd  = document.getElementById('theme-git-add');
 const $integrityAuto   = document.getElementById('integrity-auto');
 const $integrityManual = document.getElementById('integrity-manual');
+const $gitToken        = document.getElementById('git-token');
+const $gitTokenSave    = document.getElementById('git-token-save');
+const $gitTokenStatus  = document.getElementById('git-token-status');
+const $gitTokenClear   = document.getElementById('git-token-clear');
+const $gitSshStatus    = document.getElementById('git-ssh-status');
+const $gitSshPubkey    = document.getElementById('git-ssh-pubkey');
+const $gitSshGen       = document.getElementById('git-ssh-gen');
+const $gitSshCopy      = document.getElementById('git-ssh-copy');
+const $gitOnlyMine     = document.getElementById('git-only-mine');
+const $gitOwners       = document.getElementById('git-owners');
 // Notes refs
 const $panelNotes   = document.getElementById('panel-notes');
 const $notesList    = document.getElementById('notes-list');
@@ -541,6 +560,7 @@ async function loadSettingsFromBackend() {
   state.settings.network = Object.assign({}, DEFAULT_SETTINGS.network, state.settings.network || {});
   state.settings.appearance = Object.assign({}, DEFAULT_SETTINGS.appearance, state.settings.appearance || {});
   state.settings.integrity = Object.assign({}, DEFAULT_SETTINGS.integrity, state.settings.integrity || {});
+  state.settings.git = Object.assign({}, DEFAULT_SETTINGS.git, state.settings.git || {});
   renderTreeShortcuts();
 }
 
@@ -560,6 +580,8 @@ function renderSettings() {
   const integ = state.settings.integrity || DEFAULT_SETTINGS.integrity;
   $integrityAuto.checked = integ.auto_verify_on_receive !== false;
   $integrityManual.checked = integ.show_manual_button !== false;
+  // Git section
+  renderGitSettings();
   // Shortcuts
   $shortcutsList.innerHTML = '';
   const sc = state.settings.tree.shortcuts || [];
@@ -1190,7 +1212,7 @@ async function runSpeedTest() {
 function renderPinned() {
   $navPinned.innerHTML = '';
   // Top pinned: only 빠른 전송 (primary entry point)
-  const el = navItemEl('빠른 전송', svgIcon('rocket'), '', () => {
+  const el = navItemEl('Fast-Forward', svgIcon('rocket'), '', () => {
     state.view = VIEW_TREE;
     renderPinned(); renderNav(); renderTools(); renderView();
   });
@@ -1201,8 +1223,9 @@ function renderPinned() {
 function renderTools() {
   $navTools.innerHTML = '';
   const tools = [
-    { id: VIEW_NOTES,     iconName: 'notebook-pen', label: '메모' },
-    { id: VIEW_CLIPBOARD, iconName: 'clipboard',    label: '클립보드' },
+    { id: VIEW_NOTES,     iconName: 'notebook-pen', label: 'Notes' },
+    { id: VIEW_CLIPBOARD, iconName: 'clipboard',    label: 'Clipboard' },
+    { id: VIEW_GIT,       iconName: 'git-branch',   label: 'Git' },
   ];
   for (const t of tools) {
     const el = navItemEl(t.label, svgIcon(t.iconName), '', () => {
@@ -1218,7 +1241,7 @@ function renderLogHub() {
   $navLoghub.innerHTML = '';
   const header = document.createElement('div');
   header.className = 'loghub-header' + (state.log.hubOpen ? ' open' : '');
-  header.innerHTML = `${svgIcon('scroll-text')}<span class="loghub-title">로그</span><span class="loghub-chevron">${svgIcon('chevron-right')}</span>`;
+  header.innerHTML = `${svgIcon('scroll-text')}<span class="loghub-title">Log</span><span class="loghub-chevron">${svgIcon('chevron-right')}</span>`;
   header.addEventListener('click', () => {
     state.log.hubOpen = !state.log.hubOpen;
     renderLogHub();
@@ -1318,6 +1341,131 @@ function renderCompressedImages(imgs) {
   $logList.appendChild(grid);
 }
 
+// ─── Git dashboard ──────────────────────────────────────────────
+async function refreshGit() {
+  try {
+    state.git.snapshots = await invoke('list_git_status');
+  } catch (e) {
+    console.warn('git status:', e);
+    state.git.snapshots = [];
+  }
+  renderGitPanel();
+}
+
+async function scanGitNow() {
+  if (state.git.scanning) return;
+  state.git.scanning = true;
+  $gitScan.disabled = true;
+  $gitScan.textContent = '⏳ 스캔 중…';
+  setStatus('Git 레포 전체 디스크 스캔 중… (수 분 걸릴 수 있어요)');
+  try {
+    const repos = await invoke('scan_git_repos');
+    await invoke('publish_git_status', { repos });
+    toast(`${repos.length}개 레포 스캔·게시 완료`, 'success');
+    await refreshGit();
+  } catch (e) {
+    toast('스캔 실패: ' + e, 'error');
+  } finally {
+    state.git.scanning = false;
+    $gitScan.disabled = false;
+    $gitScan.textContent = '🔍 지금 스캔';
+    setStatus('마지막 갱신: ' + new Date().toLocaleTimeString('ko-KR'));
+  }
+}
+
+function gitOsBadge(os) {
+  if (os === 'windows') return '<span class="git-os git-os-win">Win</span>';
+  if (os === 'macos') return '<span class="git-os git-os-mac">Mac</span>';
+  return `<span class="git-os">${escape((os || '?').toUpperCase())}</span>`;
+}
+
+function renderGitPanel() {
+  const snaps = state.git.snapshots || [];
+  if (snaps.length === 0) {
+    $gitSubtitle.textContent = '레포별 Mac-로컬 / Win-로컬 동기화 상태';
+    $gitList.innerHTML = `<div class="empty" style="padding:40px 24px"><div class="empty-icon">🌿</div><div class="empty-title">아직 스캔 기록이 없어요</div><div class="empty-hint">"지금 스캔"으로 이 머신의 레포를 찾고, Mac에서도 스캔하면 양쪽이 비교돼요.</div></div>`;
+    return;
+  }
+  const hosts = snaps.map(s => ({ host: s.host, os: s.os, scanned_at: s.scanned_at }));
+  const repoMap = new Map();
+  for (const s of snaps) {
+    for (const r of s.repos) {
+      const key = r.owner_repo || ('local:' + (r.path.split(/[\\/]/).pop() || r.path));
+      if (!repoMap.has(key)) {
+        repoMap.set(key, {
+          label: r.owner_repo || (r.path.split(/[\\/]/).pop() || r.path),
+          owner: r.owner_repo ? r.owner_repo.split('/')[0] : null,
+          hosts: {},
+        });
+      }
+      repoMap.get(key).hosts[s.host] = Object.assign({ os: s.os }, r);
+    }
+  }
+
+  // "내 레포만" filter: keep only repos owned by your account/orgs.
+  const g = state.settings.git || {};
+  let entries = [...repoMap.values()];
+  const total = entries.length;
+  if (g.only_mine && g.owners && g.owners.length) {
+    const set = new Set(g.owners.map(o => o.toLowerCase()));
+    entries = entries.filter(e => e.owner && set.has(e.owner.toLowerCase()));
+  }
+  const filterNote = (g.only_mine && g.owners && g.owners.length)
+    ? ` · 내 레포 ${entries.length}/${total}`
+    : (total > entries.length ? '' : ` · ${total}개`);
+  $gitSubtitle.textContent = hosts.map(h => `${h.host} (${h.os}) · ${fmtRelative(h.scanned_at)}`).join('   /   ') + filterNote;
+
+  const severity = (entry) => {
+    const vals = Object.values(entry.hosts);
+    let sev = 0;
+    if (new Set(vals.map(v => v.head)).size > 1) sev += 4;
+    for (const v of vals) { if (v.dirty > 0) sev += 2; if (v.unpushed > 0) sev += 2; if (v.behind > 0) sev += 1; }
+    if (vals.length < hosts.length) sev += 1;
+    return sev;
+  };
+  const rows = entries.sort((a, b) => severity(b) - severity(a) || a.label.localeCompare(b.label));
+
+  if (rows.length === 0) {
+    $gitList.innerHTML = `<div class="empty" style="padding:40px 24px"><div class="empty-icon">🌿</div><div class="empty-title">표시할 레포가 없어요</div><div class="empty-hint">"내 레포만"이 켜져 있으면 토큰을 검증해 소유 owner를 등록하거나, 설정에서 끄세요.</div></div>`;
+    return;
+  }
+
+  $gitList.innerHTML = '';
+  for (const entry of rows) {
+    const vals = Object.values(entry.hosts);
+    const heads = new Set(vals.map(v => v.head));
+    const inSync = heads.size === 1 && vals.length === hosts.length && vals.every(v => v.dirty === 0 && v.unpushed === 0 && v.behind === 0);
+    const statusBadge = inSync ? '<span class="git-sync ok">✓ 동기화됨</span>' : '<span class="git-sync warn">⚠ 불일치</span>';
+    let hostRows = '';
+    for (const h of hosts) {
+      const r = entry.hosts[h.host];
+      if (!r) {
+        hostRows += `<div class="git-host-row missing">${gitOsBadge(h.os)}<span class="git-host-name">${escape(h.host)}</span><span class="git-miss">이 호스트엔 없음</span></div>`;
+        continue;
+      }
+      const flags = [];
+      if (r.dirty > 0) flags.push(`<span class="git-flag dirty">dirty ${r.dirty}</span>`);
+      if (r.unpushed > 0) flags.push(`<span class="git-flag unpushed">↑${r.unpushed} 미푸시</span>`);
+      if (r.behind > 0) flags.push(`<span class="git-flag behind">↓${r.behind} 뒤처짐</span>`);
+      if (r.stash > 0) flags.push(`<span class="git-flag stash">stash ${r.stash}</span>`);
+      if (!r.upstream) flags.push(`<span class="git-flag noup">upstream 없음</span>`);
+      if (flags.length === 0) flags.push('<span class="git-flag clean">clean</span>');
+      hostRows += `
+        <div class="git-host-row">
+          ${gitOsBadge(r.os)}
+          <span class="git-host-name">${escape(h.host)}</span>
+          <span class="git-branch">${escape(r.branch)}</span>
+          <span class="git-head" title="${escape(r.head)}">${escape((r.head || '').slice(0, 7))}</span>
+          <span class="git-flags">${flags.join('')}</span>
+        </div>`;
+    }
+    const card = document.createElement('div');
+    card.className = 'git-repo' + (inSync ? '' : ' warn');
+    card.innerHTML = `<div class="git-repo-head"><span class="git-repo-name">${escape(entry.label)}</span>${statusBadge}</div>${hostRows}`;
+    $gitList.appendChild(card);
+  }
+}
+
 function renderNav() {
   $nav.innerHTML = '';
   for (const group of NAV_GROUPS) {
@@ -1333,7 +1481,7 @@ function renderNav() {
     groupEl.innerHTML = `<div class="nav-group-header">${svgIcon(group.iconName)}<span>${escape(group.title)}</span></div>`;
 
     // "전체" pseudo-item
-    const allItem = navItemEl('전체', svgIcon('asterisk'), allCount, () => {
+    const allItem = navItemEl('All', svgIcon('asterisk'), allCount, () => {
       state.view = VIEW_ITEMS;
       state.selection = { group: group.id, categoryKey: null };
       renderPinned(); renderNav(); renderTools(); renderView();
@@ -1367,6 +1515,7 @@ function renderView() {
   $panelNotes.classList.add('hidden');
   $panelClipboard.classList.add('hidden');
   $panelLog.classList.add('hidden');
+  $panelGit.classList.add('hidden');
   $settingsBtn.classList.remove('active');
 
   // Stop clipboard polling when leaving its view
@@ -1385,6 +1534,9 @@ function renderView() {
   } else if (state.view === VIEW_LOG) {
     $panelLog.classList.remove('hidden');
     renderLogView();
+  } else if (state.view === VIEW_GIT) {
+    $panelGit.classList.remove('hidden');
+    refreshGit();
   } else if (state.view === VIEW_SETTINGS) {
     $panelSettings.classList.remove('hidden');
     $settingsBtn.classList.add('active');
@@ -1793,6 +1945,8 @@ function setupHeaderActions() {
 
 document.getElementById('refresh-btn').addEventListener('click', refreshAll);
 $logRefresh.addEventListener('click', () => renderLogView());
+$gitScan.addEventListener('click', scanGitNow);
+$gitRefresh.addEventListener('click', refreshGit);
 $treeUp.addEventListener('click', navigateTreeUp);
 $treeHome.addEventListener('click', navigateTreeHome);
 $treeDesktop.addEventListener('click', navigateTreeDesktop);
@@ -1818,6 +1972,98 @@ $integrityAuto.addEventListener('change', async () => {
 $integrityManual.addEventListener('change', async () => {
   state.settings.integrity.show_manual_button = $integrityManual.checked;
   await persistSettings();
+});
+
+// ─── Git settings (PAT / SSH / owner filter) ────────────────────
+function gitSettings() {
+  if (!state.settings.git) state.settings.git = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.git));
+  return state.settings.git;
+}
+
+async function renderGitSettings() {
+  const g = gitSettings();
+  $gitOnlyMine.checked = g.only_mine !== false;
+  $gitOwners.textContent = (g.owners && g.owners.length)
+    ? `소유 owner: ${g.owners.join(', ')}`
+    : '토큰 검증하면 소유 owner가 여기 채워져요.';
+  // token presence
+  try {
+    const has = await invoke('git_has_token');
+    $gitTokenStatus.textContent = has ? '✅ 토큰 등록됨 (키체인). "저장 + 검증"으로 재확인 가능.' : '⚠ 등록된 토큰 없음.';
+  } catch (_) {}
+  // ssh
+  try {
+    const ssh = await invoke('git_ssh_status');
+    if (ssh.has_key) {
+      $gitSshStatus.textContent = `✅ SSH 키 있음: ${ssh.path}`;
+      $gitSshPubkey.value = ssh.public_key || '';
+      $gitSshPubkey.style.display = ssh.public_key ? 'block' : 'none';
+      $gitSshCopy.style.display = ssh.public_key ? 'inline-flex' : 'none';
+    } else {
+      $gitSshStatus.textContent = '⚠ SSH 키 없음 — "키 생성/표시"로 만들 수 있어요.';
+      $gitSshPubkey.style.display = 'none';
+      $gitSshCopy.style.display = 'none';
+    }
+  } catch (_) {}
+}
+
+$gitTokenSave.addEventListener('click', async () => {
+  const tok = ($gitToken.value || '').trim();
+  if (!tok) { toast('토큰을 입력하세요', 'error'); return; }
+  $gitTokenSave.disabled = true;
+  $gitTokenStatus.textContent = '검증 중…';
+  try {
+    await invoke('git_set_token', { token: tok });
+    const info = await invoke('git_test_token');
+    const owners = [info.login, ...(info.orgs || [])].filter(Boolean);
+    gitSettings().owners = owners;
+    await persistSettings();
+    $gitToken.value = '';
+    $gitTokenStatus.textContent = `✅ ${info.login}${info.name ? ' (' + info.name + ')' : ''} · org: ${(info.orgs || []).join(', ') || '없음'}`;
+    $gitOwners.textContent = `소유 owner: ${owners.join(', ')}`;
+    toast('토큰 검증 완료', 'success');
+    if (state.view === VIEW_GIT) renderGitPanel();
+  } catch (e) {
+    $gitTokenStatus.textContent = '❌ ' + e;
+    toast('토큰 검증 실패: ' + e, 'error');
+  } finally {
+    $gitTokenSave.disabled = false;
+  }
+});
+
+$gitTokenClear.addEventListener('click', async () => {
+  try {
+    await invoke('git_clear_token');
+    gitSettings().owners = [];
+    await persistSettings();
+    $gitTokenStatus.textContent = '⚠ 토큰 삭제됨.';
+    $gitOwners.textContent = '토큰 검증하면 소유 owner가 여기 채워져요.';
+    toast('토큰 삭제됨', 'success');
+  } catch (e) { toast('삭제 실패: ' + e, 'error'); }
+});
+
+$gitSshGen.addEventListener('click', async () => {
+  $gitSshGen.disabled = true;
+  try {
+    const pub = await invoke('git_generate_ssh_key');
+    $gitSshPubkey.value = pub;
+    $gitSshPubkey.style.display = 'block';
+    $gitSshCopy.style.display = 'inline-flex';
+    $gitSshStatus.textContent = '✅ SSH 키 준비됨 — 아래 공개키를 GitHub에 등록하세요.';
+    toast('SSH 키 생성/표시 완료', 'success');
+  } catch (e) { toast('SSH 키 실패: ' + e, 'error'); }
+  finally { $gitSshGen.disabled = false; }
+});
+
+$gitSshCopy.addEventListener('click', async () => {
+  try { await invoke('copy_to_os_clipboard', { text: $gitSshPubkey.value }); toast('공개키 복사됨', 'success'); }
+  catch (e) { toast('복사 실패: ' + e, 'error'); }
+});
+
+$gitOnlyMine.addEventListener('change', async () => {
+  gitSettings().only_mine = $gitOnlyMine.checked;
+  await persistSettings();
+  if (state.view === VIEW_GIT) renderGitPanel();
 });
 document.querySelectorAll('input[name="netmode"]').forEach(r => {
   r.addEventListener('change', e => changeNetworkMode(e.target.value));
@@ -1872,6 +2118,9 @@ document.getElementById('settings-icon').innerHTML = svgIcon('settings');
           break;
         case 'profiles':
           if (state.view === VIEW_SETTINGS) refreshProfilesList().catch(() => {});
+          break;
+        case 'git':
+          if (state.view === VIEW_GIT) refreshGit().catch(() => {});
           break;
       }
     });

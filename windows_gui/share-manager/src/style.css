@@ -844,6 +844,36 @@ button { font-family: inherit; }
 .hw-ref { flex: 1; font-family: Consolas, "SF Mono", monospace; color: var(--text-pri); word-break: break-all; }
 .hw-ok { color: #2da44e; font-size: 11px; }
 .hw-miss { color: #d1242f; font-size: 11px; font-weight: 600; }
+
+/* ─── Git dashboard ───────────────────────────────────────────── */
+.git-body { flex: 1; overflow-y: auto; padding: 16px 24px 32px; }
+.git-list { display: flex; flex-direction: column; gap: 10px; max-width: 1100px; }
+.git-repo {
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--surface-2); padding: 12px 14px;
+}
+.git-repo.warn { border-left: 3px solid #d4a72c; }
+.git-repo-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.git-repo-name { font-size: 13px; font-weight: 700; color: var(--text-pri); font-family: Consolas, "SF Mono", monospace; }
+.git-sync { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 5px; margin-left: auto; }
+.git-sync.ok { color: #2da44e; background: rgba(45,164,78,0.12); }
+.git-sync.warn { color: #9a6700; background: rgba(212,167,44,0.16); }
+.git-host-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 12px; border-top: 1px solid var(--border); }
+.git-host-row.missing { color: var(--text-dim); }
+.git-os { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; min-width: 34px; text-align: center; }
+.git-os-win { background: rgba(10,132,255,0.13); color: #0a84ff; }
+.git-os-mac { background: rgba(45,164,78,0.13); color: #2da44e; }
+.git-host-name { color: var(--text-sec); min-width: 130px; font-size: 11px; }
+.git-branch { font-family: Consolas, "SF Mono", monospace; color: var(--text-pri); font-weight: 600; min-width: 90px; }
+.git-head { font-family: Consolas, "SF Mono", monospace; color: var(--text-dim); font-size: 11px; min-width: 60px; }
+.git-flags { display: flex; gap: 5px; flex-wrap: wrap; margin-left: auto; }
+.git-flag { font-size: 10.5px; padding: 1px 7px; border-radius: 4px; background: var(--surface-hi); color: var(--text-sec); }
+.git-flag.clean { color: #2da44e; }
+.git-flag.dirty { color: #9a6700; background: rgba(212,167,44,0.16); }
+.git-flag.unpushed { color: #0a84ff; background: rgba(10,132,255,0.12); }
+.git-flag.behind { color: #bc4c00; background: rgba(188,76,0,0.12); }
+.git-flag.noup { color: #d1242f; }
+.git-miss { color: var(--text-dim); font-size: 11px; font-style: italic; }
 .theme-opt-meta { font-size: 11px; color: var(--text-sec); }
 .theme-opt-remove {
   background: transparent;
