@@ -1190,7 +1190,7 @@ async function runSpeedTest() {
 function renderPinned() {
   $navPinned.innerHTML = '';
   // Top pinned: only 빠른 전송 (primary entry point)
-  const el = navItemEl('빠른 전송', svgIcon('rocket'), '', () => {
+  const el = navItemEl('Fast-Forward', svgIcon('rocket'), '', () => {
     state.view = VIEW_TREE;
     renderPinned(); renderNav(); renderTools(); renderView();
   });
@@ -1201,8 +1201,8 @@ function renderPinned() {
 function renderTools() {
   $navTools.innerHTML = '';
   const tools = [
-    { id: VIEW_NOTES,     iconName: 'notebook-pen', label: '메모' },
-    { id: VIEW_CLIPBOARD, iconName: 'clipboard',    label: '클립보드' },
+    { id: VIEW_NOTES,     iconName: 'notebook-pen', label: 'Memo' },
+    { id: VIEW_CLIPBOARD, iconName: 'clipboard',    label: 'Clipboard' },
   ];
   for (const t of tools) {
     const el = navItemEl(t.label, svgIcon(t.iconName), '', () => {
@@ -1218,7 +1218,7 @@ function renderLogHub() {
   $navLoghub.innerHTML = '';
   const header = document.createElement('div');
   header.className = 'loghub-header' + (state.log.hubOpen ? ' open' : '');
-  header.innerHTML = `${svgIcon('scroll-text')}<span class="loghub-title">로그</span><span class="loghub-chevron">${svgIcon('chevron-right')}</span>`;
+  header.innerHTML = `${svgIcon('scroll-text')}<span class="loghub-title">Log</span><span class="loghub-chevron">${svgIcon('chevron-right')}</span>`;
   header.addEventListener('click', () => {
     state.log.hubOpen = !state.log.hubOpen;
     renderLogHub();
@@ -1333,7 +1333,7 @@ function renderNav() {
     groupEl.innerHTML = `<div class="nav-group-header">${svgIcon(group.iconName)}<span>${escape(group.title)}</span></div>`;
 
     // "전체" pseudo-item
-    const allItem = navItemEl('전체', svgIcon('asterisk'), allCount, () => {
+    const allItem = navItemEl('All', svgIcon('asterisk'), allCount, () => {
       state.view = VIEW_ITEMS;
       state.selection = { group: group.id, categoryKey: null };
       renderPinned(); renderNav(); renderTools(); renderView();
