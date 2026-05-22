@@ -49,6 +49,8 @@ pub fn run() {
             commands::git_test_token,
             commands::git_ssh_status,
             commands::git_generate_ssh_key,
+            commands::github_fetch_remote,
+            commands::read_remote_cache,
             commands::load_policy,
             commands::save_policy,
             commands::publish_profile,
