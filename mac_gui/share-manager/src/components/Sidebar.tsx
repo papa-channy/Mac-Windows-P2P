@@ -1,6 +1,7 @@
 import { NAV_GROUPS } from "../lib/nav";
 import { CATEGORIES } from "../lib/categories";
 import type { SidebarSelection } from "../lib/nav";
+import { CategoryIcon } from "./IconImg";
 
 interface Props {
   selection: SidebarSelection;
@@ -101,7 +102,9 @@ export function Sidebar({
                       })
                     }
                   >
-                    <span className="nav-item-emoji">{cat.emoji}</span>
+                    <span className="nav-item-emoji">
+                      <CategoryIcon categoryKey={cat.key} emoji={cat.emoji} />
+                    </span>
                     <span className="nav-item-label">{cat.label}</span>
                     <span className="nav-item-count">{count}</span>
                   </button>

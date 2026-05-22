@@ -609,6 +609,39 @@ button { font-family: inherit; }
 }
 .clip-entry-text.url { color: var(--accent); }
 
+/* Image entry — thumbnail bounded so a 4K screenshot doesn't blow out the timeline */
+.clip-entry-image .clip-image-wrap {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: 4px;
+}
+.clip-image-thumb {
+  max-width: 280px;
+  max-height: 200px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  object-fit: contain;
+  display: block;
+}
+.clip-image-missing {
+  width: 280px;
+  height: 140px;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  font-size: 11px;
+  background: var(--surface-low);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+.clip-image-meta {
+  color: var(--text-sec);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ─── Settings panel ──────────────────────────────────────────── */
 .settings-body {
   flex: 1;

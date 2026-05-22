@@ -24,6 +24,8 @@ export interface TransferItem {
   size_bytes: number;
   modified_iso: string;
   is_dir: boolean;
+  /** None when no matching manifest exists (orphan file). */
+  transfer_id: string | null;
 }
 
 export interface FsNode {
@@ -46,13 +48,41 @@ export interface NoteEntry {
   updated_by: { host: string; os: string };
 }
 
-export interface ClipboardEntry {
+export interface ClipboardEntryBase {
   ts: string;
   host: string;
   os: string;
   content: string;
-  kind: "text";
   len: number;
+}
+export interface ClipboardTextEntry extends ClipboardEntryBase {
+  kind: "text";
+}
+export interface ClipboardImageEntry extends ClipboardEntryBase {
+  kind: "image";
+  image_ref: string;
+  width: number;
+  height: number;
+  size_bytes: number;
+}
+export type ClipboardEntry = ClipboardTextEntry | ClipboardImageEntry;
+
+export interface FileVerifyResult {
+  path: string;
+  expected: string;
+  actual: string;
+  ok: boolean;
+  error: string | null;
+}
+export interface VerifyResult {
+  transfer_id: string;
+  direction: string;
+  mode: string;
+  ok: boolean;
+  checked: number;
+  mismatches: number;
+  missing: number;
+  files: FileVerifyResult[];
 }
 
 export const api = {
@@ -102,6 +132,32 @@ export const api = {
   copyToOsClipboard: (text: string) =>
     invoke<void>("copy_to_os_clipboard", { text }),
   clearOwnClipboardHistory: () => invoke<void>("clear_own_clipboard_history"),
+  /** Absolute path to a stored clipboard image — feed through convertFileSrc. */
+  clipboardImagePath: (imageRef: string) =>
+    invoke<string>("clipboard_image_path", { imageRef }),
+  copyImageToOsClipboard: (imageRef: string) =>
+    invoke<void>("copy_image_to_os_clipboard", { imageRef }),
+
+  // --- transfer integrity verification ---
+  verifyTransfer: (transferId: string) =>
+    invoke<VerifyResult>("verify_transfer", { transferId }),
+
+  // --- icon theme install (folder or git URL) ---
+  installIconTheme: (folder: string) =>
+    invoke<{ id: string; name: string; root_path: string; theme_json_path: string; icon_count: number }>(
+      "install_icon_theme",
+      { folder },
+    ),
+  installIconThemeFromGit: (repoUrl: string) =>
+    invoke<{ id: string; name: string; root_path: string; theme_json_path: string; icon_count: number }>(
+      "install_icon_theme_from_git",
+      { repoUrl },
+    ),
+  installIconThemeFromVsix: (url: string, slug?: string) =>
+    invoke<{ id: string; name: string; root_path: string; theme_json_path: string; icon_count: number }>(
+      "install_icon_theme_from_vsix",
+      { url, slug },
+    ),
 
   // --- connectivity ---
   checkConnection: (host: string, port?: number) =>

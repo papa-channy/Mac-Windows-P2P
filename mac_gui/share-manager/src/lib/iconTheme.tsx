@@ -84,13 +84,16 @@ const CATEGORY_FOLDER_CANDIDATES: Record<string, string[]> = {
 
 function joinPath(base: string, rel: string): string {
   const combined = (base + "/" + rel).replace(/\\/g, "/");
+  // Preserve POSIX absolute-path leading slash — split/join would drop it
+  // and convertFileSrc would silently fail to resolve the asset.
+  const isAbs = combined.startsWith("/");
   const result: string[] = [];
   for (const p of combined.split("/")) {
     if (p === "" || p === ".") continue;
     if (p === "..") { if (result.length) result.pop(); continue; }
     result.push(p);
   }
-  return result.join("/");
+  return (isAbs ? "/" : "") + result.join("/");
 }
 
 // ─── Core resolver — pure function over loaded theme ───────────────

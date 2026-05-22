@@ -12,11 +12,11 @@ import {
   fmtBytes,
   fmtFull,
   fmtRelative,
-  iconForExt,
   parseTransferName,
   prettyName,
 } from "../lib/format";
 import { DetailsModal } from "../components/DetailsModal";
+import { IconImg } from "../components/IconImg";
 
 interface Props {
   selection: SidebarSelection;
@@ -133,8 +133,9 @@ interface RowProps {
 function ItemRow({ item, onClick, onDoubleClick }: RowProps) {
   const parsed = parseTransferName(item.name);
   const displayName = prettyName(item.name);
+  // For themed icon resolution, use the parsed basename+ext so the VSCode
+  // resolver can match the real extension (not the noisy v01-suffixed one).
   const iconName = parsed ? parsed.basename + parsed.ext : item.name;
-  const icon = item.is_dir ? "📁" : iconForExt(iconName);
   const metaParts: string[] = [
     `${item.category_emoji} ${item.category_label}`,
     fmtBytes(item.size_bytes),
@@ -147,7 +148,7 @@ function ItemRow({ item, onClick, onDoubleClick }: RowProps) {
 
   return (
     <li className="item" onClick={onClick} onDoubleClick={onDoubleClick}>
-      <div className="item-icon">{icon}</div>
+      <div className="item-icon"><IconImg name={iconName} isDir={item.is_dir} /></div>
       <div className="item-body">
         <div className="item-name" title={item.name}>
           {displayName}

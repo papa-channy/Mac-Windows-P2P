@@ -10,7 +10,8 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { api, type FsNode } from "../lib/api";
 import { useToast } from "../lib/toast";
 import { useSettings } from "../lib/settings";
-import { fmtBytes, iconForExt } from "../lib/format";
+import { fmtBytes } from "../lib/format";
+import { IconImg } from "../components/IconImg";
 
 interface Props {
   /** Called by parent after a successful send so transfer counts re-fetch. */
@@ -252,7 +253,7 @@ function TreeRow({ node, depth, onNavigate, onOpen, onSend }: BranchProps) {
       style={{ paddingLeft: depth * 20 + 14 + "px" }}
       onDoubleClick={handleDouble}
     >
-      <span className="tree-icon">{node.is_dir ? "📁" : iconForExt(node.name)}</span>
+      <span className="tree-icon"><IconImg name={node.name} isDir={node.is_dir} /></span>
       <span className="tree-name" title={node.path}>{node.name}</span>
       {!node.is_dir && <span className="tree-size">{fmtBytes(node.size_bytes)}</span>}
       <button

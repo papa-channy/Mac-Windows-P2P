@@ -34,6 +34,10 @@ pub struct TransferItem {
     pub size_bytes: u64,
     pub modified_iso: String,
     pub is_dir: bool,
+    /// Resolved by scanning the matching manifests dir for a manifest whose
+    /// `destination.primary_file` equals `name`. None if no manifest found
+    /// (orphan file — pre-shareguard contents).
+    pub transfer_id: Option<String>,
 }
 
 #[tauri::command]
@@ -48,6 +52,23 @@ pub fn list_transfers(direction: String, state: String) -> Result<Vec<TransferIt
     let base = state_dir(dir, st);
     if !base.exists() {
         return Ok(vec![]);
+    }
+
+    // Pre-load manifests for this direction → primary_file lookup map.
+    let mut manifest_index: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mdir = crate::share::manifests_dir(dir);
+    if let Ok(rd) = std::fs::read_dir(&mdir) {
+        for ent in rd.flatten() {
+            let p = ent.path();
+            if p.extension().and_then(|s| s.to_str()) != Some("json") { continue; }
+            let raw = match std::fs::read(&p) { Ok(r) => r, Err(_) => continue };
+            let v: serde_json::Value = match serde_json::from_slice(&raw) { Ok(v) => v, Err(_) => continue };
+            let tid = v.get("transfer_id").and_then(|x| x.as_str()).map(String::from);
+            let primary = v.get("destination").and_then(|d| d.get("primary_file")).and_then(|x| x.as_str()).map(String::from);
+            if let (Some(t), Some(p)) = (tid, primary) {
+                manifest_index.insert(p, t);
+            }
+        }
     }
 
     let mut out = Vec::new();
@@ -81,6 +102,7 @@ pub fn list_transfers(direction: String, state: String) -> Result<Vec<TransferIt
                 .map(|t| chrono::DateTime::<chrono::Local>::from(t).to_rfc3339())
                 .unwrap_or_default();
             let size_bytes = if meta.is_file() { meta.len() } else { dir_size(&p) };
+            let transfer_id = manifest_index.get(&name).cloned();
             out.push(TransferItem {
                 direction: dir.token().to_string(),
                 state:     st.folder().to_string(),
@@ -93,6 +115,7 @@ pub fn list_transfers(direction: String, state: String) -> Result<Vec<TransferIt
                 size_bytes,
                 modified_iso,
                 is_dir: meta.is_dir(),
+                transfer_id,
             });
         }
     }
@@ -437,7 +460,38 @@ fn json_has_icon_definitions(path: &Path) -> bool {
     )
 }
 
+/// Read package.json's contributes.iconThemes[].path entry, resolve it
+/// relative to the package.json dir. Returns Some if a usable JSON is
+/// found via that authoritative pointer.
+fn icon_theme_path_via_package_json(pkg_path: &Path) -> Option<PathBuf> {
+    let raw = std::fs::read_to_string(pkg_path).ok()?;
+    let pkg: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let themes = pkg.get("contributes")?.get("iconThemes")?.as_array()?;
+    let base = pkg_path.parent()?;
+    for t in themes {
+        if let Some(rel) = t.get("path").and_then(|v| v.as_str()) {
+            let resolved = base.join(rel.trim_start_matches("./"));
+            if resolved.exists() && json_has_icon_definitions(&resolved) {
+                return Some(resolved);
+            }
+        }
+    }
+    None
+}
+
 fn find_icon_theme_json(root: &Path) -> Option<PathBuf> {
+    // Authoritative path: package.json's contributes.iconThemes[].path.
+    // VSIX layouts use root/extension/package.json; git-checkout layouts
+    // use root/package.json directly.
+    for pkg_candidate in [root.join("package.json"), root.join("extension").join("package.json")] {
+        if pkg_candidate.exists() {
+            if let Some(p) = icon_theme_path_via_package_json(&pkg_candidate) {
+                return Some(p);
+            }
+        }
+    }
+
+    // Heuristic fallback: well-known relative paths.
     let direct = root.join("icon-theme.json");
     if direct.exists() && json_has_icon_definitions(&direct) { return Some(direct); }
     let subdirs = ["themes", "src", "dist", "build", "extension/themes", "extension/src", "extension/dist"];
@@ -467,6 +521,129 @@ fn find_icon_theme_json(root: &Path) -> Option<PathBuf> {
         }
     }
     None
+}
+
+fn icon_theme_cache_root() -> Result<PathBuf, String> {
+    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+    let root = PathBuf::from(home)
+        .join("Library")
+        .join("Application Support")
+        .join("MacWindowShare")
+        .join("icon-themes");
+    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    Ok(root)
+}
+
+fn sanitize_basename(s: &str) -> String {
+    s.chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .collect()
+}
+
+/// Download a VSIX (zip) and unzip it into the icon-theme cache, then
+/// run install_icon_theme on the unzipped tree. The .vsix layout puts
+/// the actual theme JSON at `extension/<...>/icon-theme.json`, found
+/// authoritatively via the bundled `extension/package.json`.
+#[tauri::command]
+pub fn install_icon_theme_from_vsix(url: String, slug: Option<String>) -> Result<IconTheme, String> {
+    use std::process::Command;
+    let cache_root = icon_theme_cache_root()?;
+    let basename = slug
+        .as_deref()
+        .map(sanitize_basename)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            let from_url: String = url
+                .trim_end_matches('/')
+                .rsplit('/')
+                .next()
+                .unwrap_or("theme")
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+                .collect();
+            if from_url.is_empty() { "theme".to_string() } else { from_url }
+        });
+    let dest = cache_root.join(&basename);
+    // Always re-download to pick up newer marketplace versions
+    if dest.exists() { std::fs::remove_dir_all(&dest).map_err(|e| e.to_string())?; }
+    std::fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
+
+    let tmp_vsix = std::env::temp_dir().join(format!("{basename}-{}.vsix", uuid::Uuid::new_v4()));
+
+    // --compressed: marketplace serves the VSIX gzip-encoded; without
+    // this curl writes the gzip-wrapped bytes and unzip can't parse them.
+    let out = Command::new("curl")
+        .args(["-fsSL", "--compressed", "-o", tmp_vsix.to_string_lossy().as_ref(), &url])
+        .output()
+        .map_err(|e| format!("curl 실행 실패: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "VSIX 다운로드 실패 (exit {}): {}",
+            out.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+
+    // VSIX = ZIP. /usr/bin/unzip is always present on macOS.
+    let out = Command::new("/usr/bin/unzip")
+        .args(["-q", "-o", tmp_vsix.to_string_lossy().as_ref(), "-d", dest.to_string_lossy().as_ref()])
+        .output()
+        .map_err(|e| format!("unzip 실행 실패: {e}"))?;
+    let _ = std::fs::remove_file(&tmp_vsix);
+    if !out.status.success() {
+        return Err(format!(
+            "VSIX 압축 해제 실패: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+
+    install_icon_theme(dest.to_string_lossy().into_owned())
+}
+
+/// Clone a git repo containing a VSCode icon theme into the local cache,
+/// then run install_icon_theme on it. Returns the IconTheme metadata so the
+/// frontend can persist it in settings.appearance.icon_themes.
+///
+/// Cache location: ~/Library/Application Support/MacWindowShare/icon-themes/
+#[tauri::command]
+pub fn install_icon_theme_from_git(repo_url: String) -> Result<IconTheme, String> {
+    use std::process::Command;
+    let cache_root = icon_theme_cache_root()?;
+
+    // Use the repo's basename as the cache subdir (sanitized).
+    let basename: String = sanitize_basename(
+        repo_url
+            .trim_end_matches('/')
+            .trim_end_matches(".git")
+            .rsplit('/')
+            .next()
+            .unwrap_or("theme"),
+    );
+    if basename.is_empty() {
+        return Err(format!("invalid repo url: {repo_url}"));
+    }
+    let dest = cache_root.join(&basename);
+
+    if dest.exists() {
+        // Pull latest. Best-effort; ignore errors so stale cached repo still works.
+        let _ = Command::new("git")
+            .args(["-C", dest.to_string_lossy().as_ref(), "pull", "--ff-only", "--depth", "1"])
+            .output();
+    } else {
+        let out = Command::new("git")
+            .args(["clone", "--depth", "1", &repo_url, dest.to_string_lossy().as_ref()])
+            .output()
+            .map_err(|e| format!("git clone failed: {e}"))?;
+        if !out.status.success() {
+            return Err(format!(
+                "git clone exit {}: {}",
+                out.status.code().unwrap_or(-1),
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+    }
+
+    install_icon_theme(dest.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -571,6 +748,157 @@ pub fn copy_to_os_clipboard(app: tauri::AppHandle, text: String) -> Result<(), S
 #[tauri::command]
 pub fn clear_own_clipboard_history() -> Result<(), String> {
     crate::clipboard::clear_own_history()
+}
+
+/// Return an absolute filesystem path for a stored clipboard image. The
+/// frontend pipes this through tauri's `convertFileSrc` to render it via
+/// the asset protocol.
+#[tauri::command]
+pub fn clipboard_image_path(image_ref: String) -> Result<String, String> {
+    crate::clipboard::image_path_for_ref(&image_ref)
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn copy_image_to_os_clipboard(app: tauri::AppHandle, image_ref: String) -> Result<(), String> {
+    crate::clipboard::copy_image_to_os_clipboard(&app, &image_ref)
+}
+
+// ─── Transfer integrity verification ───────────────────────────
+//
+// Re-walk a transfer's manifest, recompute SHA-256 of every payload file
+// against the share, and report mismatches. This is the user-facing
+// "did the file arrive intact?" check.
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FileVerifyResult {
+    pub path: String,
+    pub expected: String,
+    pub actual: String,
+    pub ok: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct VerifyResult {
+    pub transfer_id: String,
+    pub direction: String,
+    pub mode: String,
+    pub ok: bool,
+    pub checked: u32,
+    pub mismatches: u32,
+    pub missing: u32,
+    pub files: Vec<FileVerifyResult>,
+}
+
+fn manifest_path_for(transfer_id: &str) -> Option<(Direction, std::path::PathBuf)> {
+    for dir in [Direction::MacToWindows, Direction::WindowsToMac] {
+        let p = crate::share::manifests_dir(dir).join(format!("{transfer_id}.json"));
+        if p.exists() { return Some((dir, p)); }
+    }
+    None
+}
+
+#[tauri::command]
+pub fn verify_transfer(transfer_id: String) -> Result<VerifyResult, String> {
+    use crate::transfer::hashing;
+    use crate::transfer::manifest::Manifest;
+
+    let (dir, manifest_path) = manifest_path_for(&transfer_id)
+        .ok_or_else(|| format!("manifest not found: {transfer_id}"))?;
+    let raw = std::fs::read(&manifest_path).map_err(|e| e.to_string())?;
+    let m: Manifest = serde_json::from_slice(&raw).map_err(|e| e.to_string())?;
+
+    // Destination base is share/<direction.exchange_folder>/20_Ready/<cat_folder>/
+    let dest_base = crate::share::share_root().join(&m.destination.share_path);
+
+    let mut results = Vec::with_capacity(m.files.len());
+    let mut mismatches = 0u32;
+    let mut missing = 0u32;
+
+    for entry in &m.files {
+        // For file mode the manifest's `path` is the final filename;
+        // for directory mode the destination is a folder containing
+        // <primary_file>/<path>. We don't have nested-relative paths in
+        // the v1 phase-1 manifest (totals.files_included always == 1
+        // for file mode), so just join primary_file when mode != file.
+        let abs = if m.mode == "directory" {
+            // Reconstruct: dest_base/<primary_file>/<entry.path>
+            // …but for v1 file mode entry.path IS the primary_file.
+            // Directory mode currently writes a single entry covering
+            // the whole folder. Recompute the dir-hash instead.
+            dest_base.join(&m.destination.primary_file)
+        } else {
+            dest_base.join(&entry.path)
+        };
+
+        if !abs.exists() {
+            missing += 1;
+            results.push(FileVerifyResult {
+                path: entry.path.clone(),
+                expected: entry.sha256.clone(),
+                actual: String::new(),
+                ok: false,
+                error: Some(format!("missing at {}", abs.display())),
+            });
+            continue;
+        }
+
+        // Recompute hash
+        let actual = if m.mode == "directory" {
+            match hashing::dir_hash(&abs) {
+                Ok(d) => d.combined,
+                Err(e) => {
+                    results.push(FileVerifyResult {
+                        path: entry.path.clone(),
+                        expected: entry.sha256.clone(),
+                        actual: String::new(),
+                        ok: false,
+                        error: Some(e.to_string()),
+                    });
+                    mismatches += 1;
+                    continue;
+                }
+            }
+        } else {
+            match hashing::sha256_file(&abs) {
+                Ok(s) => s,
+                Err(e) => {
+                    results.push(FileVerifyResult {
+                        path: entry.path.clone(),
+                        expected: entry.sha256.clone(),
+                        actual: String::new(),
+                        ok: false,
+                        error: Some(e.to_string()),
+                    });
+                    mismatches += 1;
+                    continue;
+                }
+            }
+        };
+
+        let ok = actual == entry.sha256;
+        if !ok { mismatches += 1; }
+        results.push(FileVerifyResult {
+            path: entry.path.clone(),
+            expected: entry.sha256.clone(),
+            actual,
+            ok,
+            error: None,
+        });
+    }
+
+    let checked = results.len() as u32;
+    Ok(VerifyResult {
+        transfer_id,
+        direction: dir.token().to_string(),
+        mode: m.mode,
+        ok: mismatches == 0 && missing == 0,
+        checked,
+        mismatches,
+        missing,
+        files: results,
+    })
 }
 
 // ─── Desktop alias ─────────────────────────────────────────────

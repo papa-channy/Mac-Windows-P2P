@@ -3580,6 +3580,7 @@ dependencies = [
  "chrono",
  "core-foundation 0.9.4",
  "hex",
+ "image",
  "notify",
  "serde",
  "serde_json",

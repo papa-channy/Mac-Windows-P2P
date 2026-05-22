@@ -10,6 +10,7 @@ import { api } from "../lib/api";
 import { CATEGORIES, DEFAULT_CATEGORY } from "../lib/categories";
 import { useToast } from "../lib/toast";
 import { basename } from "../lib/format";
+import { IconImg } from "./IconImg";
 
 interface Props {
   isOpen: boolean;
@@ -72,7 +73,13 @@ export function CategoryPickerModal({ isOpen, paths, onClose, onSent }: Props) {
     >
       <div className="caption">전송 대상</div>
       <div className="target-card">
-        <div className="ti">{paths.length > 1 ? "🗂" : "📄"}</div>
+        <div className="ti">
+          {paths.length > 1 ? (
+            <span>🗂</span>
+          ) : (
+            <IconImg name={basename(first)} isDir={false} />
+          )}
+        </div>
         <div>
           <div className="tn">{basename(first) + restNote}</div>
           <div className="tm">{first}</div>

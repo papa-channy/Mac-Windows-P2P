@@ -150,6 +150,49 @@ curl -fsSL https://github.com/papa-channy/Mac-Windows-P2P/releases/latest/downlo
 # Roll back: download the prior DMG and overwrite /Applications/share-manager.app
 ```
 
+## Clipboard schema v2 — image entries
+
+Extension of `WINDOWS_PARITY_BRIEF.md` §13.2. Mac side now writes image
+entries when an image is on the OS clipboard. Windows side must mirror
+this writer to send screenshots back. Schema:
+
+```json
+{
+  "ts":         "2026-05-22T17:30:00+09:00",
+  "host":       "chanui-MacBookPro",
+  "os":         "macos",
+  "kind":       "image",
+  "image_ref":  "<sha256>.png",
+  "width":      1920,
+  "height":     1080,
+  "size_bytes": 234567,
+  "content":    "📷 image (1920×1080, 229 KB)",
+  "len":        0
+}
+```
+
+- `image_ref` is the basename of a PNG file at
+  `<share>/00_System/70_Clipboard/images/<sha256>.png` — content-addressed,
+  identical images dedup to one file
+- `content` carries a human-readable summary so v1-only readers don't
+  show an empty row
+- `len: 0` is the sentinel for non-text entries
+
+**Image lifetime**: 30-day TTL, enforced by the poller on startup +
+hourly. Cap is a function of disk on the share, so coordinated bumps
+across hosts are fine — just keep the policy the same in
+`clipboard::cleanup_old_images(days)`.
+
+Mac side commands available to consumers:
+- `clipboard_image_path(image_ref)` → absolute path (frontend pipes
+  through `convertFileSrc` for the asset protocol)
+- `copy_image_to_os_clipboard(image_ref)` → PNG decoded back to RGBA and
+  written to NSPasteboard
+
+The Windows side mirror should: detect image on Clipboard, encode PNG,
+SHA-256 the bytes, dedup-write to `images/<sha>.png`, append a JSONL
+entry as above.
+
 ## Known issues
 
 ### Updater + DMG distribution require a public repo
