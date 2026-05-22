@@ -28,7 +28,15 @@ const CATEGORIES = [
 const NAV_GROUPS = [
   { id: 'inbox',    iconName: 'inbox',    title: '받기 (Mac → Windows)',    direction: 'mac_to_windows', state: 'ready' },
   { id: 'outbox',   iconName: 'send',     title: '보낸 것 (Windows → Mac)', direction: 'windows_to_mac', state: 'ready' },
-  { id: 'received', iconName: 'archive',  title: '받은 기록',                  direction: 'windows_to_mac', state: 'received' },
+];
+
+// 로그 hub: collapsible (default closed). 송신/수신/오류 = jsonl, 압축이미지 = grid, 작업로그 = jsonl.
+const LOG_CATEGORIES = [
+  { id: 'send',       iconName: 'upload',         label: '송신 로그',  subtitle: 'Windows → Mac 송신 기록' },
+  { id: 'recv',       iconName: 'download',       label: '수신 로그',  subtitle: 'Mac → Windows 수신 + 무결성 검증 기록' },
+  { id: 'error',      iconName: 'alert-triangle', label: '오류 로그',  subtitle: '송신/검증 실패 기록' },
+  { id: 'compressed', iconName: 'image',          label: '압축 이미지', subtitle: '30일 경과 후 압축 보관된 클립보드 이미지' },
+  { id: 'worklog',    iconName: 'file-clock',     label: '작업 로그',  subtitle: '프로그램 개선/오류 수정 기록' },
 ];
 
 // ─── Lucide-style inline SVG icons (stroke-based, currentColor) ──
@@ -44,6 +52,13 @@ const ICONS = {
   'settings': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>',
   'refresh-cw': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>',
   'asterisk': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v12"/><path d="M17.196 9 6.804 15"/><path d="m6.804 9 10.392 6"/></svg>',
+  'scroll-text': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/></svg>',
+  'chevron-right': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
+  'upload': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>',
+  'download': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>',
+  'alert-triangle': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+  'image': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>',
+  'file-clock': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 22h2a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v3"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><circle cx="8" cy="16" r="6"/><path d="M9.5 17.5 8 16.25V14"/></svg>',
 };
 
 function svgIcon(name) {
@@ -55,6 +70,7 @@ const VIEW_ITEMS     = 'items';
 const VIEW_NOTES     = 'notes';
 const VIEW_CLIPBOARD = 'clipboard';
 const VIEW_SETTINGS  = 'settings';
+const VIEW_LOG       = 'log';
 
 const state = {
   view: VIEW_TREE,
@@ -65,6 +81,7 @@ const state = {
   settings: null,
   notes:     { list: [], selectedId: null, current: null, saveTimer: null },
   clipboard: { entries: [], pollTimer: null, autoTimer: null },
+  log:       { category: null, hubOpen: false, entries: [] },
 };
 
 // Defaults applied if backend returns nothing (shouldn't happen but be safe)
@@ -73,6 +90,7 @@ const DEFAULT_SETTINGS = {
   tree: { max_depth: 4, shortcuts: [] },
   network: { remote_host: '192.168.50.2' },
   appearance: { icon_theme: 'default', icon_themes: [], icon_theme_path: null },
+  integrity: { auto_verify_on_receive: true, show_manual_button: true },
 };
 
 // Cached policy from shared policy.json (loaded on settings open)
@@ -85,6 +103,12 @@ let activeThemeBaseDir = null; // directory of the json (for resolving relative 
 // ─── DOM refs ───────────────────────────────────────────────────
 const $navPinned = document.getElementById('nav-pinned');
 const $navTools  = document.getElementById('nav-tools');
+const $navLoghub = document.getElementById('nav-loghub');
+const $panelLog    = document.getElementById('panel-log');
+const $logTitle    = document.getElementById('log-title');
+const $logSubtitle = document.getElementById('log-subtitle');
+const $logList     = document.getElementById('log-list');
+const $logRefresh  = document.getElementById('log-refresh');
 const $panelItems = document.getElementById('panel-items');
 const $panelTree  = document.getElementById('panel-tree');
 const $tree       = document.getElementById('tree');
@@ -113,6 +137,8 @@ const $installTheme = document.getElementById('install-theme');
 const $themeCatalog = document.getElementById('theme-catalog');
 const $themeGitUrl  = document.getElementById('theme-git-url');
 const $themeGitAdd  = document.getElementById('theme-git-add');
+const $integrityAuto   = document.getElementById('integrity-auto');
+const $integrityManual = document.getElementById('integrity-manual');
 // Notes refs
 const $panelNotes   = document.getElementById('panel-notes');
 const $notesList    = document.getElementById('notes-list');
@@ -204,6 +230,28 @@ async function refreshAll() {
   renderNav();
   renderView();
   setStatus('마지막 갱신: ' + new Date().toLocaleTimeString('ko-KR'));
+}
+
+// Auto-verify received transfers (mac→windows) lacking a cached result.
+// Runs only when the setting is on; refreshes the list so badges update.
+let _autoVerifyRunning = false;
+async function maybeAutoVerify() {
+  const cfg = state.settings && state.settings.integrity;
+  if (!cfg || !cfg.auto_verify_on_receive) return;
+  if (_autoVerifyRunning) return;
+  _autoVerifyRunning = true;
+  try {
+    const n = await invoke('auto_verify_pending');
+    if (n > 0) {
+      for (const g of NAV_GROUPS) { await fetchGroup(g); }
+      renderNav();
+      if (state.view === VIEW_ITEMS) renderItems();
+    }
+  } catch (e) {
+    console.warn('auto-verify:', e);
+  } finally {
+    _autoVerifyRunning = false;
+  }
 }
 
 // ─── Tree browser ───────────────────────────────────────────────
@@ -492,6 +540,7 @@ async function loadSettingsFromBackend() {
   state.settings.tree = Object.assign({}, DEFAULT_SETTINGS.tree, state.settings.tree || {});
   state.settings.network = Object.assign({}, DEFAULT_SETTINGS.network, state.settings.network || {});
   state.settings.appearance = Object.assign({}, DEFAULT_SETTINGS.appearance, state.settings.appearance || {});
+  state.settings.integrity = Object.assign({}, DEFAULT_SETTINGS.integrity, state.settings.integrity || {});
   renderTreeShortcuts();
 }
 
@@ -507,6 +556,10 @@ async function persistSettings() {
 function renderSettings() {
   // Depth
   $depthValue.textContent = state.settings.tree.max_depth;
+  // Integrity toggles
+  const integ = state.settings.integrity || DEFAULT_SETTINGS.integrity;
+  $integrityAuto.checked = integ.auto_verify_on_receive !== false;
+  $integrityManual.checked = integ.show_manual_button !== false;
   // Shortcuts
   $shortcutsList.innerHTML = '';
   const sc = state.settings.tree.shortcuts || [];
@@ -956,7 +1009,13 @@ async function deleteCurrentNote() {
 // ─── Clipboard (unified timeline) ───────────────────────────────
 async function refreshClipboard() {
   try {
-    state.clipboard.entries = await invoke('list_clipboard_entries', { limit: 200 });
+    const entries = await invoke('list_clipboard_entries', { limit: 200 });
+    // Skip the DOM rebuild when nothing changed — otherwise the 2s poll
+    // re-creates every <img> and the thumbnails flicker on each tick.
+    const sig = entries.map(e => `${e.ts || ''}:${e.kind || ''}:${e.image_ref || ''}`).join('|');
+    if (sig === state.clipboard.lastSig) return;
+    state.clipboard.lastSig = sig;
+    state.clipboard.entries = entries;
     renderClipboardPanel();
   } catch (e) {
     console.warn('clipboard refresh:', e);
@@ -1155,6 +1214,110 @@ function renderTools() {
   }
 }
 
+function renderLogHub() {
+  $navLoghub.innerHTML = '';
+  const header = document.createElement('div');
+  header.className = 'loghub-header' + (state.log.hubOpen ? ' open' : '');
+  header.innerHTML = `${svgIcon('scroll-text')}<span class="loghub-title">로그</span><span class="loghub-chevron">${svgIcon('chevron-right')}</span>`;
+  header.addEventListener('click', () => {
+    state.log.hubOpen = !state.log.hubOpen;
+    renderLogHub();
+  });
+  $navLoghub.appendChild(header);
+
+  if (!state.log.hubOpen) return;
+  const sub = document.createElement('div');
+  sub.className = 'loghub-items';
+  for (const c of LOG_CATEGORIES) {
+    const el = navItemEl(c.label, svgIcon(c.iconName), '', () => {
+      state.view = VIEW_LOG;
+      state.log.category = c.id;
+      renderPinned(); renderNav(); renderTools(); renderView();
+    });
+    if (state.view === VIEW_LOG && state.log.category === c.id) el.classList.add('active');
+    sub.appendChild(el);
+  }
+  $navLoghub.appendChild(sub);
+}
+
+async function renderLogView() {
+  const cat = LOG_CATEGORIES.find(c => c.id === state.log.category) || LOG_CATEGORIES[0];
+  state.log.category = cat.id;
+  $logTitle.textContent = `📜 ${cat.label}`;
+  $logSubtitle.textContent = cat.subtitle;
+  $logList.innerHTML = '<div class="log-empty">읽는 중…</div>';
+  try {
+    if (cat.id === 'compressed') {
+      renderCompressedImages(await invoke('list_compressed_images'));
+    } else {
+      renderLogEntries(cat.id, await invoke('list_log_entries', { category: cat.id, limit: 500 }));
+    }
+  } catch (e) {
+    $logList.innerHTML = `<div class="log-empty">로그 읽기 실패: ${escape(String(e))}</div>`;
+  }
+}
+
+function logEntrySummary(e) {
+  const ev = e.event || '';
+  const tid = e.transfer_id ? ` <span class="log-mono">${escape(e.transfer_id)}</span>` : '';
+  switch (ev) {
+    case 'send_ok':      return `📤 송신 OK · ${escape(e.category || '')}${tid}`;
+    case 'send_fail':    return `❌ 송신 실패 · ${escape(e.stderr || '')}`;
+    case 'verify_ok':    return `✅ 검증 OK · ${e.checked || 0}개 일치${tid}`;
+    case 'verify_fail':  return `⚠ 검증 불일치 ${e.mismatches || 0} · 누락 ${e.missing || 0}${tid}`;
+    case 'verify_error': return `❌ 검증 오류 · ${escape(e.error || '')}${tid}`;
+    default:             return escape(JSON.stringify(e));
+  }
+}
+
+function renderLogEntries(catId, entries) {
+  if (!entries.length) {
+    $logList.innerHTML = `<div class="empty" style="padding:40px 24px"><div class="empty-icon">📭</div><div class="empty-title">기록이 없어요</div></div>`;
+    return;
+  }
+  $logList.innerHTML = '';
+  for (const e of entries) {
+    const row = document.createElement('div');
+    const ev = e.event || '';
+    const cls = (ev.includes('fail') || ev.includes('error')) ? ' log-row-error' : (ev.includes('ok') ? ' log-row-ok' : '');
+    row.className = 'log-row' + cls;
+    const main = catId === 'worklog'
+      ? `<b>${escape(e.summary || '')}</b>${e.detail ? `<div class="log-detail">${escape(e.detail)}</div>` : ''}`
+      : logEntrySummary(e);
+    row.innerHTML = `<div class="log-row-time">${escape(fmtFull(e.ts))}</div><div class="log-row-main">${main}</div>`;
+    $logList.appendChild(row);
+  }
+}
+
+function renderCompressedImages(imgs) {
+  if (!imgs.length) {
+    $logList.innerHTML = `<div class="empty" style="padding:40px 24px"><div class="empty-icon">🖼</div><div class="empty-title">압축 보관된 이미지가 없어요</div><div class="empty-hint">30일 지난 클립보드 이미지가 여기에 JPEG로 보관돼요.</div></div>`;
+    return;
+  }
+  $logList.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.className = 'log-img-grid';
+  for (const im of imgs) {
+    const cell = document.createElement('div');
+    cell.className = 'log-img-cell';
+    cell.innerHTML = `<div class="log-img-meta">${escape(fmtBytes(im.size_bytes))} · ${escape(fmtRelative(im.ts))}</div>`;
+    (async () => {
+      try {
+        const p = await invoke('compressed_image_path', { imageRef: im.ref });
+        const url = window.__TAURI__.core.convertFileSrc(p);
+        const img = new Image();
+        img.src = url;
+        img.className = 'log-img';
+        img.title = '클릭해서 열기';
+        img.addEventListener('click', () => invoke('open_path', { path: p }).catch(() => {}));
+        cell.prepend(img);
+      } catch (_) {}
+    })();
+    grid.appendChild(cell);
+  }
+  $logList.appendChild(grid);
+}
+
 function renderNav() {
   $nav.innerHTML = '';
   for (const group of NAV_GROUPS) {
@@ -1203,6 +1366,7 @@ function renderView() {
   $panelSettings.classList.add('hidden');
   $panelNotes.classList.add('hidden');
   $panelClipboard.classList.add('hidden');
+  $panelLog.classList.add('hidden');
   $settingsBtn.classList.remove('active');
 
   // Stop clipboard polling when leaving its view
@@ -1218,6 +1382,9 @@ function renderView() {
     $panelClipboard.classList.remove('hidden');
     refreshClipboard();
     startClipboardPolling();
+  } else if (state.view === VIEW_LOG) {
+    $panelLog.classList.remove('hidden');
+    renderLogView();
   } else if (state.view === VIEW_SETTINGS) {
     $panelSettings.classList.remove('hidden');
     $settingsBtn.classList.add('active');
@@ -1226,6 +1393,9 @@ function renderView() {
     $panelItems.classList.remove('hidden');
     renderItems();
   }
+
+  // Keep the collapsible log hub's active state in sync with the view.
+  renderLogHub();
 }
 
 function navItemEl(label, icon, count, onClick) {
@@ -1297,7 +1467,7 @@ function renderItems() {
     li.innerHTML = `
       <div class="item-icon">${iconHtml}</div>
       <div class="item-body">
-        <div class="item-name" title="${escape(it.name)}">${escape(displayName)}</div>
+        <div class="item-name" title="${escape(it.name)}">${escape(displayName)}${verifyBadge(it.verify_status)}</div>
         <div class="item-meta">${metaParts.map(escape).join(' · ')}</div>
       </div>
       <div class="item-tail">${escape(fmtFull(it.modified_iso))}</div>
@@ -1306,6 +1476,12 @@ function renderItems() {
     li.addEventListener('dblclick', () => invoke('open_path', { path: it.path }).catch(e => toast(e, 'error')));
     $items.appendChild(li);
   }
+}
+
+function verifyBadge(status) {
+  if (status === 'ok') return ' <span class="verify-badge verify-ok" title="무결성 검증됨">✓</span>';
+  if (status === 'mismatch') return ' <span class="verify-badge verify-bad" title="무결성 불일치">✗</span>';
+  return '';
 }
 
 // ─── Details modal ──────────────────────────────────────────────
@@ -1330,10 +1506,12 @@ function openDetails(it) {
     <div class="detail-row"><div class="detail-label">저장 파일명</div><div class="detail-value detail-mono">${escape(it.name)}</div></div>
     <div class="detail-row"><div class="detail-label">전체 경로</div><div class="detail-value detail-mono">${escape(it.path)}</div></div>
   `;
-  // Reset verify result + wire verify button (only when transfer_id known)
+  // Reset verify result + wire verify button (only when transfer_id known
+  // AND the manual button is enabled in settings).
   $verifyResult.classList.add('hidden');
   $verifyResult.innerHTML = '';
-  if (it.transfer_id) {
+  const showManual = !state.settings || !state.settings.integrity || state.settings.integrity.show_manual_button !== false;
+  if (it.transfer_id && showManual) {
     $detailsVerify.classList.remove('hidden');
     $detailsVerify.onclick = () => runVerify(it.transfer_id);
   } else {
@@ -1542,6 +1720,7 @@ function setupHeaderActions() {
 }
 
 document.getElementById('refresh-btn').addEventListener('click', refreshAll);
+$logRefresh.addEventListener('click', () => renderLogView());
 $treeUp.addEventListener('click', navigateTreeUp);
 $treeHome.addEventListener('click', navigateTreeHome);
 $treeDesktop.addEventListener('click', navigateTreeDesktop);
@@ -1549,7 +1728,7 @@ $dropZone.addEventListener('click', pickFilesAndSend);
 $dropZonePick.addEventListener('click', (e) => { e.stopPropagation(); pickFilesAndSend(); });
 $settingsBtn.addEventListener('click', () => {
   state.view = (state.view === VIEW_SETTINGS) ? VIEW_TREE : VIEW_SETTINGS;
-  renderPinned(); renderNav(); renderView();
+  renderPinned(); renderNav(); renderTools(); renderView();
 });
 $depthDec.addEventListener('click', () => changeDepth(-1));
 $depthInc.addEventListener('click', () => changeDepth(+1));
@@ -1559,6 +1738,15 @@ $checkConn.addEventListener('click', runConnectionCheck);
 $speedTest.addEventListener('click', runSpeedTest);
 $installTheme.addEventListener('click', installIconTheme);
 $themeGitAdd.addEventListener('click', installThemeFromGit);
+$integrityAuto.addEventListener('change', async () => {
+  state.settings.integrity.auto_verify_on_receive = $integrityAuto.checked;
+  await persistSettings();
+  if ($integrityAuto.checked) maybeAutoVerify();
+});
+$integrityManual.addEventListener('change', async () => {
+  state.settings.integrity.show_manual_button = $integrityManual.checked;
+  await persistSettings();
+});
 document.querySelectorAll('input[name="netmode"]').forEach(r => {
   r.addEventListener('change', e => changeNetworkMode(e.target.value));
 });
@@ -1587,8 +1775,10 @@ document.getElementById('settings-icon').innerHTML = svgIcon('settings');
   await loadSettingsFromBackend().catch(e => console.error('load settings:', e));
   await applyActiveTheme().catch(e => console.error('apply theme:', e));
   renderTools();
+  renderLogHub();
   await refreshAll().catch(e => { console.error('initial refresh failed:', e); setStatus('초기화 실패: ' + e); });
   await setupDragDrop().catch(e => console.error('drag-drop setup failed:', e));
+  maybeAutoVerify();
 
   // File-watcher driven refresh (no polling). Rust emits "share-changed"
   // events with topic ∈ {transfers, clipboard, notes, profiles}. Frontend
@@ -1600,7 +1790,7 @@ document.getElementById('settings-icon').innerHTML = svgIcon('settings');
       if (!topic) return;
       switch (topic) {
         case 'transfers':
-          refreshAll().catch(() => {});
+          refreshAll().then(maybeAutoVerify).catch(() => {});
           break;
         case 'clipboard':
           refreshClipboard().catch(() => {});

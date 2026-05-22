@@ -40,6 +40,8 @@ pub struct TransferItem {
     /// Filled from the matching manifest whose `destination.primary_file`
     /// equals `name`. None if no manifest references this file.
     pub transfer_id: Option<String>,
+    /// "ok" | "mismatch" from the verify cache, or None if not yet verified.
+    pub verify_status: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -119,6 +121,7 @@ pub fn list_transfers(direction: String, state: String) -> Result<Vec<TransferIt
                 .unwrap_or_default();
             let size_bytes = if meta.is_file() { meta.len() } else { dir_size(&p) };
             let transfer_id = manifest_index.get(&name).cloned();
+            let verify_status = transfer_id.as_deref().and_then(read_verify_status);
             out.push(TransferItem {
                 direction: dir.token().to_string(),
                 state:     st.folder().to_string(),
@@ -132,6 +135,7 @@ pub fn list_transfers(direction: String, state: String) -> Result<Vec<TransferIt
                 modified_iso,
                 is_dir: meta.is_dir(),
                 transfer_id,
+                verify_status,
             });
         }
     }
@@ -239,6 +243,10 @@ fn dir_hash_combined(root: &Path) -> Result<String, String> {
 
 #[tauri::command]
 pub fn verify_transfer(transfer_id: String) -> Result<VerifyResult, String> {
+    run_verify(&transfer_id)
+}
+
+fn run_verify(transfer_id: &str) -> Result<VerifyResult, String> {
     let mut found: Option<(Direction, serde_json::Value)> = None;
     for dir in [Direction::MacToWindows, Direction::WindowsToMac] {
         let p = manifests_dir(dir).join(format!("{transfer_id}.json"));
@@ -304,8 +312,8 @@ pub fn verify_transfer(transfer_id: String) -> Result<VerifyResult, String> {
     }
 
     let checked = results.len() as u32;
-    Ok(VerifyResult {
-        transfer_id,
+    let result = VerifyResult {
+        transfer_id: transfer_id.to_string(),
         direction: dir.token().to_string(),
         mode,
         ok: mismatches == 0 && missing == 0,
@@ -313,7 +321,9 @@ pub fn verify_transfer(transfer_id: String) -> Result<VerifyResult, String> {
         mismatches,
         missing,
         files: results,
-    })
+    };
+    write_verify_cache(&result);
+    Ok(result)
 }
 
 #[tauri::command]
@@ -349,16 +359,22 @@ pub fn send_path(source_path: String, category: String) -> Result<String, String
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
     if !out.status.success() {
+        append_log("error", serde_json::json!({
+            "event": "send_fail", "source": source_path, "category": category,
+            "exit": out.status.code(), "stderr": stderr.trim(),
+        }));
         return Err(format!("send failed (exit {:?}): {}\n{}", out.status.code(), stderr, stdout));
     }
 
     // Extract transfer_id from stdout if present
-    for line in stdout.lines() {
-        if let Some(rest) = line.strip_prefix("transfer_id: ") {
-            return Ok(rest.trim().to_string());
-        }
-    }
-    Ok(stdout.trim().to_string())
+    let tid = stdout
+        .lines()
+        .find_map(|l| l.strip_prefix("transfer_id: ").map(|r| r.trim().to_string()))
+        .unwrap_or_else(|| stdout.trim().to_string());
+    append_log("send", serde_json::json!({
+        "event": "send_ok", "source": source_path, "category": category, "transfer_id": tid,
+    }));
+    Ok(tid)
 }
 
 #[tauri::command]
@@ -1305,6 +1321,172 @@ fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(h.finalize())
 }
 
+// ─── 80_Logs hub ───────────────────────────────────────────────
+fn logs_dir() -> PathBuf {
+    let p = crate::share::share_root().join("00_System").join("80_Logs");
+    let _ = std::fs::create_dir_all(&p);
+    p
+}
+
+fn log_file(category: &str) -> PathBuf {
+    logs_dir().join(format!("{category}.jsonl"))
+}
+
+fn append_log(category: &str, mut entry: serde_json::Value) {
+    use std::io::Write;
+    if let Some(obj) = entry.as_object_mut() {
+        obj.entry("ts").or_insert_with(|| serde_json::Value::String(chrono::Local::now().to_rfc3339()));
+        let host = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "windows".into());
+        obj.entry("host").or_insert(serde_json::Value::String(host));
+        obj.entry("os").or_insert(serde_json::Value::String("windows".into()));
+    }
+    let line = serde_json::to_string(&entry).unwrap_or_default();
+    let path = log_file(category);
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = f.write_all(line.as_bytes());
+        let _ = f.write_all(b"\n");
+    }
+    let _ = rotate_jsonl(&path, 1000);
+}
+
+#[tauri::command]
+pub fn list_log_entries(category: String, limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
+    let allowed = ["send", "recv", "error", "worklog"];
+    if !allowed.contains(&category.as_str()) {
+        return Err(format!("unknown log category: {category}"));
+    }
+    let path = log_file(&category);
+    if !path.exists() { return Ok(vec![]); }
+    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let mut all: Vec<serde_json::Value> = content
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect();
+    all.reverse(); // newest first
+    if let Some(n) = limit { all.truncate(n); }
+    Ok(all)
+}
+
+#[tauri::command]
+pub fn append_worklog(summary: String, detail: Option<String>) -> Result<(), String> {
+    append_log("worklog", serde_json::json!({
+        "summary": summary,
+        "detail": detail.unwrap_or_default(),
+    }));
+    Ok(())
+}
+
+fn compressed_images_dir() -> PathBuf {
+    let p = logs_dir().join("compressed-images");
+    let _ = std::fs::create_dir_all(&p);
+    p
+}
+
+#[tauri::command]
+pub fn list_compressed_images() -> Result<Vec<serde_json::Value>, String> {
+    let dir = compressed_images_dir();
+    if !dir.exists() { return Ok(vec![]); }
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
+        let p = e.path();
+        if p.extension().and_then(|s| s.to_str()) != Some("jpg") { continue; }
+        let meta = e.metadata().ok();
+        let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+        let mtime = meta
+            .and_then(|m| m.modified().ok())
+            .map(|t| chrono::DateTime::<chrono::Local>::from(t).to_rfc3339())
+            .unwrap_or_default();
+        out.push(serde_json::json!({
+            "ref": p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string(),
+            "size_bytes": size,
+            "ts": mtime,
+        }));
+    }
+    out.sort_by(|a, b| {
+        b.get("ts").and_then(|v| v.as_str()).unwrap_or("")
+            .cmp(a.get("ts").and_then(|v| v.as_str()).unwrap_or(""))
+    });
+    Ok(out)
+}
+
+#[tauri::command]
+pub fn compressed_image_path(image_ref: String) -> Result<String, String> {
+    if image_ref.contains('/') || image_ref.contains('\\') || image_ref.contains("..") {
+        return Err("invalid ref".into());
+    }
+    Ok(compressed_images_dir().join(image_ref).to_string_lossy().into_owned())
+}
+
+// ─── Verify result cache (for receive badges) ──────────────────
+fn verify_cache_dir() -> PathBuf {
+    let p = logs_dir().join("verify");
+    let _ = std::fs::create_dir_all(&p);
+    p
+}
+
+fn write_verify_cache(r: &VerifyResult) {
+    let path = verify_cache_dir().join(format!("{}.json", r.transfer_id));
+    let v = serde_json::json!({
+        "transfer_id": r.transfer_id,
+        "ok": r.ok,
+        "checked": r.checked,
+        "mismatches": r.mismatches,
+        "missing": r.missing,
+        "ts": chrono::Local::now().to_rfc3339(),
+    });
+    let _ = std::fs::write(path, serde_json::to_string(&v).unwrap_or_default());
+}
+
+fn read_verify_status(transfer_id: &str) -> Option<String> {
+    let path = verify_cache_dir().join(format!("{transfer_id}.json"));
+    let raw = std::fs::read_to_string(path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let ok = v.get("ok").and_then(|x| x.as_bool())?;
+    Some(if ok { "ok".to_string() } else { "mismatch".to_string() })
+}
+
+/// Auto-verify any received (mac→windows) transfer that has no cached
+/// result yet. Writes the cache + a recv/error log entry. Returns count.
+#[tauri::command]
+pub fn auto_verify_pending() -> Result<u32, String> {
+    let dir = manifests_dir(Direction::MacToWindows);
+    let mut done = 0u32;
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|s| s.to_str()) != Some("json") { continue; }
+            let tid = match p.file_stem().and_then(|s| s.to_str()) {
+                Some(s) => s.to_string(),
+                None => continue,
+            };
+            if verify_cache_dir().join(format!("{tid}.json")).exists() { continue; }
+            match run_verify(&tid) {
+                Ok(r) => {
+                    if r.ok {
+                        append_log("recv", serde_json::json!({
+                            "event": "verify_ok", "transfer_id": r.transfer_id,
+                            "checked": r.checked, "direction": r.direction,
+                        }));
+                    } else {
+                        append_log("error", serde_json::json!({
+                            "event": "verify_fail", "transfer_id": r.transfer_id,
+                            "mismatches": r.mismatches, "missing": r.missing, "direction": r.direction,
+                        }));
+                    }
+                    done += 1;
+                }
+                Err(err) => {
+                    append_log("error", serde_json::json!({
+                        "event": "verify_error", "transfer_id": tid, "error": err,
+                    }));
+                }
+            }
+        }
+    }
+    Ok(done)
+}
+
 fn policy_clipboard_cfg() -> (u32, u64, u64) {
     // (max_dimension, retention_days, total_cap_mb) with defaults
     let policy = load_policy().unwrap_or_else(|_| serde_json::json!({}));
@@ -1313,6 +1495,47 @@ fn policy_clipboard_cfg() -> (u32, u64, u64) {
     let retention = c.get("image_retention_days").and_then(|v| v.as_u64()).unwrap_or(30);
     let cap_mb = c.get("image_total_cap_mb").and_then(|v| v.as_u64()).unwrap_or(300);
     (max_dim, retention, cap_mb)
+}
+
+fn policy_image_action() -> (String, u8, u32) {
+    // (action, jpeg_quality, compress_max_dimension) with defaults
+    let policy = load_policy().unwrap_or_else(|_| serde_json::json!({}));
+    let c = policy.get("clipboard").cloned().unwrap_or_default();
+    let action = c.get("image_retention_action").and_then(|v| v.as_str()).unwrap_or("compress").to_string();
+    let q = c.get("compress_quality").and_then(|v| v.as_u64()).unwrap_or(60).clamp(1, 100) as u8;
+    let dim = c.get("compress_max_dimension").and_then(|v| v.as_u64()).unwrap_or(1280) as u32;
+    (action, q, dim)
+}
+
+/// On retention expiry: re-encode the PNG as a downscaled JPEG into
+/// 80_Logs/compressed-images/<stem>.jpg, then delete the original PNG.
+fn archive_old_image(png_path: &Path) {
+    use image::{codecs::jpeg::JpegEncoder, imageops, DynamicImage};
+    let (_, quality, dim) = policy_image_action();
+    let img = match image::open(png_path) {
+        Ok(i) => i,
+        Err(_) => { let _ = std::fs::remove_file(png_path); return; }
+    };
+    let rgba = img.to_rgba8();
+    let (w, h) = (rgba.width(), rgba.height());
+    let longest = w.max(h);
+    let scaled = if longest > dim {
+        let scale = dim as f64 / longest as f64;
+        let nw = ((w as f64) * scale).round().max(1.0) as u32;
+        let nh = ((h as f64) * scale).round().max(1.0) as u32;
+        DynamicImage::ImageRgba8(imageops::resize(&rgba, nw, nh, imageops::FilterType::Lanczos3))
+    } else {
+        DynamicImage::ImageRgba8(rgba)
+    };
+    // JPEG has no alpha — flatten to RGB.
+    let rgb = DynamicImage::ImageRgb8(scaled.to_rgb8());
+    let stem = png_path.file_stem().and_then(|s| s.to_str()).unwrap_or("img");
+    let out = compressed_images_dir().join(format!("{stem}.jpg"));
+    let mut buf = std::io::Cursor::new(Vec::new());
+    if JpegEncoder::new_with_quality(&mut buf, quality).encode_image(&rgb).is_ok() {
+        let _ = std::fs::write(&out, buf.into_inner());
+    }
+    let _ = std::fs::remove_file(png_path);
 }
 
 fn save_clipboard_image(rgba: &[u8], w: u32, h: u32) -> std::io::Result<()> {
@@ -1385,13 +1608,18 @@ fn sweep_clipboard_images() {
         Err(_) => return,
     };
 
-    // 1) Delete files older than retention
+    // 1) Old files past retention: compress-archive into 80_Logs, or delete.
+    let (action, _, _) = policy_image_action();
     for e in &entries {
         if let Ok(meta) = e.metadata() {
             if let Ok(modified) = meta.modified() {
                 if let Ok(age) = now.duration_since(modified) {
                     if age > retention {
-                        let _ = std::fs::remove_file(e.path());
+                        if action == "delete" {
+                            let _ = std::fs::remove_file(e.path());
+                        } else {
+                            archive_old_image(&e.path());
+                        }
                     }
                 }
             }

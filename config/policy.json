@@ -47,7 +47,11 @@
     "image_retention_days": 30,
     "image_max_dimension": 2560,
     "image_total_cap_mb": 300,
-    "_doc": "Clipboard images stored as PNG under 70_Clipboard/images/, sha256-deduped, downscaled to max_dimension. Files older than retention_days are deleted (JSONL entry remains as a tombstone). Total dir size capped at total_cap_mb; oldest evicted first."
+    "image_retention_action": "compress",
+    "compress_quality": 60,
+    "compress_max_dimension": 1280,
+    "_image_retention_action_options": ["compress", "delete"],
+    "_doc": "Clipboard images stored as PNG under 70_Clipboard/images/, sha256-deduped, downscaled to max_dimension. After retention_days: action='compress' re-encodes to JPEG (compress_quality, compress_max_dimension) into 80_Logs/compressed-images/ then deletes the PNG; action='delete' just removes it. Total PNG dir size capped at total_cap_mb; oldest evicted first."
   },
 
   "filename_compat": {

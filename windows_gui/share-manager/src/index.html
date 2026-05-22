@@ -22,6 +22,8 @@
 
       <div class="nav-tools" id="nav-tools"></div>
 
+      <div class="nav-loghub" id="nav-loghub"></div>
+
       <button id="refresh-btn" class="refresh" title="새로고침">
         <span class="refresh-icon" id="refresh-icon"></span>
         <span>새로고침</span>
@@ -147,6 +149,22 @@
         </div>
       </section>
 
+      <!-- LOG PANEL: send/recv/error/compressed-images/worklog -->
+      <section id="panel-log" class="panel hidden">
+        <header class="main-header">
+          <div>
+            <h2 id="log-title">📜 로그</h2>
+            <div id="log-subtitle" class="subtitle"></div>
+          </div>
+          <div class="header-actions">
+            <button id="log-refresh" class="ghost-btn">↻ 다시 읽기</button>
+          </div>
+        </header>
+        <div class="log-body">
+          <div id="log-list" class="log-list"></div>
+        </div>
+      </section>
+
       <!-- SETTINGS PANEL -->
       <section id="panel-settings" class="panel hidden">
         <header class="main-header">
@@ -238,6 +256,28 @@
                 </div>
                 <div id="profiles-list" class="result-card"></div>
                 <span class="settings-hint">셰어 <code>00_System/10_Config/profiles/</code> 에 호스트 정보 저장. Mac도 동일하게 자기 프로필 게시하면 여기 같이 보임.</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h3>무결성 검증</h3>
+            <div class="settings-row">
+              <div class="settings-label">수신 시 자동 검증</div>
+              <div class="settings-control">
+                <label class="toggle-row">
+                  <input type="checkbox" id="integrity-auto">
+                  <span>Mac에서 받은 파일이 도착하면 자동으로 SHA-256 검증하고 ✓/✗ 배지 표시</span>
+                </label>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">수동 검증 버튼</div>
+              <div class="settings-control">
+                <label class="toggle-row">
+                  <input type="checkbox" id="integrity-manual">
+                  <span>상세 정보 창에 🔍 검증 버튼 표시</span>
+                </label>
               </div>
             </div>
           </section>

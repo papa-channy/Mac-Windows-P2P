@@ -173,12 +173,30 @@ pub struct AppearanceSettings {
     pub icon_theme_path: Option<String>, // legacy single-path field, kept for back-compat
 }
 
+fn default_true() -> bool { true }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct IntegritySettings {
+    #[serde(default = "default_true")]
+    pub auto_verify_on_receive: bool,
+    #[serde(default = "default_true")]
+    pub show_manual_button: bool,
+}
+
+impl Default for IntegritySettings {
+    fn default() -> Self {
+        Self { auto_verify_on_receive: true, show_manual_button: true }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Settings {
     pub schema_version: u32,
     pub tree: TreeSettings,
     pub network: NetworkSettings,
     pub appearance: AppearanceSettings,
+    #[serde(default)]
+    pub integrity: IntegritySettings,
 }
 
 impl Default for Settings {
@@ -197,6 +215,7 @@ impl Default for Settings {
                 icon_themes: Vec::new(),
                 icon_theme_path: None,
             },
+            integrity: IntegritySettings::default(),
         }
     }
 }
