@@ -21,6 +21,19 @@ pub fn mw_cli_path() -> PathBuf {
         .join("mw")
 }
 
+/// True iff the SMB share is currently mounted and contains our marker
+/// directories at `share_root()`. Cheap (filesystem stat only); safe to
+/// call on hot paths.
+///
+/// Honors $MW_SHARE_ROOT so tests can point at a tempdir. Intentionally
+/// does NOT consult `current_mount_url()` — that would inspect the real
+/// /Volumes mount even when the test has overridden share_root, making
+/// "offline" scenarios untestable on a machine where the share happens
+/// to be mounted for real.
+pub fn is_share_mounted() -> bool {
+    is_share_mount_point(&crate::share::share_root())
+}
+
 pub fn current_mount_url() -> Option<PathBuf> {
     let home = std::env::var("HOME").unwrap_or_default();
     let candidates: [PathBuf; 2] = [
@@ -70,7 +83,7 @@ pub fn ensure_mounted(timeout: Duration) -> Option<PathBuf> {
     current_mount_url()
 }
 
-fn is_share_mount_point(p: &Path) -> bool {
+pub(crate) fn is_share_mount_point(p: &Path) -> bool {
     if !p.is_dir() { return false; }
     p.join("00_System").exists() || p.join("10_Exchange").exists()
 }

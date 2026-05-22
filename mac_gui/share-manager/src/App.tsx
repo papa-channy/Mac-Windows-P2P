@@ -6,6 +6,7 @@ import { NAV_GROUPS, DEFAULT_SELECTION, type SidebarSelection } from "./lib/nav"
 import { ToastProvider } from "./lib/toast";
 import { SettingsProvider } from "./lib/settings";
 import { IconThemeProvider } from "./lib/iconTheme";
+import { useShareTopic } from "./lib/useShareTopic";
 import { useDragDrop } from "./lib/useDragDrop";
 import { useSendFlow } from "./lib/useSendFlow";
 import { Sidebar } from "./components/Sidebar";
@@ -80,27 +81,23 @@ function AppInner() {
     onDrop: (paths) => sendFlow.handleDropped(paths),
   });
 
-  // share-changed watcher event router. Phase I will expand this.
+  // share-changed "transfers" topic — sidebar count badges depend on
+  // this, so it stays at App level even though the view-local topics
+  // (notes/clipboard/profiles) are subscribed inside their own views.
+  useShareTopic("transfers", refreshTransfers);
+
+  // Service immediate-send path emits this when send_path finishes —
+  // the watcher event fires too, but this is a more direct nudge.
   useEffect(() => {
-    let unlistenShare: (() => void) | undefined;
     let unlistenSent: (() => void) | undefined;
     (async () => {
       try {
-        unlistenShare = await listen<{ topic: string }>("share-changed", (e) => {
-          if (e.payload.topic === "transfers") refreshTransfers();
-        });
-      } catch {
-        /* watcher not available; ignore */
-      }
-      try {
-        // Service immediate-send path emits this when send_path finishes.
         unlistenSent = await listen("transfers-changed", () => refreshTransfers());
       } catch {
         /* ignore */
       }
     })();
     return () => {
-      unlistenShare?.();
       unlistenSent?.();
     };
   }, [refreshTransfers]);
