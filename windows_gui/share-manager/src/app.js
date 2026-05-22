@@ -1587,7 +1587,76 @@ function handleDroppedPaths(paths) {
   }
 }
 
+// ─── HTML dependency pre-flight ─────────────────────────────────
+// A bare .html whose styling/scripts/images live in sibling files would
+// arrive looking broken (text only). Warn before sending; offer to send
+// the parent folder instead (directory mode preserves internal names).
+const $htmlWarn        = document.getElementById('html-warn');
+const $htmlWarnList    = document.getElementById('html-warn-list');
+const $htmlWarnCancel  = document.getElementById('html-warn-cancel');
+const $htmlWarnProceed = document.getElementById('html-warn-proceed');
+const $htmlWarnFolder  = document.getElementById('html-warn-folder');
+let _htmlWarnResolve = null;
+
+function showHtmlWarn(flagged) {
+  $htmlWarnList.innerHTML = '';
+  for (const f of flagged) {
+    const fileName = f.path.split(/[\\/]/).pop();
+    const rows = f.info.assets.map(a => {
+      const tag = a.exists ? '<span class="hw-ok">있음</span>' : '<span class="hw-miss">없음 ⚠</span>';
+      return `<div class="hw-asset"><span class="hw-kind">${escape(a.kind)}</span><span class="hw-ref">${escape(a.reference)}</span>${tag}</div>`;
+    }).join('');
+    const inline = f.info.has_inline_style ? '' : ' <span class="hw-miss">(인라인 스타일 없음)</span>';
+    $htmlWarnList.innerHTML += `<div class="hw-file"><div class="hw-name">📄 ${escape(fileName)}${inline}</div>${rows}</div>`;
+  }
+  $htmlWarn.classList.remove('hidden');
+  return new Promise(resolve => { _htmlWarnResolve = resolve; });
+}
+
+function closeHtmlWarn(choice) {
+  $htmlWarn.classList.add('hidden');
+  if (_htmlWarnResolve) { _htmlWarnResolve(choice); _htmlWarnResolve = null; }
+}
+$htmlWarnCancel.addEventListener('click', () => closeHtmlWarn('cancel'));
+$htmlWarnProceed.addEventListener('click', () => closeHtmlWarn('proceed'));
+$htmlWarnFolder.addEventListener('click', () => closeHtmlWarn('folder'));
+
+// Returns { action: 'proceed'|'cancel', paths } — paths may have flagged
+// htmls swapped for their parent dir when the user picks 폴더째.
+async function htmlAssetGate(paths) {
+  const flagged = [];
+  for (const p of paths) {
+    if (!/\.html?$/i.test(p)) continue;
+    try {
+      const info = await invoke('inspect_html_assets', { path: p });
+      if (info.is_html && info.assets.length > 0) flagged.push({ path: p, info });
+    } catch (e) { console.warn('html inspect:', e); }
+  }
+  if (flagged.length === 0) return { action: 'proceed', paths };
+
+  const choice = await showHtmlWarn(flagged);
+  if (choice === 'cancel') return { action: 'cancel', paths };
+  if (choice === 'folder') {
+    const flaggedSet = new Set(flagged.map(f => f.path));
+    const seenDirs = new Set();
+    const out = [];
+    for (const p of paths) {
+      if (flaggedSet.has(p)) {
+        const dir = p.replace(/[\\/][^\\/]+$/, '');
+        if (!seenDirs.has(dir)) { seenDirs.add(dir); out.push(dir); }
+      } else {
+        out.push(p);
+      }
+    }
+    return { action: 'proceed', paths: out };
+  }
+  return { action: 'proceed', paths }; // 'proceed' = send as-is
+}
+
 async function sendBatch(paths, category) {
+  const gate = await htmlAssetGate(paths);
+  if (gate.action === 'cancel') { setStatus('전송 취소됨'); return; }
+  paths = gate.paths;
   const cat = CATEGORIES.find(c => c.key === category);
   const label = cat ? `${cat.emoji} ${cat.label}` : category;
   setStatus(`${paths.length}개 항목을 ${label}으로 전송 중…`);
@@ -1652,11 +1721,14 @@ async function openCategoryPicker(paths) {
 async function submitDrop() {
   if (!state.pendingDrop || state.pendingDrop.length === 0) return;
   const category = $catPickerSelect.value;
+  const gate = await htmlAssetGate(state.pendingDrop);
+  if (gate.action === 'cancel') { setStatus('전송 취소됨'); return; }
+  const sendPaths = gate.paths;
   $catPickerSend.disabled = true;
   $catPickerSend.textContent = '보내는 중…';
   let okCount = 0;
   let errors = [];
-  for (const p of state.pendingDrop) {
+  for (const p of sendPaths) {
     try {
       await invoke('send_path', { sourcePath: p, category });
       okCount++;

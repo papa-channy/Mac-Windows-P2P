@@ -999,12 +999,21 @@ JSONL 공통: `{ ts, host, os, event, ... }`. `send_ok`(source/category/transfer
 
 `받은 기록` 제거 → 접이식 **로그** 그룹(기본 닫힘): 송신/수신/오류/압축이미지/작업로그 5개. 압축이미지는 그리드 썸네일, 나머지는 시간순 리스트.
 
+### 17.6 송신 시 HTML 의존성 사전 검사
+
+단일 `.html`을 보낼 때 외부 로컬 에셋(CSS/JS/이미지)에 의존하면, 그 파일만 보내봐야 **디자인이 깨진 채 도착**(SHA는 정상, 에셋이 안 따라옴). 우리 네이밍 규칙이 형제 파일을 리네임해서 단순 추가 전송도 `href` 링크가 안 맞음.
+
+- `inspect_html_assets(path) -> { is_html, has_inline_style, parent_dir, assets:[{reference, kind, exists}] }`: html을 스캔해 `href=`/`src=`/`url()`의 **로컬 상대경로** 참조만 수집 (절대 URL/data:/앵커 제외).
+- 송신 직전 게이트: 참조가 있으면 모달로 경고 + 3선택: **폴더째 보내기**(html 경로를 부모 폴더로 치환 → 디렉터리 전송, 내부 파일명 보존돼 링크 유지) / **파일만 보내기** / **취소**.
+- **검증됨** (2026-05-22): 깨진 계약서 html에서 `contract.css → MISSING` 정확 검출, 인라인 스타일 없음 인지.
+
 ### 17.5 Mac 체크리스트 (v0.3)
 
 - [ ] `80_Logs/` 동일 구조 + verify 캐시 + compressed-images
 - [ ] win→mac 수신 자동검증 + 배지 + settings 토글 2종
 - [ ] 이미지 retention action=compress (JPEG)
 - [ ] 사이드바 로그 허브(기본 닫힘) 5개
+- [ ] 송신 시 HTML 의존성 검사 + 폴더째/파일만/취소 게이트 (§17.6)
 
 ---
 

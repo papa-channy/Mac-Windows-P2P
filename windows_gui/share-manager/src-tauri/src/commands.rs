@@ -377,6 +377,106 @@ pub fn send_path(source_path: String, category: String) -> Result<String, String
     Ok(tid)
 }
 
+// ─── HTML dependency pre-flight (avoid shipping a bare .html) ───
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HtmlAsset {
+    pub reference: String,
+    pub kind: String,   // css | script | img | other
+    pub exists: bool,   // sibling file present next to the html
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HtmlInspect {
+    pub is_html: bool,
+    pub has_inline_style: bool,
+    pub parent_dir: String,
+    pub assets: Vec<HtmlAsset>,
+}
+
+fn extract_html_refs(html: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (pat, is_url) in [("href=", false), ("src=", false), ("url(", true)] {
+        for (idx, _) in html.match_indices(pat) {
+            let after = &html[idx + pat.len()..];
+            let val: Option<String> = if is_url {
+                let a = after.trim_start();
+                let first = a.chars().next();
+                if first == Some('"') || first == Some('\'') {
+                    let qc = first.unwrap();
+                    a[1..].find(qc).map(|e| a[1..1 + e].to_string())
+                } else {
+                    a.find(')').map(|e| a[..e].trim().to_string())
+                }
+            } else {
+                let first = after.chars().next();
+                if first == Some('"') || first == Some('\'') {
+                    let qc = first.unwrap();
+                    after[1..].find(qc).map(|e| after[1..1 + e].to_string())
+                } else {
+                    Some(after.split(|c: char| c.is_whitespace() || c == '>').next().unwrap_or("").to_string())
+                }
+            };
+            if let Some(v) = val {
+                if !v.is_empty() { out.push(v); }
+            }
+        }
+    }
+    out
+}
+
+fn classify_asset(s: &str) -> &'static str {
+    let l = s.to_ascii_lowercase();
+    if l.ends_with(".css") { "css" }
+    else if l.ends_with(".js") || l.ends_with(".mjs") { "script" }
+    else if [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico"].iter().any(|e| l.ends_with(e)) { "img" }
+    else { "other" }
+}
+
+/// Scan a single .html file for *local relative* asset references that
+/// would not travel with a single-file send. Absolute URLs, data URIs,
+/// and anchors are ignored. Used as a send pre-flight warning.
+#[tauri::command]
+pub fn inspect_html_assets(path: String) -> Result<HtmlInspect, String> {
+    let p = Path::new(&path);
+    let is_html = p
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|e| e.eq_ignore_ascii_case("html") || e.eq_ignore_ascii_case("htm"))
+        .unwrap_or(false);
+    if !is_html || !p.is_file() {
+        return Ok(HtmlInspect { is_html: false, has_inline_style: false, parent_dir: String::new(), assets: vec![] });
+    }
+    let content = std::fs::read_to_string(p).map_err(|e| e.to_string())?;
+    let has_inline_style = content.to_ascii_lowercase().contains("<style");
+    let parent = p.parent().unwrap_or_else(|| Path::new("."));
+
+    let mut assets = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for raw in extract_html_refs(&content) {
+        let r = raw.trim().to_string();
+        if r.is_empty() || r.starts_with('#') { continue; }
+        let lower = r.to_ascii_lowercase();
+        if lower.starts_with("http://") || lower.starts_with("https://")
+            || lower.starts_with("//") || lower.starts_with("data:")
+            || lower.starts_with("mailto:") || lower.starts_with("javascript:")
+            || lower.starts_with("tel:")
+        { continue; }
+        if !seen.insert(r.clone()) { continue; }
+        // Strip query/fragment for the existence probe.
+        let clean = r.split(['?', '#']).next().unwrap_or(&r);
+        let rel = clean.replace('/', std::path::MAIN_SEPARATOR_STR);
+        let exists = parent.join(&rel).exists() || parent.join(clean).exists();
+        let kind = classify_asset(clean).to_string();
+        assets.push(HtmlAsset { reference: r, kind, exists });
+    }
+    Ok(HtmlInspect {
+        is_html: true,
+        has_inline_style,
+        parent_dir: parent.to_string_lossy().into_owned(),
+        assets,
+    })
+}
+
 #[tauri::command]
 pub fn open_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
     app.opener()

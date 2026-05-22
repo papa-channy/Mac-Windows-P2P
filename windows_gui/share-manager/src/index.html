@@ -346,6 +346,25 @@
     </div>
   </div>
 
+  <!-- HTML dependency warning modal -->
+  <div id="html-warn" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3>⚠ 딸린 파일이 있는 HTML</h3>
+      </div>
+      <div class="modal-body">
+        <p class="html-warn-intro">아래 HTML은 외부 파일(CSS/스크립트/이미지)에 의존해요. 단일 파일로 보내면 <b>딸린 파일이 빠져 디자인이 깨집니다</b>. 폴더째 보내면 내부 파일명이 보존돼 링크가 살아요.</p>
+        <div id="html-warn-list" class="html-warn-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="html-warn-cancel" class="ghost-btn">취소</button>
+        <button id="html-warn-proceed" class="ghost-btn">그래도 파일만 보내기</button>
+        <button id="html-warn-folder" class="primary-btn">폴더째 보내기</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Item details modal -->
   <div id="details" class="modal hidden">
     <div class="modal-backdrop"></div>

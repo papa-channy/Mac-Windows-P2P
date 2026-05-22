@@ -39,6 +39,7 @@ pub fn run() {
             commands::append_worklog,
             commands::list_compressed_images,
             commands::compressed_image_path,
+            commands::inspect_html_assets,
             commands::load_policy,
             commands::save_policy,
             commands::publish_profile,
