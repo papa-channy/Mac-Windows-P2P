@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.2.2",
+    "date": "2026-05-23",
+    "title": "권한 안내 자동 감지 · Space 따라오기 진짜로",
+    "highlights": [
+      "FDA 리스트 자동 등록: 첫 실행 시 backend 가 TCC 보호 위치 (/Library/Application Support/com.apple.TCC/TCC.db) 접근 시도 → macOS 가 share-manager 를 '전체 디스크 접근' 리스트에 자동 추가. 더 이상 사용자가 + 버튼 + Finder 탐색 안 해도 됨",
+      "권한 부여 자동 감지: 모달이 1.5초 간격으로 has_full_disk_access 폴링 → 사용자가 토글 ON 하는 즉시 '✓ 권한 부여 완료' 토스트 + 자동 닫기",
+      "Space 따라오기 진짜 작동: tauri::RunEvent::Reopen (macOS dock 클릭) 에서 NSWindowCollectionBehaviorMoveToActiveSpace 를 show+focus 직전에 재적용 — single-instance plugin 이 catch 못하는 dock-reopen 경로까지 커버"
+    ],
+    "notes": "v0.2.1 권한 모달 동작 (수동 + Finder 탐색 + 사용자가 직접 닫기) 과 Space 따라오기 미작동 fix. 자동 업데이트로 받으면 첫 실행 시 share-manager 가 FDA 리스트에 자동 추가되어 보임."
+  },
+  {
     "version": "0.2.1",
     "date": "2026-05-23",
     "title": "단일 인스턴스 · Service 즉시 송신 · 디스크 권한 안내",

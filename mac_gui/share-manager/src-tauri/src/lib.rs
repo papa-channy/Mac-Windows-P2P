@@ -95,9 +95,28 @@ pub fn run() {
             commands::get_release_notes,
             commands::current_app_version,
             commands::open_privacy_settings,
+            commands::has_full_disk_access,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // macOS dock click / `open -a` / Spotlight re-launch fires a
+            // Reopen event into the running process; tauri-plugin-single-
+            // instance only catches spawn-style relaunches, so we route
+            // both paths through the same activator. Reapplying the
+            // collection behavior right before show + focus is what
+            // makes the window actually follow the user's active Space —
+            // setting it once at setup() time isn't enough because the
+            // backing NSWindow may not exist yet.
+            if let tauri::RunEvent::Reopen { .. } = event {
+                if let Some(win) = app_handle.get_webview_window("main") {
+                    apply_macos_space_behavior(&win);
+                    let _ = win.show();
+                    let _ = win.unminimize();
+                    let _ = win.set_focus();
+                }
+            }
+        });
 }
 
 // ─── argv parsing ──────────────────────────────────────────────────
@@ -141,12 +160,14 @@ fn handle_launch_args(app: AppHandle) {
 // ─── Second-launch (delivered by tauri-plugin-single-instance) ─────
 
 fn on_second_instance(app: &AppHandle, argv: Vec<String>) {
-    // Show + focus our window — let the OS know we're alive.
+    // Reapply collectionBehavior BEFORE show + focus so the window
+    // follows us to the active Space on activation. After show+focus
+    // the behavior change has no effect on the current activation.
     if let Some(win) = app.get_webview_window("main") {
+        apply_macos_space_behavior(&win);
         let _ = win.show();
         let _ = win.unminimize();
         let _ = win.set_focus();
-        apply_macos_space_behavior(&win);
     }
     let parsed = parse_args(&argv);
     dispatch(app.clone(), parsed);
