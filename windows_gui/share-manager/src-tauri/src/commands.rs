@@ -1754,7 +1754,7 @@ fn classify_event_path(p: &Path) -> &'static str {
 }
 
 pub fn start_file_watcher(app: tauri::AppHandle) {
-    use notify::{recommended_watcher, EventKind, RecursiveMode, Watcher};
+    use notify::{recommended_watcher, RecursiveMode, Watcher};
     use tauri::Emitter;
 
     std::thread::spawn(move || {
@@ -1784,49 +1784,143 @@ pub fn start_file_watcher(app: tauri::AppHandle) {
             }
         }
 
-        use std::collections::HashMap;
-        let mut last_emit: HashMap<&'static str, std::time::Instant> = HashMap::new();
         let debounce = std::time::Duration::from_millis(400);
-
-        for res in rx {
-            let event = match res {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-            if !matches!(
-                event.kind,
-                EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
-            ) {
-                continue;
-            }
-            let mut topics_fired: std::collections::HashSet<&'static str> =
-                std::collections::HashSet::new();
-            for p in &event.paths {
-                let topic = classify_event_path(p);
-                if topic.is_empty() || topics_fired.contains(topic) {
-                    continue;
-                }
-                topics_fired.insert(topic);
-                let now = std::time::Instant::now();
-                if let Some(prev) = last_emit.get(topic) {
-                    if now.duration_since(*prev) < debounce {
-                        continue;
-                    }
-                }
-                last_emit.insert(topic, now);
-                let _ = app.emit(
-                    "share-changed",
-                    serde_json::json!({
-                        "topic": topic,
-                        "path": p.to_string_lossy(),
-                    }),
-                );
-            }
-        }
+        run_event_loop(rx, debounce, |topic| {
+            let _ = app.emit("share-changed", serde_json::json!({ "topic": topic }));
+        });
 
         // Keep the watcher alive for the lifetime of the thread (rx drop ends loop).
         let _ = watcher;
     });
+}
+
+/// Drain watcher events and call `emit(topic)` with leading + trailing debounce.
+///
+/// The earlier leading-only debounce dropped every event within 400ms of the
+/// first, *including* the event fired when a freshly-copied file finally became
+/// visible. Over SMB the first notification can arrive before the directory
+/// entry is readable by `list_transfers`, so that leading refresh sees nothing
+/// and the trailing (swallowed) event never re-runs it — the item only appears
+/// after a restart. Small files (e.g. `.html`) are hit hardest because their
+/// whole write completes inside one debounce window; larger files (`.pdf`) emit
+/// a later event outside the window that happens to refresh.
+///
+/// Fix: emit immediately on the first event of a burst (responsiveness), then
+/// emit once more after `debounce` of silence (correctness — the file is now
+/// fully visible). Extracted from `start_file_watcher` so it can be unit-tested.
+fn run_event_loop<F: FnMut(&str)>(
+    rx: std::sync::mpsc::Receiver<notify::Result<notify::Event>>,
+    debounce: std::time::Duration,
+    mut emit: F,
+) {
+    use notify::EventKind;
+    use std::collections::HashSet;
+    use std::sync::mpsc::RecvTimeoutError;
+
+    let mut pending: HashSet<&'static str> = HashSet::new();
+    loop {
+        let res = if pending.is_empty() {
+            match rx.recv() {
+                Ok(r) => r,
+                Err(_) => break, // sender dropped
+            }
+        } else {
+            match rx.recv_timeout(debounce) {
+                Ok(r) => r,
+                // Burst settled (or shutting down) — trailing refresh.
+                Err(RecvTimeoutError::Timeout) => {
+                    for topic in pending.drain() {
+                        emit(topic);
+                    }
+                    continue;
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    for topic in pending.drain() {
+                        emit(topic);
+                    }
+                    break;
+                }
+            }
+        };
+        let event = match res {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        if !matches!(
+            event.kind,
+            EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+        ) {
+            continue;
+        }
+        for p in &event.paths {
+            let topic = classify_event_path(p);
+            if topic.is_empty() {
+                continue;
+            }
+            // Leading edge: first sighting of this topic in the current burst.
+            if pending.insert(topic) {
+                emit(topic);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod watcher_tests {
+    use super::*;
+    use notify::event::CreateKind;
+    use notify::{Event, EventKind};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    fn create_event(path: &str) -> notify::Result<Event> {
+        Ok(Event::new(EventKind::Create(CreateKind::Any)).add_path(PathBuf::from(path)))
+    }
+
+    // A single isolated event must produce BOTH a leading and a trailing emit.
+    // The trailing one is the regression guard: it is what picks up a small file
+    // (e.g. .html) that only becomes visible after the leading refresh ran.
+    #[test]
+    fn single_event_emits_leading_and_trailing() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let emits = Arc::new(Mutex::new(Vec::<String>::new()));
+        let sink = emits.clone();
+        let handle = std::thread::spawn(move || {
+            run_event_loop(rx, Duration::from_millis(80), |t| {
+                sink.lock().unwrap().push(t.to_string());
+            });
+        });
+
+        tx.send(create_event("/srv/share/10_Exchange/10_Mac_to_Windows/90_Received/docs/x.html"))
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(220)); // > debounce
+
+        let n = emits.lock().unwrap().iter().filter(|t| *t == "transfers").count();
+        assert_eq!(n, 2, "expected leading + trailing refresh, got {n}");
+
+        drop(tx);
+        handle.join().unwrap();
+    }
+
+    // Paths outside the watched roots never emit.
+    #[test]
+    fn unclassified_paths_are_ignored() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let emits = Arc::new(Mutex::new(Vec::<String>::new()));
+        let sink = emits.clone();
+        let handle = std::thread::spawn(move || {
+            run_event_loop(rx, Duration::from_millis(80), |t| {
+                sink.lock().unwrap().push(t.to_string());
+            });
+        });
+
+        tx.send(create_event("/srv/share/00_System/99_Unwatched/x.html")).unwrap();
+        std::thread::sleep(Duration::from_millis(180));
+        assert!(emits.lock().unwrap().is_empty());
+
+        drop(tx);
+        handle.join().unwrap();
+    }
 }
 
 fn images_dir() -> PathBuf {
