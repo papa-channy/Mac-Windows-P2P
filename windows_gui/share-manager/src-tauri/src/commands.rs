@@ -1012,30 +1012,194 @@ pub fn start_file_watcher(app: tauri::AppHandle) {
     });
 }
 
+fn images_dir() -> PathBuf {
+    let p = clipboard_dir().join("images");
+    let _ = std::fs::create_dir_all(&p);
+    p
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(bytes);
+    hex::encode(h.finalize())
+}
+
+fn policy_clipboard_cfg() -> (u32, u64, u64) {
+    // (max_dimension, retention_days, total_cap_mb) with defaults
+    let policy = load_policy().unwrap_or_else(|_| serde_json::json!({}));
+    let c = policy.get("clipboard").cloned().unwrap_or_default();
+    let max_dim = c.get("image_max_dimension").and_then(|v| v.as_u64()).unwrap_or(2560) as u32;
+    let retention = c.get("image_retention_days").and_then(|v| v.as_u64()).unwrap_or(30);
+    let cap_mb = c.get("image_total_cap_mb").and_then(|v| v.as_u64()).unwrap_or(300);
+    (max_dim, retention, cap_mb)
+}
+
+fn save_clipboard_image(rgba: &[u8], w: u32, h: u32) -> std::io::Result<()> {
+    use image::{codecs::png::{CompressionType, FilterType as PngFilter, PngEncoder}, imageops, ExtendedColorType, ImageEncoder, RgbaImage};
+
+    if w == 0 || h == 0 { return Ok(()); }
+    let base = RgbaImage::from_raw(w, h, rgba.to_vec())
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "rgba size mismatch"))?;
+
+    let (max_dim, _, _) = policy_clipboard_cfg();
+    let longest = w.max(h);
+    let scaled = if longest > max_dim {
+        let scale = max_dim as f64 / longest as f64;
+        let nw = ((w as f64) * scale).round().max(1.0) as u32;
+        let nh = ((h as f64) * scale).round().max(1.0) as u32;
+        imageops::resize(&base, nw, nh, imageops::FilterType::Lanczos3)
+    } else {
+        base
+    };
+
+    let mut buf = Vec::new();
+    PngEncoder::new_with_quality(&mut buf, CompressionType::Best, PngFilter::Adaptive)
+        .write_image(scaled.as_raw(), scaled.width(), scaled.height(), ExtendedColorType::Rgba8)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+
+    let sha = sha256_hex(&buf);
+    let fname = format!("{sha}.png");
+    let file = images_dir().join(&fname);
+    if !file.exists() {
+        std::fs::write(&file, &buf)?;
+    }
+    append_own_clipboard_image_entry(&fname, scaled.width(), scaled.height(), buf.len() as u64)?;
+    Ok(())
+}
+
+fn append_own_clipboard_image_entry(image_ref: &str, w: u32, h: u32, bytes: u64) -> std::io::Result<()> {
+    let host = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "windows".into());
+    let entry = serde_json::json!({
+        "ts": chrono::Local::now().to_rfc3339(),
+        "host": host,
+        "os": "windows",
+        "kind": "image",
+        "image_ref": image_ref,
+        "width": w,
+        "height": h,
+        "bytes": bytes,
+    });
+    let line = serde_json::to_string(&entry).unwrap_or_default();
+    use std::io::Write;
+    let path = own_history_path();
+    if let Some(p) = path.parent() { std::fs::create_dir_all(p)?; }
+    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&path)?;
+    f.write_all(line.as_bytes())?;
+    f.write_all(b"\n")?;
+    rotate_jsonl(&path, 200)?;
+    Ok(())
+}
+
+fn sweep_clipboard_images() {
+    let dir = images_dir();
+    let (_, retention_days, cap_mb) = policy_clipboard_cfg();
+    let now = std::time::SystemTime::now();
+    let retention = std::time::Duration::from_secs(retention_days * 86_400);
+
+    let entries: Vec<_> = match std::fs::read_dir(&dir) {
+        Ok(rd) => rd.flatten().collect(),
+        Err(_) => return,
+    };
+
+    // 1) Delete files older than retention
+    for e in &entries {
+        if let Ok(meta) = e.metadata() {
+            if let Ok(modified) = meta.modified() {
+                if let Ok(age) = now.duration_since(modified) {
+                    if age > retention {
+                        let _ = std::fs::remove_file(e.path());
+                    }
+                }
+            }
+        }
+    }
+
+    // 2) Enforce total cap (oldest first)
+    let cap_bytes = cap_mb * 1024 * 1024;
+    let mut survivors: Vec<(std::path::PathBuf, std::time::SystemTime, u64)> = Vec::new();
+    let mut total: u64 = 0;
+    for e in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+        if let Ok(meta) = e.metadata() {
+            let mt = meta.modified().unwrap_or(now);
+            let sz = meta.len();
+            survivors.push((e.path(), mt, sz));
+            total += sz;
+        }
+    }
+    if total > cap_bytes {
+        survivors.sort_by_key(|(_, mt, _)| *mt); // oldest first
+        for (path, _, sz) in survivors {
+            if total <= cap_bytes { break; }
+            if std::fs::remove_file(&path).is_ok() {
+                total = total.saturating_sub(sz);
+            }
+        }
+    }
+}
+
 pub fn start_clipboard_poller(app: tauri::AppHandle) {
     use tauri_plugin_clipboard_manager::ClipboardExt;
     std::thread::spawn(move || {
-        let mut last: Option<String> = None;
-        // Initial small delay to let the window settle
+        let mut last_text: Option<String> = None;
+        let mut last_image: Option<String> = None;
+        let mut last_sweep = std::time::Instant::now();
+
+        sweep_clipboard_images();
         std::thread::sleep(std::time::Duration::from_millis(500));
+
         loop {
             std::thread::sleep(std::time::Duration::from_millis(1500));
-            let text = match app.clipboard().read_text() {
-                Ok(t) => t,
-                Err(_) => continue,
-            };
-            if text.is_empty() {
-                continue;
-            }
-            if let Some(prev) = &last {
-                if *prev == text {
-                    continue;
+
+            // Text branch
+            if let Ok(text) = app.clipboard().read_text() {
+                if !text.is_empty() && last_text.as_ref() != Some(&text) {
+                    let _ = append_own_clipboard_entry(&text);
+                    last_text = Some(text);
                 }
             }
-            let _ = append_own_clipboard_entry(&text);
-            last = Some(text);
+
+            // Image branch
+            if let Ok(img) = app.clipboard().read_image() {
+                let rgba = img.rgba();
+                let (w, h) = (img.width(), img.height());
+                if !rgba.is_empty() && w > 0 && h > 0 {
+                    let raw_hash = sha256_hex(rgba);
+                    if last_image.as_ref() != Some(&raw_hash) {
+                        if let Err(e) = save_clipboard_image(rgba, w, h) {
+                            eprintln!("clipboard image save failed: {e}");
+                        }
+                        last_image = Some(raw_hash);
+                    }
+                }
+            }
+
+            // Periodic sweep (every 6h)
+            if last_sweep.elapsed() > std::time::Duration::from_secs(6 * 3600) {
+                sweep_clipboard_images();
+                last_sweep = std::time::Instant::now();
+            }
         }
     });
+}
+
+#[tauri::command]
+pub fn clipboard_image_path(image_ref: String) -> String {
+    images_dir().join(image_ref).to_string_lossy().into_owned()
+}
+
+#[tauri::command]
+pub fn copy_image_to_os_clipboard(app: tauri::AppHandle, image_ref: String) -> Result<(), String> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    let path = images_dir().join(&image_ref);
+    if !path.exists() {
+        return Err("이미지 파일이 만료/삭제됨".to_string());
+    }
+    let dyn_img = image::open(&path).map_err(|e| e.to_string())?;
+    let rgba = dyn_img.to_rgba8();
+    let (w, h) = (rgba.width(), rgba.height());
+    let img = tauri::image::Image::new_owned(rgba.into_raw(), w, h);
+    app.clipboard().write_image(&img).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

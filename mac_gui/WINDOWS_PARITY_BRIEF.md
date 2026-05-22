@@ -761,7 +761,80 @@ UI는 모든 호스트의 항목을 하나의 시간순 리스트로 보여줌. 
 - 빈 텍스트: append 안 함
 - 직전 값과 동일: append 안 함
 - ≥32K chars 길이: truncate
-- 비-텍스트 (이미지/파일 리스트 등): v1 skip. v2에서 `kind: image` 등 확장
+
+### 13.9 이미지 클립보드 (`kind: "image"`) — 구현됨 (Windows)
+
+텍스트와 **별도 채널**로 이미지도 자동 기록. 폴러가 매 틱마다 텍스트와 이미지를 각각 읽고, 각자 직전 해시와 비교해 변경 시에만 기록.
+
+**저장 구조**:
+```
+00_System/70_Clipboard/
+├── <hostname>.history.jsonl    ← text + image 엔트리 혼재
+└── images/
+    └── <sha256>.png             ← 인코딩된 PNG (sha256 = PNG 바이트 해시, dedup)
+```
+
+**이미지 엔트리 JSONL 스키마**:
+```json
+{
+  "ts": "2026-05-22T17:49:05+09:00",
+  "host": "DESKTOP-Q0S7LSQ",
+  "os": "windows",
+  "kind": "image",
+  "image_ref": "ca1e8cf6...9f34.png",
+  "width": 480,
+  "height": 320,
+  "bytes": 5016
+}
+```
+
+**기록 알고리즘** (양쪽 동일):
+```text
+img = read_os_clipboard_image()   # RGBA raw + width + height
+if img present and not empty:
+  raw_hash = sha256(rgba_bytes)
+  if raw_hash != last_image_hash:
+    # downscale longest edge to policy.clipboard.image_max_dimension (default 2560)
+    scaled = downscale(img, max_dim) if longest_edge > max_dim else img
+    png = encode_png(scaled, best_compression)
+    sha = sha256(png_bytes)
+    write images/<sha>.png  (skip if exists — dedup)
+    append jsonl { kind:"image", image_ref:"<sha>.png", width, height, bytes }
+    last_image_hash = raw_hash
+```
+
+**표시**: 통합 타임라인에서 이미지 엔트리는 썸네일로 (asset 프로토콜 / convertFileSrc로 `images/<image_ref>` 로드). 최대 320×180 박스.
+
+**클릭 → 복사**: `copy_image_to_os_clipboard(image_ref)` → PNG 디코드 → RGBA → OS 클립보드에 이미지로 write.
+
+**보관/압축 정책** (`policy.json` → `clipboard`):
+```json
+"clipboard": {
+  "image_retention_days": 30,
+  "image_max_dimension": 2560,
+  "image_total_cap_mb": 300
+}
+```
+- 신선: PNG 무손실, 최대 2560px 다운스케일, sha256 dedup
+- **30일 경과 → 이미지 파일 삭제** (JSONL 엔트리는 tombstone로 남아 "🖼 만료됨" 표시)
+- **총량 300MB 캡** → 초과 시 오래된 것부터 제거 (나이 무관)
+- sweep: 폴러 시작 시 1회 + 6시간마다
+
+**OS별 이미지 접근**:
+| OS | 읽기 | 쓰기 |
+|---|---|---|
+| Windows | `clipboard().read_image()` (arboard, RGBA) | `clipboard().write_image(&Image)` |
+| macOS | `NSPasteboard.general.data(forType: .png)` 또는 `.tiff` → RGBA 변환 | `NSPasteboard` 에 PNG/TIFF write |
+
+**Mac 측 체크리스트 (이미지)**:
+- [ ] 폴러에 이미지 브랜치 추가 (텍스트와 별도 last-hash 추적)
+- [ ] RGBA → PNG 인코딩, 최대 2560px 다운스케일, sha256 dedup
+- [ ] `images/<sha>.png` 저장 + jsonl `kind:image` append
+- [ ] 타임라인 썸네일 렌더 (PNG 파일을 자기 share root 경유 표시)
+- [ ] 클릭 → PNG 디코드 → NSPasteboard 에 이미지 write
+- [ ] 30일 삭제 + 300MB 캡 sweep (양쪽이 sweep 하면 같은 파일 정리 — race 무해)
+
+> **주의**: Windows가 만든 이미지 파일을 Mac이 읽을 때 경로는 자기 share root 기준 (`/Volumes/Mac-Window_Share/00_System/70_Clipboard/images/<ref>`). 같은 물리 폴더이므로 그대로 읽힘. 호스트별 절대경로를 JSONL에 박지 말 것 — `image_ref`(파일명)만 저장.
 
 ### 13.8 Mac 측 구현 체크리스트 (클립보드)
 

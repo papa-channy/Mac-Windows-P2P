@@ -47,6 +47,8 @@ pub fn run() {
             commands::list_clipboard_entries,
             commands::copy_to_os_clipboard,
             commands::clear_own_clipboard_history,
+            commands::clipboard_image_path,
+            commands::copy_image_to_os_clipboard,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
