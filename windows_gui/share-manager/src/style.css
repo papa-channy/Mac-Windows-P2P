@@ -873,7 +873,14 @@ button { font-family: inherit; }
 .git-flag.unpushed { color: #0a84ff; background: rgba(10,132,255,0.12); }
 .git-flag.behind { color: #bc4c00; background: rgba(188,76,0,0.12); }
 .git-flag.noup { color: #d1242f; }
+.git-flag.pr { color: #8250df; background: rgba(130,80,223,0.12); }
 .git-miss { color: var(--text-dim); font-size: 11px; font-style: italic; }
+.git-host-row.remote { background: var(--surface-low); border-radius: 5px; }
+.git-os-remote { background: rgba(130,80,223,0.13); color: #8250df; }
+.git-prs { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 3px; }
+.git-pr { font-size: 11px; color: var(--text-sec); }
+.git-pr-title { color: var(--text-pri); }
+.git-pr-branch { font-family: Consolas, "SF Mono", monospace; font-size: 10px; color: var(--text-dim); }
 .theme-opt-meta { font-size: 11px; color: var(--text-sec); }
 .theme-opt-remove {
   background: transparent;

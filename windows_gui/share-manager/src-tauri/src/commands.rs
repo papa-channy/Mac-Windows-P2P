@@ -1646,6 +1646,101 @@ pub fn git_generate_ssh_key() -> Result<String, String> {
     std::fs::read_to_string(&pubp).map(|s| s.trim().to_string()).map_err(|e| e.to_string())
 }
 
+// ─── GitHub remote state (Stage 3) ─────────────────────────────
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RemoteBranch {
+    pub name: String,
+    pub sha: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RemotePr {
+    pub number: u64,
+    pub title: String,
+    pub head: String,
+    pub base: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RemoteRepoState {
+    pub owner_repo: String,
+    pub default_branch: String,
+    pub default_sha: String,
+    pub branches: Vec<RemoteBranch>,
+    pub open_prs: Vec<RemotePr>,
+    pub fetched_at: String,
+    pub error: Option<String>,
+}
+
+fn fetch_one_remote(token: &str, owner_repo: &str) -> RemoteRepoState {
+    let now = chrono::Local::now().to_rfc3339();
+    let mut st = RemoteRepoState {
+        owner_repo: owner_repo.to_string(),
+        default_branch: String::new(),
+        default_sha: String::new(),
+        branches: Vec::new(),
+        open_prs: Vec::new(),
+        fetched_at: now,
+        error: None,
+    };
+    // repo meta → default_branch
+    let meta = match gh_get(token, &format!("https://api.github.com/repos/{owner_repo}")) {
+        Ok(v) => v,
+        Err(e) => { st.error = Some(e); return st; }
+    };
+    st.default_branch = meta.get("default_branch").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    // branches (≤100)
+    if let Ok(v) = gh_get(token, &format!("https://api.github.com/repos/{owner_repo}/branches?per_page=100")) {
+        if let Some(arr) = v.as_array() {
+            for b in arr {
+                let name = b.get("name").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                let sha = b.get("commit").and_then(|c| c.get("sha")).and_then(|x| x.as_str()).unwrap_or("").to_string();
+                if name == st.default_branch { st.default_sha = sha.clone(); }
+                if !name.is_empty() { st.branches.push(RemoteBranch { name, sha }); }
+            }
+        }
+    }
+    // open PRs (≤50)
+    if let Ok(v) = gh_get(token, &format!("https://api.github.com/repos/{owner_repo}/pulls?state=open&per_page=50")) {
+        if let Some(arr) = v.as_array() {
+            for p in arr {
+                st.open_prs.push(RemotePr {
+                    number: p.get("number").and_then(|x| x.as_u64()).unwrap_or(0),
+                    title: p.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                    head: p.get("head").and_then(|h| h.get("ref")).and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                    base: p.get("base").and_then(|h| h.get("ref")).and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                });
+            }
+        }
+    }
+    st
+}
+
+#[tauri::command]
+pub fn github_fetch_remote(owner_repos: Vec<String>) -> Result<Vec<RemoteRepoState>, String> {
+    let token = get_token().ok_or("등록된 토큰이 없습니다")?;
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for or in owner_repos {
+        if or.is_empty() || !seen.insert(or.clone()) { continue; }
+        out.push(fetch_one_remote(&token, &or));
+    }
+    // cache to share for reuse (metadata only, no token)
+    let cache = serde_json::json!({ "fetched_at": chrono::Local::now().to_rfc3339(), "repos": out });
+    let _ = std::fs::write(git_share_dir().join("remote-cache.json"), serde_json::to_string_pretty(&cache).unwrap_or_default());
+    Ok(out)
+}
+
+#[tauri::command]
+pub fn read_remote_cache() -> Result<serde_json::Value, String> {
+    let p = git_share_dir().join("remote-cache.json");
+    if !p.exists() {
+        return Ok(serde_json::json!({ "repos": [] }));
+    }
+    let raw = std::fs::read_to_string(&p).map_err(|e| e.to_string())?;
+    serde_json::from_str(&raw).map_err(|e| e.to_string())
+}
+
 // ─── File watcher (replaces UI polling) ────────────────────────
 fn classify_event_path(p: &Path) -> &'static str {
     let s = p.to_string_lossy();

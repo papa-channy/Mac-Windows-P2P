@@ -1076,3 +1076,4 @@ JSONL 공통: `{ ts, host, os, event, ... }`. `send_ok`(source/category/transfer
 | 2026-05-22 | §13.9 이미지 스키마 v2 정렬(size_bytes/content/len), §16 verify_transfer + transfer_id + dir-hash 호환 계약 추가. Windows v0.2 parity 완료. |
 | 2026-05-22 | §17 로그 허브(80_Logs), 수신 자동검증 + ✓/✗ 배지 + integrity 설정, 이미지 압축 보관(compress action), 클립보드 썸네일 깜빡임 수정. Windows v0.3. |
 | 2026-05-23 | §18 Git 상태 대시보드 계약 추가 (Stage1: 90_Git 스냅샷 + 로컬 스캔 + 2-way 대시보드, Windows 선구현). 사이드바 영어화(In/Out/카테고리/Notes/Refresh 등). |
+| 2026-05-23 | Git Stage2(PAT/SSH 키체인 등록 + 내 레포만 필터 + keyring windows-native), Stage3(github_fetch_remote: 브랜치 SHA+PR → 원격/Mac/Win 3-way + vs-원격 태그 + 발산 위험 표기, remote-cache.json). Windows 선구현. |

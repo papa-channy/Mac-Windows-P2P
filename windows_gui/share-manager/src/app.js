@@ -84,7 +84,7 @@ const state = {
   notes:     { list: [], selectedId: null, current: null, saveTimer: null },
   clipboard: { entries: [], pollTimer: null, autoTimer: null },
   log:       { category: null, hubOpen: false, entries: [] },
-  git:       { snapshots: [], scanning: false },
+  git:       { snapshots: [], remote: {}, scanning: false, fetchingRemote: false },
 };
 
 // Defaults applied if backend returns nothing (shouldn't happen but be safe)
@@ -117,6 +117,7 @@ const $panelGit    = document.getElementById('panel-git');
 const $gitSubtitle = document.getElementById('git-subtitle');
 const $gitList     = document.getElementById('git-list');
 const $gitScan     = document.getElementById('git-scan');
+const $gitFetchRemote = document.getElementById('git-fetch-remote');
 const $gitRefresh  = document.getElementById('git-refresh');
 const $panelItems = document.getElementById('panel-items');
 const $panelTree  = document.getElementById('panel-tree');
@@ -1349,7 +1350,47 @@ async function refreshGit() {
     console.warn('git status:', e);
     state.git.snapshots = [];
   }
+  try {
+    const cache = await invoke('read_remote_cache');
+    state.git.remote = {};
+    for (const r of (cache.repos || [])) state.git.remote[r.owner_repo] = r;
+  } catch (_) {}
   renderGitPanel();
+}
+
+// Collect the owned owner_repos currently visible, then hit the GitHub API.
+async function fetchRemoteNow() {
+  if (state.git.fetchingRemote) return;
+  const g = state.settings.git || {};
+  const ownerSet = new Set((g.owners || []).map(o => o.toLowerCase()));
+  const repos = new Set();
+  for (const s of state.git.snapshots) {
+    for (const r of s.repos) {
+      if (!r.owner_repo) continue;
+      const owner = r.owner_repo.split('/')[0].toLowerCase();
+      if (!g.only_mine || ownerSet.size === 0 || ownerSet.has(owner)) repos.add(r.owner_repo);
+    }
+  }
+  const list = [...repos];
+  if (list.length === 0) { toast('조회할 레포가 없어요 (스캔/토큰 먼저)', 'error'); return; }
+  state.git.fetchingRemote = true;
+  $gitFetchRemote.disabled = true;
+  $gitFetchRemote.textContent = '☁ 동기화 중…';
+  setStatus(`GitHub 원격 상태 조회 중… (${list.length}개 레포)`);
+  try {
+    const states = await invoke('github_fetch_remote', { ownerRepos: list });
+    state.git.remote = {};
+    for (const r of states) state.git.remote[r.owner_repo] = r;
+    toast(`${states.length}개 레포 원격 동기화 완료`, 'success');
+    renderGitPanel();
+  } catch (e) {
+    toast('원격 동기화 실패: ' + e, 'error');
+  } finally {
+    state.git.fetchingRemote = false;
+    $gitFetchRemote.disabled = false;
+    $gitFetchRemote.textContent = '☁ 원격 동기화';
+    setStatus('마지막 갱신: ' + new Date().toLocaleTimeString('ko-KR'));
+  }
 }
 
 async function scanGitNow() {
@@ -1395,6 +1436,7 @@ function renderGitPanel() {
         repoMap.set(key, {
           label: r.owner_repo || (r.path.split(/[\\/]/).pop() || r.path),
           owner: r.owner_repo ? r.owner_repo.split('/')[0] : null,
+          ownerRepo: r.owner_repo || null,
           hosts: {},
         });
       }
@@ -1434,8 +1476,43 @@ function renderGitPanel() {
   for (const entry of rows) {
     const vals = Object.values(entry.hosts);
     const heads = new Set(vals.map(v => v.head));
-    const inSync = heads.size === 1 && vals.length === hosts.length && vals.every(v => v.dirty === 0 && v.unpushed === 0 && v.behind === 0);
-    const statusBadge = inSync ? '<span class="git-sync ok">✓ 동기화됨</span>' : '<span class="git-sync warn">⚠ 불일치</span>';
+    const rem = entry.ownerRepo ? state.git.remote[entry.ownerRepo] : null;
+    const remBranch = (name) => rem && (rem.branches || []).find(b => b.name === name);
+
+    // vs-remote per host + overall sync (including remote when known).
+    let allMatchRemote = !!rem && !!rem.default_sha;
+    let anyDiverge = false;
+    for (const v of vals) {
+      const rb = remBranch(v.branch);
+      const remoteSha = rb ? rb.sha : null;
+      if (remoteSha && v.head && remoteSha === v.head) { /* match */ }
+      else { allMatchRemote = false; }
+      if (v.unpushed > 0) anyDiverge = true;
+    }
+    const localInSync = heads.size === 1 && vals.length === hosts.length && vals.every(v => v.dirty === 0 && v.unpushed === 0 && v.behind === 0);
+    const inSync = rem ? (localInSync && allMatchRemote) : localInSync;
+    const statusBadge = inSync
+      ? '<span class="git-sync ok">✓ 동기화됨</span>'
+      : (anyDiverge ? '<span class="git-sync warn">⚠ 발산 위험</span>' : '<span class="git-sync warn">⚠ 불일치</span>');
+
+    // Remote row
+    let remoteRow = '';
+    if (rem) {
+      if (rem.error) {
+        remoteRow = `<div class="git-host-row remote"><span class="git-os git-os-remote">원격</span><span class="git-host-name">GitHub</span><span class="git-miss">조회 오류: ${escape(rem.error)}</span></div>`;
+      } else {
+        const prBadge = (rem.open_prs && rem.open_prs.length) ? `<span class="git-flag pr">PR ${rem.open_prs.length}</span>` : '';
+        remoteRow = `
+          <div class="git-host-row remote">
+            <span class="git-os git-os-remote">원격</span>
+            <span class="git-host-name">GitHub</span>
+            <span class="git-branch">${escape(rem.default_branch || '?')}</span>
+            <span class="git-head" title="${escape(rem.default_sha)}">${escape((rem.default_sha || '').slice(0, 7))}</span>
+            <span class="git-flags">${prBadge}</span>
+          </div>`;
+      }
+    }
+
     let hostRows = '';
     for (const h of hosts) {
       const r = entry.hosts[h.host];
@@ -1449,6 +1526,15 @@ function renderGitPanel() {
       if (r.behind > 0) flags.push(`<span class="git-flag behind">↓${r.behind} 뒤처짐</span>`);
       if (r.stash > 0) flags.push(`<span class="git-flag stash">stash ${r.stash}</span>`);
       if (!r.upstream) flags.push(`<span class="git-flag noup">upstream 없음</span>`);
+      // vs remote tip of the same branch
+      const rb = remBranch(r.branch);
+      if (rb) {
+        if (rb.sha === r.head) flags.push('<span class="git-flag clean">= 원격</span>');
+        else if (r.unpushed > 0) flags.push('<span class="git-flag unpushed">원격과 발산</span>');
+        else flags.push('<span class="git-flag behind">원격과 다름</span>');
+      } else if (rem && !rem.error) {
+        flags.push('<span class="git-flag noup">원격에 브랜치 없음</span>');
+      }
       if (flags.length === 0) flags.push('<span class="git-flag clean">clean</span>');
       hostRows += `
         <div class="git-host-row">
@@ -1459,9 +1545,18 @@ function renderGitPanel() {
           <span class="git-flags">${flags.join('')}</span>
         </div>`;
     }
+
+    // PR detail lines
+    let prRows = '';
+    if (rem && rem.open_prs && rem.open_prs.length) {
+      prRows = '<div class="git-prs">' + rem.open_prs.slice(0, 6).map(p =>
+        `<div class="git-pr">#${p.number} <span class="git-pr-title">${escape(p.title)}</span> <span class="git-pr-branch">${escape(p.head)} → ${escape(p.base)}</span></div>`
+      ).join('') + '</div>';
+    }
+
     const card = document.createElement('div');
     card.className = 'git-repo' + (inSync ? '' : ' warn');
-    card.innerHTML = `<div class="git-repo-head"><span class="git-repo-name">${escape(entry.label)}</span>${statusBadge}</div>${hostRows}`;
+    card.innerHTML = `<div class="git-repo-head"><span class="git-repo-name">${escape(entry.label)}</span>${statusBadge}</div>${remoteRow}${hostRows}${prRows}`;
     $gitList.appendChild(card);
   }
 }
@@ -1946,6 +2041,7 @@ function setupHeaderActions() {
 document.getElementById('refresh-btn').addEventListener('click', refreshAll);
 $logRefresh.addEventListener('click', () => renderLogView());
 $gitScan.addEventListener('click', scanGitNow);
+$gitFetchRemote.addEventListener('click', fetchRemoteNow);
 $gitRefresh.addEventListener('click', refreshGit);
 $treeUp.addEventListener('click', navigateTreeUp);
 $treeHome.addEventListener('click', navigateTreeHome);
