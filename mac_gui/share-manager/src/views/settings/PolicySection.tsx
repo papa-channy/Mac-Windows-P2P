@@ -3,9 +3,10 @@
 // policy.json living at share/00_System/10_Config/global/policy.json so
 // the Windows side sees changes immediately.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useToast } from "../../lib/toast";
+import { useShareTopic } from "../../lib/useShareTopic";
 
 type NetMode = "closed" | "open";
 
@@ -70,14 +71,21 @@ export function PolicySection() {
     }
   };
 
-  const refreshProfiles = async () => {
+  const refreshProfiles = useCallback(async () => {
     try {
       const list = await invoke<ProfileEntry[]>("list_profiles");
       setProfiles(list);
     } catch (e) {
       toast("프로필 목록 실패: " + String(e), "error");
     }
-  };
+  }, [toast]);
+
+  // Other hosts publishing their profile → 10_Config/profiles/ changes →
+  // watcher emits "profiles" topic → we re-fetch silently.
+  const silentRefreshProfiles = useCallback(() => {
+    invoke<ProfileEntry[]>("list_profiles").then(setProfiles).catch(() => void 0);
+  }, []);
+  useShareTopic("profiles", silentRefreshProfiles);
 
   return (
     <section className="settings-section">

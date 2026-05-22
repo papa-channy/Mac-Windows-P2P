@@ -1,7 +1,8 @@
 // Notes view — minimal Phase A version using new design tokens.
 // Phase F polishes autosave, host badge, watcher integration.
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type NoteEntry } from "../lib/api";
+import { useShareTopic } from "../lib/useShareTopic";
 
 export function NotesView() {
   const [notes, setNotes] = useState<NoteEntry[]>([]);
@@ -11,10 +12,19 @@ export function NotesView() {
   const [saveStatus, setSaveStatus] = useState("");
   const saveTimer = useRef<number | null>(null);
 
-  const refresh = () => api.listNotes().then(setNotes).catch(() => void 0);
+  const refresh = useCallback(
+    () => api.listNotes().then(setNotes).catch(() => void 0),
+    [],
+  );
   useEffect(() => {
     refresh();
-  }, []);
+  }, [refresh]);
+
+  // Auto-refresh when the watcher reports an upstream change (e.g. the
+  // other host saved a note, including the work-instruction note we
+  // posted from the shell — it should appear here without a manual
+  // refresh).
+  useShareTopic("notes", refresh);
 
   const openNote = async (id: string) => {
     const n = await api.getNote(id);

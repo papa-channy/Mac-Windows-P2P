@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { api, type ClipboardEntry, type ClipboardImageEntry } from "../lib/api";
 import { useToast } from "../lib/toast";
 import { fmtRelative } from "../lib/format";
+import { useShareTopic } from "../lib/useShareTopic";
 
 function isUrl(s: string): boolean {
   return /^https?:\/\//.test(s.trim());
@@ -12,13 +13,21 @@ export function ClipboardView() {
   const [entries, setEntries] = useState<ClipboardEntry[]>([]);
   const toast = useToast();
 
-  const refresh = () =>
-    api.listClipboardEntries(200).then(setEntries).catch(() => void 0);
+  const refresh = useCallback(
+    () => api.listClipboardEntries(200).then(setEntries).catch(() => void 0),
+    [],
+  );
   useEffect(() => {
     refresh();
+    // Belt-and-suspenders 2s poll. With the share-changed watcher wired up
+    // (below) the typical refresh happens via the event; the interval
+    // catches the case where the watcher dropped events (SMB hiccup) or
+    // the user's own NSPasteboard poll just appended to its own jsonl.
     const t = window.setInterval(refresh, 2000);
     return () => window.clearInterval(t);
-  }, []);
+  }, [refresh]);
+
+  useShareTopic("clipboard", refresh);
 
   const onClickEntry = async (e: ClipboardEntry) => {
     try {

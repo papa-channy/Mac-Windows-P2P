@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.2.4",
+    "date": "2026-05-23",
+    "title": "오프라인 캐시 + share-changed 자동 새로고침",
+    "highlights": [
+      "Phase I — share-changed event router 확장: 노트 / 클립보드 / 프로필 모두 자기 topic 만 listen → Windows 가 변경하면 1초 내 Mac 자동 새로고침 (수동 ↻ 클릭 불필요)",
+      "Phase K — 오프라인 클립보드 캐싱: 자기 호스트 OS 클립보드 폴링 결과를 ~/Library/Application Support/MacWindowShare/cache/clipboard/ 에 무조건 write → 셰어 끊겨도 데이터 유실 0",
+      "재연결 시 자동 sync: 셰어가 다시 마운트되면 로컬 캐시의 backlog jsonl 줄 + 이미지 PNG 를 셰어에 push (dedup 보장)",
+      "노트 오프라인 readonly: 셰어 끊겼을 때 마지막으로 본 노트는 로컬 mirror 에서 그대로 표시. 저장/삭제만 셰어 mount 필수 (양쪽 편집 race 회피)",
+      "테스트 39개 (신규 3개 — offline write + sync, mount-detection edge cases)"
+    ],
+    "notes": "사용자 발견: '직결망 끊겼을 때 기록이 남아있어야 하는 거 아닐까?' — 정답. 자기 호스트의 클립보드는 항상 로컬에 우선 저장하고 셰어가 살아 있으면 동시에 push. 재연결 시 backlog 자동 sync. 노트는 양쪽 편집 race 때문에 셰어 단일 source 유지, 단 readonly 미러로 끊겨도 조회는 가능."
+  },
+  {
     "version": "0.2.3",
     "date": "2026-05-23",
     "title": "권한 안내 재호출 + DevTools",
