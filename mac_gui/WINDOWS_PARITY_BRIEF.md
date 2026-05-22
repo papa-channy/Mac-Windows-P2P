@@ -967,6 +967,56 @@ DetailsModal: `transfer_id` 있으면 **`🔍 검증`** 버튼 노출 → `verif
 
 ---
 
+## 17. 로그 허브 + 수신 자동검증 + 이미지 압축 보관 (v0.3, Windows 구현)
+
+### 17.1 `00_System/80_Logs/` 신규 폴더
+
+```
+00_System/80_Logs/
+├── send.jsonl              ← 송신 로그 (send_ok / send_fail)
+├── recv.jsonl              ← 수신 로그 (verify_ok)
+├── error.jsonl             ← 오류 로그 (send_fail / verify_fail / verify_error)
+├── worklog.jsonl           ← 작업 로그 (어시스턴트가 개선/수정 시 append)
+├── verify/<transfer_id>.json   ← 검증 결과 캐시 (배지용)
+└── compressed-images/<sha>.jpg ← 30일 경과 후 압축 보관된 클립보드 이미지
+```
+
+JSONL 공통: `{ ts, host, os, event, ... }`. `send_ok`(source/category/transfer_id), `send_fail`(stderr/exit), `verify_ok`(transfer_id/checked/direction), `verify_fail`(mismatches/missing). worklog: `{ summary, detail }`.
+
+### 17.2 수신 시 자동 무결성 검증
+
+- `integrity.auto_verify_on_receive`(기본 true): watcher `transfers` 이벤트 + 앱 시작 시 `auto_verify_pending` 실행.
+- `auto_verify_pending`: verify 캐시 없는 `mac→windows` 매니페스트만 검증 → `verify/<tid>.json` 캐시 + recv/error 로그.
+- `list_transfers`가 `verify_status`("ok"|"mismatch"|null)를 캐시에서 채움 → 항목에 ✓/✗ 배지.
+- 수동 🔍 버튼은 `integrity.show_manual_button`(기본 true)로 표시/숨김.
+- **각 OS 역할**: 송신 시 매니페스트+SHA baseline 작성, 수신 시 재계산 검증. Windows는 mac→win 수신 검증; Mac은 win→mac 수신 검증해야 대칭.
+
+### 17.3 이미지 압축 보관 (삭제 대신)
+
+`policy.json`→`clipboard`: `image_retention_action`("compress"|"delete"), `compress_quality`(60), `compress_max_dimension`(1280). 30일 경과 PNG → compress면 JPEG로 다운스케일하여 `80_Logs/compressed-images/`로 이동 후 원본 삭제.
+
+### 17.4 사이드바 "로그" 허브
+
+`받은 기록` 제거 → 접이식 **로그** 그룹(기본 닫힘): 송신/수신/오류/압축이미지/작업로그 5개. 압축이미지는 그리드 썸네일, 나머지는 시간순 리스트.
+
+### 17.6 송신 시 HTML 의존성 사전 검사
+
+단일 `.html`을 보낼 때 외부 로컬 에셋(CSS/JS/이미지)에 의존하면, 그 파일만 보내봐야 **디자인이 깨진 채 도착**(SHA는 정상, 에셋이 안 따라옴). 우리 네이밍 규칙이 형제 파일을 리네임해서 단순 추가 전송도 `href` 링크가 안 맞음.
+
+- `inspect_html_assets(path) -> { is_html, has_inline_style, parent_dir, assets:[{reference, kind, exists}] }`: html을 스캔해 `href=`/`src=`/`url()`의 **로컬 상대경로** 참조만 수집 (절대 URL/data:/앵커 제외).
+- 송신 직전 게이트: 참조가 있으면 모달로 경고 + 3선택: **폴더째 보내기**(html 경로를 부모 폴더로 치환 → 디렉터리 전송, 내부 파일명 보존돼 링크 유지) / **파일만 보내기** / **취소**.
+- **검증됨** (2026-05-22): 깨진 계약서 html에서 `contract.css → MISSING` 정확 검출, 인라인 스타일 없음 인지.
+
+### 17.5 Mac 체크리스트 (v0.3)
+
+- [ ] `80_Logs/` 동일 구조 + verify 캐시 + compressed-images
+- [ ] win→mac 수신 자동검증 + 배지 + settings 토글 2종
+- [ ] 이미지 retention action=compress (JPEG)
+- [ ] 사이드바 로그 허브(기본 닫힘) 5개
+- [ ] 송신 시 HTML 의존성 검사 + 폴더째/파일만/취소 게이트 (§17.6)
+
+---
+
 ## 부록 B — 변경 이력
 
 | 날짜 | 변경 |
@@ -976,3 +1026,4 @@ DetailsModal: `transfer_id` 있으면 **`🔍 검증`** 버튼 노출 → `verif
 | 2026-05-20 | v2 contract: 공유 정책 (policy.json), 언어 프리셋, 호스트 프로필, 닫힘/열림 네트워크 시크릿 정책, line-ending annotation 추가. |
 | 2026-05-21 | §12 공유 메모, §13 클립보드 자동기록 모델, §14 파일 watcher, §15 자동 갱신 정책 추가. |
 | 2026-05-22 | §13.9 이미지 스키마 v2 정렬(size_bytes/content/len), §16 verify_transfer + transfer_id + dir-hash 호환 계약 추가. Windows v0.2 parity 완료. |
+| 2026-05-22 | §17 로그 허브(80_Logs), 수신 자동검증 + ✓/✗ 배지 + integrity 설정, 이미지 압축 보관(compress action), 클립보드 썸네일 깜빡임 수정. Windows v0.3. |

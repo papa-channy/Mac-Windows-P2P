@@ -85,15 +85,15 @@ pub struct Category {
 }
 
 pub const CATEGORIES: &[Category] = &[
-    Category { key: "documents",    label: "문서",     emoji: "📄", folder: "30_Documents"    },
-    Category { key: "data",         label: "데이터",   emoji: "📊", folder: "20_Data"         },
-    Category { key: "repos",        label: "코드",     emoji: "💻", folder: "10_Repos"        },
-    Category { key: "research",     label: "리서치",   emoji: "🔬", folder: "40_Research"     },
-    Category { key: "env",          label: "환경설정", emoji: "⚙",  folder: "50_Env"          },
-    Category { key: "builds",       label: "빌드",     emoji: "🛠", folder: "60_Builds"       },
-    Category { key: "assets",       label: "애셋",     emoji: "🎨", folder: "70_Assets"       },
-    Category { key: "misc",         label: "기타",     emoji: "📦", folder: "90_Misc"         },
-    Category { key: "unclassified", label: "미분류",   emoji: "❔", folder: "99_Unclassified" },
+    Category { key: "documents",    label: "Documents",   emoji: "📄", folder: "30_Documents"    },
+    Category { key: "data",         label: "Data",        emoji: "📊", folder: "20_Data"         },
+    Category { key: "repos",        label: "Code",        emoji: "💻", folder: "10_Repos"        },
+    Category { key: "research",     label: "Research",    emoji: "🔬", folder: "40_Research"     },
+    Category { key: "env",          label: "Env",         emoji: "⚙",  folder: "50_Env"          },
+    Category { key: "builds",       label: "Builds",      emoji: "🛠", folder: "60_Builds"       },
+    Category { key: "assets",       label: "Assets",      emoji: "🎨", folder: "70_Assets"       },
+    Category { key: "misc",         label: "Misc",        emoji: "📦", folder: "90_Misc"         },
+    Category { key: "unclassified", label: "Unclassified", emoji: "❔", folder: "99_Unclassified" },
 ];
 
 pub fn category_by_folder(folder: &str) -> Option<&'static Category> {
@@ -173,12 +173,30 @@ pub struct AppearanceSettings {
     pub icon_theme_path: Option<String>, // legacy single-path field, kept for back-compat
 }
 
+fn default_true() -> bool { true }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct IntegritySettings {
+    #[serde(default = "default_true")]
+    pub auto_verify_on_receive: bool,
+    #[serde(default = "default_true")]
+    pub show_manual_button: bool,
+}
+
+impl Default for IntegritySettings {
+    fn default() -> Self {
+        Self { auto_verify_on_receive: true, show_manual_button: true }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Settings {
     pub schema_version: u32,
     pub tree: TreeSettings,
     pub network: NetworkSettings,
     pub appearance: AppearanceSettings,
+    #[serde(default)]
+    pub integrity: IntegritySettings,
 }
 
 impl Default for Settings {
@@ -197,6 +215,7 @@ impl Default for Settings {
                 icon_themes: Vec::new(),
                 icon_theme_path: None,
             },
+            integrity: IntegritySettings::default(),
         }
     }
 }
