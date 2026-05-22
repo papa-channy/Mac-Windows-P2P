@@ -248,12 +248,24 @@
               <div class="settings-label">아이콘 테마</div>
               <div class="settings-control">
                 <div class="theme-options" id="theme-options"></div>
-                <button id="install-theme" class="ghost-btn">📂 VSCode 아이콘 테마 추가</button>
-                <span class="settings-hint">
-                  VSCode 마켓플레이스에서 받은 <b>Catppuccin Icons</b>, <b>Material Icon Theme</b> 등의
-                  확장 폴더를 추가하세요. 폴더 안에서 <code>icon-theme.json</code>을 자동으로 찾아요.
-                  <br>(VSIX는 ZIP으로 풀어서 <code>extension/</code> 폴더를 추가)
-                </span>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">카탈로그에서 받기</div>
+              <div class="settings-control">
+                <div class="theme-catalog" id="theme-catalog"></div>
+                <span class="settings-hint">VSCode 마켓플레이스에서 자동으로 받아 설치합니다 (curl + tar 사용).</span>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">GitHub URL로 추가</div>
+              <div class="settings-control">
+                <div class="path-row">
+                  <input id="theme-git-url" type="text" class="text-input" placeholder="https://github.com/owner/repo">
+                  <button id="theme-git-add" class="ghost-btn">git clone + 추가</button>
+                </div>
+                <button id="install-theme" class="ghost-btn" style="margin-top:8px">📂 로컬 폴더에서 추가</button>
+                <span class="settings-hint">git repo(<code>--depth 1</code> clone) 또는 로컬 폴더. <code>icon-theme.json</code> 자동 탐색.</span>
               </div>
             </div>
           </section>
@@ -303,7 +315,9 @@
         <button class="modal-close" data-close="details">✕</button>
       </div>
       <div id="details-body" class="modal-body"></div>
+      <div id="verify-result" class="result-card hidden" style="margin:0 22px 14px"></div>
       <div class="modal-footer">
+        <button id="details-verify" class="ghost-btn hidden">🔍 검증</button>
         <button id="details-open" class="ghost-btn">열기</button>
         <button id="details-reveal" class="primary-btn">탐색기에서 보기</button>
       </div>

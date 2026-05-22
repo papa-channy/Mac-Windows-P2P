@@ -110,6 +110,9 @@ const $connResult = document.getElementById('conn-result');
 const $speedResult= document.getElementById('speed-result');
 const $themeOptions = document.getElementById('theme-options');
 const $installTheme = document.getElementById('install-theme');
+const $themeCatalog = document.getElementById('theme-catalog');
+const $themeGitUrl  = document.getElementById('theme-git-url');
+const $themeGitAdd  = document.getElementById('theme-git-add');
 // Notes refs
 const $panelNotes   = document.getElementById('panel-notes');
 const $notesList    = document.getElementById('notes-list');
@@ -143,6 +146,8 @@ const $detailsTitle = document.getElementById('details-title');
 const $detailsBody = document.getElementById('details-body');
 const $detailsOpen = document.getElementById('details-open');
 const $detailsReveal = document.getElementById('details-reveal');
+const $detailsVerify = document.getElementById('details-verify');
+const $verifyResult = document.getElementById('verify-result');
 const $toasts = document.getElementById('toasts');
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -530,8 +535,9 @@ function renderSettings() {
   }
   // Network
   $remoteHost.value = state.settings.network.remote_host || '';
-  // Theme — render radio list (built-ins + installed)
+  // Theme — render radio list (built-ins + installed) + catalog
   renderThemeOptions();
+  renderThemeCatalog();
   // Policy & profiles
   renderPolicyAndProfiles();
 }
@@ -685,6 +691,30 @@ async function addShortcut() {
   renderTreeShortcuts();
 }
 
+// VSCode icon theme catalog (마켓플레이스 VSIX — 양쪽 동일 카탈로그)
+const ICON_THEME_CATALOG = [
+  { label: 'Material Icon Theme', slug: 'material-icon-theme', blurb: 'VSCode 표준 · 1200+', vsix: 'https://marketplace.visualstudio.com/_apis/public/gallery/publishers/PKief/vsextensions/material-icon-theme/latest/vspackage' },
+  { label: 'Catppuccin Icons', slug: 'catppuccin-vsc-icons', blurb: 'Mocha/Latte/Frappé/Macchiato', vsix: 'https://marketplace.visualstudio.com/_apis/public/gallery/publishers/Catppuccin/vsextensions/catppuccin-vsc-icons/latest/vspackage' },
+  { label: 'Symbols', slug: 'symbols', blurb: '단색 미니멀', vsix: 'https://marketplace.visualstudio.com/_apis/public/gallery/publishers/miguelsolorio/vsextensions/symbols/latest/vspackage' },
+  { label: 'vscode-icons', slug: 'vscode-icons', blurb: '오리지널 아이콘 팩', vsix: 'https://marketplace.visualstudio.com/_apis/public/gallery/publishers/vscode-icons-team/vsextensions/vscode-icons/latest/vspackage' },
+];
+
+// Shared post-install: register theme, activate, persist, redraw.
+async function registerInstalledTheme(theme) {
+  const list = state.settings.appearance.icon_themes || [];
+  const existing = list.findIndex(t => t.id === theme.id);
+  if (existing >= 0) list.splice(existing, 1, theme);
+  else list.push(theme);
+  state.settings.appearance.icon_themes = list;
+  state.settings.appearance.icon_theme = theme.id;
+  await persistSettings();
+  await applyActiveTheme();
+  renderSettings();
+  refreshIconsInView();
+  toast(`'${theme.name}' 테마 추가됨 (${theme.icon_count}개 아이콘)`, 'success');
+  setStatus('마지막 갱신: ' + new Date().toLocaleTimeString('ko-KR'));
+}
+
 async function installIconTheme() {
   try {
     const dialog = window.__TAURI__ && window.__TAURI__.dialog;
@@ -693,22 +723,55 @@ async function installIconTheme() {
     if (!folder) return;
     setStatus(`테마 검증 중: ${folder}`);
     const theme = await invoke('install_icon_theme', { folder });
-    // Avoid duplicates: replace by id
-    const list = state.settings.appearance.icon_themes || [];
-    const existing = list.findIndex(t => t.id === theme.id);
-    if (existing >= 0) list.splice(existing, 1, theme);
-    else list.push(theme);
-    state.settings.appearance.icon_themes = list;
-    state.settings.appearance.icon_theme = theme.id;
-    await persistSettings();
-    await applyActiveTheme();
-    renderSettings();
-    refreshIconsInView();
-    toast(`'${theme.name}' 테마 추가됨 (${theme.icon_count}개 아이콘)`, 'success');
-    setStatus('마지막 갱신: ' + new Date().toLocaleTimeString('ko-KR'));
+    await registerInstalledTheme(theme);
   } catch (e) {
     setStatus('테마 설치 실패: ' + e);
     toast('테마 추가 실패: ' + e, 'error');
+  }
+}
+
+async function installThemeFromVsix(entry) {
+  setStatus(`${entry.label} 다운로드 중…`);
+  try {
+    const theme = await invoke('install_icon_theme_from_vsix', { url: entry.vsix, slug: entry.slug });
+    await registerInstalledTheme(theme);
+  } catch (e) {
+    setStatus('설치 실패: ' + e);
+    toast(`${entry.label} 설치 실패: ${e}`, 'error');
+  }
+}
+
+async function installThemeFromGit() {
+  const url = ($themeGitUrl.value || '').trim();
+  if (!url) { toast('git URL을 입력하세요', 'error'); return; }
+  setStatus(`git clone: ${url}`);
+  $themeGitAdd.disabled = true;
+  try {
+    const theme = await invoke('install_icon_theme_from_git', { repoUrl: url });
+    $themeGitUrl.value = '';
+    await registerInstalledTheme(theme);
+  } catch (e) {
+    setStatus('git 설치 실패: ' + e);
+    toast('git 테마 추가 실패: ' + e, 'error');
+  } finally {
+    $themeGitAdd.disabled = false;
+  }
+}
+
+function renderThemeCatalog() {
+  if (!$themeCatalog) return;
+  $themeCatalog.innerHTML = '';
+  const installed = (state.settings.appearance.icon_themes || []).map(t => t.id);
+  for (const c of ICON_THEME_CATALOG) {
+    const btn = document.createElement('button');
+    btn.className = 'catalog-btn';
+    const have = installed.includes(c.slug);
+    btn.innerHTML = `
+      <span class="catalog-btn-label">${escape(c.label)}${have ? ' ✓' : ''}</span>
+      <span class="catalog-btn-blurb">${escape(c.blurb)}</span>
+    `;
+    btn.addEventListener('click', () => installThemeFromVsix(c));
+    $themeCatalog.appendChild(btn);
   }
 }
 
@@ -928,7 +991,7 @@ function renderClipboardPanel() {
 
     if (e.kind === 'image') {
       const dims = (e.width && e.height) ? `${e.width}×${e.height}` : '';
-      const sz = e.bytes ? fmtBytes(e.bytes) : '';
+      const sz = (e.size_bytes || e.bytes) ? fmtBytes(e.size_bytes || e.bytes) : '';
       el.innerHTML = `
         <div class="clip-entry-head">
           <span class="clip-entry-os ${badge.cls}">${escape(badge.label)}</span>
@@ -1253,6 +1316,9 @@ function openDetails(it) {
   const versionRow = parsed
     ? `<div class="detail-row"><div class="detail-label">버전</div><div class="detail-value">v${escape(parsed.version)} · 전송일 ${escape(parsed.date)}</div></div>`
     : '';
+  const tidRow = it.transfer_id
+    ? `<div class="detail-row"><div class="detail-label">transfer_id</div><div class="detail-value detail-mono">${escape(it.transfer_id)}</div></div>`
+    : '';
   $detailsBody.innerHTML = `
     <div class="detail-row"><div class="detail-label">카테고리</div><div class="detail-value">${escape(it.category_emoji)} ${escape(it.category_label)}</div></div>
     <div class="detail-row"><div class="detail-label">방향</div><div class="detail-value">${it.direction === 'mac_to_windows' ? 'MacBook → Windows' : 'Windows → MacBook'}</div></div>
@@ -1260,12 +1326,55 @@ function openDetails(it) {
     <div class="detail-row"><div class="detail-label">크기</div><div class="detail-value">${fmtBytes(it.size_bytes)}</div></div>
     ${versionRow}
     <div class="detail-row"><div class="detail-label">수정 시각</div><div class="detail-value">${escape(fmtFull(it.modified_iso))}</div></div>
+    ${tidRow}
     <div class="detail-row"><div class="detail-label">저장 파일명</div><div class="detail-value detail-mono">${escape(it.name)}</div></div>
     <div class="detail-row"><div class="detail-label">전체 경로</div><div class="detail-value detail-mono">${escape(it.path)}</div></div>
   `;
+  // Reset verify result + wire verify button (only when transfer_id known)
+  $verifyResult.classList.add('hidden');
+  $verifyResult.innerHTML = '';
+  if (it.transfer_id) {
+    $detailsVerify.classList.remove('hidden');
+    $detailsVerify.onclick = () => runVerify(it.transfer_id);
+  } else {
+    $detailsVerify.classList.add('hidden');
+    $detailsVerify.onclick = null;
+  }
   $detailsOpen.onclick = () => invoke('open_path', { path: it.path }).catch(e => toast(e, 'error'));
   $detailsReveal.onclick = () => invoke('reveal_in_explorer', { path: it.path }).catch(e => toast(e, 'error'));
   $details.classList.remove('hidden');
+}
+
+async function runVerify(transferId) {
+  $verifyResult.classList.remove('hidden', 'success', 'error');
+  $verifyResult.innerHTML = '<div class="result-row"><span>무결성 검증 중…</span></div>';
+  $detailsVerify.disabled = true;
+  try {
+    const r = await invoke('verify_transfer', { transferId });
+    if (r.ok) {
+      $verifyResult.classList.add('success');
+      $verifyResult.innerHTML = `
+        <div class="result-row"><span class="result-key">결과</span><span class="result-val">✓ 무결성 OK</span></div>
+        <div class="result-row"><span class="result-key">검증 파일</span><span class="result-val">${r.checked}개 일치</span></div>
+        <div class="result-row"><span class="result-key">모드</span><span class="result-val">${escape(r.mode)}</span></div>`;
+    } else {
+      $verifyResult.classList.add('error');
+      const bad = r.files.filter(f => !f.ok).slice(0, 5);
+      const rows = bad.map(f =>
+        `<div class="result-row"><span class="result-key" style="font-family:Consolas,monospace;font-size:10.5px">${escape(f.path)}</span><span class="result-val">${f.error ? escape(f.error) : '해시 불일치'}</span></div>`
+      ).join('');
+      const more = (r.mismatches + r.missing) > bad.length ? `<div class="result-row"><span class="result-key">…</span><span class="result-val">외 ${(r.mismatches + r.missing) - bad.length}건</span></div>` : '';
+      $verifyResult.innerHTML = `
+        <div class="result-row"><span class="result-key">결과</span><span class="result-val">✗ 불일치 ${r.mismatches} · 누락 ${r.missing} (검증 ${r.checked})</span></div>
+        ${rows}${more}`;
+    }
+  } catch (e) {
+    $verifyResult.classList.remove('success');
+    $verifyResult.classList.add('error');
+    $verifyResult.innerHTML = `<div class="result-row"><span>검증 실패: ${escape(String(e))}</span></div>`;
+  } finally {
+    $detailsVerify.disabled = false;
+  }
 }
 
 // ─── Drag-drop ──────────────────────────────────────────────────
@@ -1449,6 +1558,7 @@ $remoteHost.addEventListener('change', changeHost);
 $checkConn.addEventListener('click', runConnectionCheck);
 $speedTest.addEventListener('click', runSpeedTest);
 $installTheme.addEventListener('click', installIconTheme);
+$themeGitAdd.addEventListener('click', installThemeFromGit);
 document.querySelectorAll('input[name="netmode"]').forEach(r => {
   r.addEventListener('change', e => changeNetworkMode(e.target.value));
 });

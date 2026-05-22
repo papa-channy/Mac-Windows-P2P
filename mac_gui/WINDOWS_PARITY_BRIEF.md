@@ -774,7 +774,7 @@ UI는 모든 호스트의 항목을 하나의 시간순 리스트로 보여줌. 
     └── <sha256>.png             ← 인코딩된 PNG (sha256 = PNG 바이트 해시, dedup)
 ```
 
-**이미지 엔트리 JSONL 스키마**:
+**이미지 엔트리 JSONL 스키마 (v2 — 양쪽 동일)**:
 ```json
 {
   "ts": "2026-05-22T17:49:05+09:00",
@@ -784,9 +784,13 @@ UI는 모든 호스트의 항목을 하나의 시간순 리스트로 보여줌. 
   "image_ref": "ca1e8cf6...9f34.png",
   "width": 480,
   "height": 320,
-  "bytes": 5016
+  "size_bytes": 5016,
+  "content": "📷 image (480×320, 4 KB)",
+  "len": 0
 }
 ```
+- `size_bytes` (구 `bytes` 폐기), `content`(v1 호환 라벨, `×` = U+00D7), `len: 0` 필수.
+- Windows 2026-05-22 정렬 완료.
 
 **기록 알고리즘** (양쪽 동일):
 ```text
@@ -926,6 +930,43 @@ Mac 측에서 watcher 신뢰성이 떨어진다면 폴링 fallback으로 자동 
 
 ---
 
+## 16. 무결성 검증 & transfer_id (v0.2)
+
+### 16.1 list_transfers → transfer_id
+
+`list_transfers(direction, state)` 진입 시 해당 direction의 `30_Manifests/<dir>/`를 1회 스캔해 **`destination.primary_file` → `transfer_id`** 인덱스를 만든 뒤, 각 항목의 파일명(`name`)으로 lookup 해 `TransferItem.transfer_id`(Option)를 채운다. 매니페스트 없으면 None.
+
+### 16.2 verify_transfer(transfer_id) → VerifyResult
+
+```json
+{
+  "transfer_id": "...", "direction": "mac_to_windows", "mode": "file|directory|batch",
+  "ok": true, "checked": 5, "mismatches": 0, "missing": 0,
+  "files": [{ "path": "...", "expected": "<sha>", "actual": "<sha>", "ok": true, "error": null }]
+}
+```
+- `30_Manifests/<dir>/<id>.json` 양방향 탐색 → 읽기.
+- 각 `files[]` 엔트리: `abs = share_root / destination.share_path / entry.path`.
+- `abs`가 **파일** → SHA-256 재계산. **디렉터리** → §4.4 dir-hash 재계산. → `entry.sha256`와 비교.
+- `ok = mismatches==0 && missing==0`. 누락은 `missing`, 불일치는 `mismatches`.
+
+### 16.3 §4.4 dir-hash — 양쪽 바이트 단위 일치 필수 ⚠️
+
+cross-host 검증이 false-mismatch 안 나려면 **반드시** 동일:
+1. 파일만 (디렉터리 skip)
+2. **숨김 파일 skip** — rel 경로의 어느 component든 `.`로 시작하면 제외 (`.git/`, `.DS_Store`)
+3. rel 경로: `\` → `/` 치환 후 **NFC 정규화** (한글 NFD↔NFC)
+4. rel 기준 lexicographic 정렬
+5. `combined = SHA256( Σ rel.bytes + 0x00 + file_sha.bytes + 0x0A )`
+
+Windows는 `unicode-normalization` crate `.nfc()` 사용. **검증됨**: Mac이 쓴 batch 매니페스트의 폴더 dir-hash(`3af8b4...`)와 Windows 재계산값 일치 (2026-05-22).
+
+### 16.4 frontend
+
+DetailsModal: `transfer_id` 있으면 **`🔍 검증`** 버튼 노출 → `verify_transfer` → 결과 카드. ok→`✓ 무결성 OK (N개)`, !ok→불일치/누락 파일 최대 5개.
+
+---
+
 ## 부록 B — 변경 이력
 
 | 날짜 | 변경 |
@@ -934,3 +975,4 @@ Mac 측에서 watcher 신뢰성이 떨어진다면 폴링 fallback으로 자동 
 | 2026-05-17 | 멀티파일 → `unclassified` 자동분류 추가. |
 | 2026-05-20 | v2 contract: 공유 정책 (policy.json), 언어 프리셋, 호스트 프로필, 닫힘/열림 네트워크 시크릿 정책, line-ending annotation 추가. |
 | 2026-05-21 | §12 공유 메모, §13 클립보드 자동기록 모델, §14 파일 watcher, §15 자동 갱신 정책 추가. |
+| 2026-05-22 | §13.9 이미지 스키마 v2 정렬(size_bytes/content/len), §16 verify_transfer + transfer_id + dir-hash 호환 계약 추가. Windows v0.2 parity 완료. |
