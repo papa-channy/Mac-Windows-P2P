@@ -925,23 +925,59 @@ function renderClipboardPanel() {
     const el = document.createElement('div');
     el.className = 'clip-entry';
     const badge = osBadge(e.os);
-    const content = e.content || '';
-    const preview = content.length > 600 ? content.slice(0, 600) + '…' : content;
-    const urlClass = looksLikeUrl(content) ? ' url' : '';
-    el.innerHTML = `
-      <div class="clip-entry-head">
-        <span class="clip-entry-os ${badge.cls}">${escape(badge.label)}</span>
-        <span class="clip-entry-host" title="${escape(e.host || '')}">${escape(e.host || '?')}</span>
-        <span class="clip-entry-time">${escape(fmtRelative(e.ts))}</span>
-      </div>
-      <div class="clip-entry-text${urlClass}" title="${escape(content)}">${escape(preview)}</div>
-    `;
-    el.addEventListener('click', async () => {
-      try {
-        await invoke('copy_to_os_clipboard', { text: content });
-        toast('내 OS 클립보드로 복사됨', 'success');
-      } catch (err) { toast('복사 실패: ' + err, 'error'); }
-    });
+
+    if (e.kind === 'image') {
+      const dims = (e.width && e.height) ? `${e.width}×${e.height}` : '';
+      const sz = e.bytes ? fmtBytes(e.bytes) : '';
+      el.innerHTML = `
+        <div class="clip-entry-head">
+          <span class="clip-entry-os ${badge.cls}">${escape(badge.label)}</span>
+          <span class="clip-entry-host" title="${escape(e.host || '')}">${escape(e.host || '?')}</span>
+          <span class="clip-entry-kind">🖼 이미지 ${escape(dims)} · ${escape(sz)}</span>
+          <span class="clip-entry-time">${escape(fmtRelative(e.ts))}</span>
+        </div>
+        <div class="clip-entry-thumb-wrap"><div class="clip-entry-thumb" data-ref="${escape(e.image_ref || '')}"></div></div>
+      `;
+      // Lazy-load thumbnail via asset protocol
+      const thumb = el.querySelector('.clip-entry-thumb');
+      (async () => {
+        try {
+          const path = await invoke('clipboard_image_path', { imageRef: e.image_ref });
+          const url = window.__TAURI__.core.convertFileSrc(path);
+          const img = new Image();
+          img.className = 'clip-thumb-img';
+          img.src = url;
+          img.onerror = () => { thumb.innerHTML = '<span class="clip-thumb-expired">🖼 만료됨 (30일 경과)</span>'; };
+          thumb.appendChild(img);
+        } catch (_) {
+          thumb.innerHTML = '<span class="clip-thumb-expired">🖼 (이미지 없음)</span>';
+        }
+      })();
+      el.addEventListener('click', async () => {
+        try {
+          await invoke('copy_image_to_os_clipboard', { imageRef: e.image_ref });
+          toast('이미지를 내 OS 클립보드로 복사됨', 'success');
+        } catch (err) { toast('복사 실패: ' + err, 'error'); }
+      });
+    } else {
+      const content = e.content || '';
+      const preview = content.length > 600 ? content.slice(0, 600) + '…' : content;
+      const urlClass = looksLikeUrl(content) ? ' url' : '';
+      el.innerHTML = `
+        <div class="clip-entry-head">
+          <span class="clip-entry-os ${badge.cls}">${escape(badge.label)}</span>
+          <span class="clip-entry-host" title="${escape(e.host || '')}">${escape(e.host || '?')}</span>
+          <span class="clip-entry-time">${escape(fmtRelative(e.ts))}</span>
+        </div>
+        <div class="clip-entry-text${urlClass}" title="${escape(content)}">${escape(preview)}</div>
+      `;
+      el.addEventListener('click', async () => {
+        try {
+          await invoke('copy_to_os_clipboard', { text: content });
+          toast('내 OS 클립보드로 복사됨', 'success');
+        } catch (err) { toast('복사 실패: ' + err, 'error'); }
+      });
+    }
     $clipTimeline.appendChild(el);
   }
 }

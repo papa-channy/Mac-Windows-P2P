@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "_doc": "Shared transfer policy. Both Windows and Mac read this before send/receive. Modifications take effect immediately.",
+
+  "network_mode": "closed",
+  "_network_mode_options": ["closed", "open"],
+  "_network_mode_doc": "closed = trusted private LAN (10GbE direct link); secrets flow freely. open = exposed network; RAW_SECRET rules apply.",
+
+  "secrets": {
+    "closed_network_allows": true,
+    "always_blocked_patterns": [
+      "service-account*.json",
+      "*.p12",
+      "*.mobileprovision",
+      "id_rsa",
+      "id_ed25519",
+      "*.pfx"
+    ],
+    "_doc": "Patterns here are blocked regardless of network_mode (because they leak even on closed nets — signing keys, certs, mobile provisioning)."
+  },
+
+  "language_detection": {
+    "enabled": true,
+    "markers": {
+      "rust":   ["Cargo.toml"],
+      "go":     ["go.mod"],
+      "node":   ["package.json", "pnpm-workspace.yaml", "yarn.lock", "package-lock.json"],
+      "python": ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile", "poetry.lock"],
+      "java":   ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle"],
+      "dotnet": ["*.csproj", "*.fsproj", "*.sln"],
+      "swift":  ["Package.swift", "*.xcodeproj"],
+      "ruby":   ["Gemfile"],
+      "elixir": ["mix.exs"],
+      "deno":   ["deno.json", "deno.jsonc"]
+    },
+    "git_marker_dirs": [".git", ".hg", ".svn"],
+    "_doc": "When sending a folder, scan up to depth 2 for any marker. Detected languages contribute their preset ignore rules."
+  },
+
+  "line_endings": {
+    "annotate_in_manifest": true,
+    "preferred_for_text": "lf",
+    "_doc": "Bytes preserved on transfer (else SHA-256 invalid). Manifest gets per-file `line_endings: lf|crlf|mixed|binary` so receiver can normalize."
+  },
+
+  "clipboard": {
+    "image_retention_days": 30,
+    "image_max_dimension": 2560,
+    "image_total_cap_mb": 300,
+    "_doc": "Clipboard images stored as PNG under 70_Clipboard/images/, sha256-deduped, downscaled to max_dimension. Files older than retention_days are deleted (JSONL entry remains as a tombstone). Total dir size capped at total_cap_mb; oldest evicted first."
+  },
+
+  "filename_compat": {
+    "enforce_windows_invalid_chars": true,
+    "normalize_unicode": "nfc",
+    "case_sensitivity_warning": true,
+    "_doc": "Block forbidden chars on Windows side (< > : \" / \\ | ? *), normalize Korean to NFC (Mac default NFD → Windows NFC). Warn if two files differ only in case."
+  },
+
+  "_revision": "2026-05-20"
+}
+

@@ -1823,6 +1823,8 @@ dependencies = [
  "num-traits",
  "png 0.18.1",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]
@@ -3341,9 +3343,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "hex",
+ "image",
  "notify",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",
