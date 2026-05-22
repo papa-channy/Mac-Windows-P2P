@@ -10,7 +10,7 @@ use notify::{recommended_watcher, EventKind, RecursiveMode, Watcher};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 use tauri::{AppHandle, Emitter};
 
 pub fn watch_paths() -> Vec<PathBuf> {
@@ -64,10 +64,40 @@ pub fn start(app: AppHandle) {
             return;
         }
 
-        let mut last_emit: HashMap<&'static str, Instant> = HashMap::new();
+        // Leading + trailing debounce. A leading-only debounce drops every
+        // event within 400ms of the first, including the one fired when a
+        // freshly-copied file finally becomes visible. Over SMB the first
+        // notification can arrive *before* the directory entry is readable by
+        // list_transfers, so that leading refresh sees nothing and the trailing
+        // (swallowed) event never re-runs it — the item appears only after a
+        // restart. Small files (e.g. .html) hit this most because their whole
+        // write fits in one debounce window; larger files emit a later event
+        // outside the window that happens to refresh. Emit on the first event
+        // (responsiveness) AND once more after the burst settles (correctness).
+        use std::sync::mpsc::RecvTimeoutError;
         let debounce = Duration::from_millis(400);
+        let mut pending: HashSet<&'static str> = HashSet::new();
 
-        for res in rx {
+        loop {
+            let res = if pending.is_empty() {
+                match rx.recv() {
+                    Ok(r) => r,
+                    Err(_) => break,
+                }
+            } else {
+                match rx.recv_timeout(debounce) {
+                    Ok(r) => r,
+                    Err(RecvTimeoutError::Timeout) => {
+                        for topic in pending.drain() {
+                            let _ = app.emit("share-changed", serde_json::json!({
+                                "topic": topic,
+                            }));
+                        }
+                        continue;
+                    }
+                    Err(RecvTimeoutError::Disconnected) => break,
+                }
+            };
             let event = match res { Ok(e) => e, Err(_) => continue };
             if !matches!(
                 event.kind,
@@ -75,20 +105,14 @@ pub fn start(app: AppHandle) {
             ) {
                 continue;
             }
-            let mut topics_fired: HashSet<&'static str> = HashSet::new();
             for p in &event.paths {
                 let topic = classify_event_path(p);
-                if topic.is_empty() || topics_fired.contains(topic) { continue; }
-                topics_fired.insert(topic);
-                let now = Instant::now();
-                if let Some(prev) = last_emit.get(topic) {
-                    if now.duration_since(*prev) < debounce { continue; }
+                if topic.is_empty() { continue; }
+                if pending.insert(topic) {
+                    let _ = app.emit("share-changed", serde_json::json!({
+                        "topic": topic,
+                    }));
                 }
-                last_emit.insert(topic, now);
-                let _ = app.emit("share-changed", serde_json::json!({
-                    "topic": topic,
-                    "path": p.to_string_lossy(),
-                }));
             }
         }
         let _ = watcher; // keep alive for the lifetime of the channel
