@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.2.3",
+    "date": "2026-05-23",
+    "title": "권한 안내 재호출 + DevTools",
+    "highlights": [
+      "Settings → 업데이트/배포 → '🔓 권한 안내 다시 보기' 버튼 — 한 번 dismiss 한 권한 모달을 언제든 다시 띄움 (localStorage 자동 리셋)",
+      "현재 전체 디스크 권한 상태 인디케이터 + '상태 새로고침' 버튼",
+      "release 빌드에도 DevTools 활성화 — production 앱에서 우클릭 → 검사 (Inspect Element) 로 Console / Network 접근 가능 (디버그 / localStorage 조작 용도)"
+    ],
+    "notes": "v0.2.2 의 권한 자동 감지 검증을 사용자가 DevTools 없어서 못 했던 케이스 해결. 모달을 Settings 에서 직접 재호출할 수 있고, 권한 상태도 인디케이터로 확인 가능."
+  },
+  {
     "version": "0.2.2",
     "date": "2026-05-23",
     "title": "권한 안내 자동 감지 · Space 따라오기 진짜로",
