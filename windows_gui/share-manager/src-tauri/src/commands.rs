@@ -1322,6 +1322,218 @@ fn rotate_jsonl(path: &Path, max_lines: usize) -> std::io::Result<()> {
     std::fs::write(path, lines.join("\n") + "\n")
 }
 
+// ─── Git status dashboard ──────────────────────────────────────
+fn git_share_dir() -> PathBuf {
+    let p = crate::share::share_root().join("00_System").join("90_Git");
+    let _ = std::fs::create_dir_all(&p);
+    p
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GitCommitInfo {
+    pub sha: String,
+    pub msg: String,
+    pub date: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RepoStatus {
+    pub owner_repo: Option<String>,
+    pub path: String,
+    pub branch: String,
+    pub head: String,
+    pub upstream: Option<String>,
+    pub dirty: u32,
+    pub dirty_files: Vec<String>,
+    pub unpushed: u32,
+    pub ahead: u32,
+    pub behind: u32,
+    pub stash: u32,
+    pub last_commit: Option<GitCommitInfo>,
+    pub remote_url: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HostGitSnapshot {
+    pub schema_version: u32,
+    pub host: String,
+    pub os: String,
+    pub scanned_at: String,
+    pub repos: Vec<RepoStatus>,
+}
+
+fn run_git(repo: &Path, args: &[&str]) -> Option<String> {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(repo).args(args);
+    hide_console(&mut cmd);
+    let out = cmd.output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+fn normalize_owner_repo(url: &str) -> Option<String> {
+    let u = url.trim();
+    let i = u.find("github.com")?;
+    let rest = &u[i + "github.com".len()..];
+    let rest = rest.trim_start_matches([':', '/']);
+    let rest = rest.strip_suffix(".git").unwrap_or(rest);
+    let parts: Vec<&str> = rest.split('/').collect();
+    if parts.len() >= 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+        Some(format!("{}/{}", parts[0], parts[1]))
+    } else {
+        None
+    }
+}
+
+fn repo_status_at(repo: &Path) -> RepoStatus {
+    let branch = run_git(repo, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|| "?".into());
+    let head = run_git(repo, &["rev-parse", "HEAD"]).unwrap_or_default();
+    let upstream = run_git(repo, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
+    let porcelain = run_git(repo, &["status", "--porcelain"]).unwrap_or_default();
+    let dirty_files: Vec<String> = porcelain
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    let dirty = dirty_files.len() as u32;
+
+    let (mut ahead, mut behind) = (0u32, 0u32);
+    if upstream.is_some() {
+        if let Some(lr) = run_git(repo, &["rev-list", "--left-right", "--count", "@{u}...HEAD"]) {
+            let nums: Vec<&str> = lr.split_whitespace().collect();
+            if nums.len() == 2 {
+                behind = nums[0].parse().unwrap_or(0);
+                ahead = nums[1].parse().unwrap_or(0);
+            }
+        }
+    }
+    let stash = run_git(repo, &["stash", "list"])
+        .map(|s| s.lines().filter(|l| !l.trim().is_empty()).count() as u32)
+        .unwrap_or(0);
+    let last_commit = run_git(repo, &["log", "-1", "--format=%H%x1f%s%x1f%cI"]).and_then(|s| {
+        let parts: Vec<&str> = s.split('\u{1f}').collect();
+        if parts.len() == 3 {
+            Some(GitCommitInfo { sha: parts[0].into(), msg: parts[1].into(), date: parts[2].into() })
+        } else {
+            None
+        }
+    });
+    let remote_url = run_git(repo, &["remote", "get-url", "origin"]);
+    let owner_repo = remote_url.as_deref().and_then(normalize_owner_repo);
+
+    RepoStatus {
+        owner_repo,
+        path: repo.to_string_lossy().into_owned(),
+        branch,
+        head,
+        upstream,
+        dirty,
+        dirty_files,
+        unpushed: ahead,
+        ahead,
+        behind,
+        stash,
+        last_commit,
+        remote_url,
+    }
+}
+
+fn scan_root_for_repos(root: &Path, exclude: &std::collections::HashSet<String>, found: &mut Vec<PathBuf>) {
+    let walker = walkdir::WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| {
+            if !e.file_type().is_dir() {
+                return true;
+            }
+            let n = e.file_name().to_string_lossy().to_lowercase();
+            !(n == ".git" || exclude.contains(&n))
+        });
+    for entry in walker.filter_map(|e| e.ok()) {
+        if !entry.file_type().is_dir() {
+            continue;
+        }
+        let p = entry.path();
+        // Skip dirs already inside a found repo (avoid nested re-listing).
+        if found.iter().any(|r| p.starts_with(r)) {
+            continue;
+        }
+        if p.join(".git").exists() {
+            found.push(p.to_path_buf());
+        }
+    }
+}
+
+#[tauri::command]
+pub fn scan_git_repos(app: tauri::AppHandle) -> Result<Vec<RepoStatus>, String> {
+    let settings = load_settings(app);
+    let exclude: std::collections::HashSet<String> = settings
+        .git
+        .exclude_dirs
+        .iter()
+        .map(|s| s.to_lowercase())
+        .collect();
+
+    let mut roots: Vec<PathBuf> = Vec::new();
+    for c in b'C'..=b'Z' {
+        let d = PathBuf::from(format!("{}:\\", c as char));
+        if d.exists() {
+            roots.push(d);
+        }
+    }
+    for r in &settings.git.extra_roots {
+        let p = PathBuf::from(r);
+        if p.exists() && !roots.iter().any(|x| x == &p) {
+            roots.push(p);
+        }
+    }
+
+    let mut found: Vec<PathBuf> = Vec::new();
+    for root in &roots {
+        scan_root_for_repos(root, &exclude, &mut found);
+    }
+    found.sort();
+    let repos: Vec<RepoStatus> = found.iter().map(|p| repo_status_at(p)).collect();
+    Ok(repos)
+}
+
+#[tauri::command]
+pub fn publish_git_status(repos: Vec<RepoStatus>) -> Result<String, String> {
+    let host = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "windows".into());
+    let safe = host_id_safe(&host);
+    let safe = if safe.is_empty() { "windows".to_string() } else { safe };
+    let snapshot = HostGitSnapshot {
+        schema_version: 1,
+        host: host.clone(),
+        os: "windows".into(),
+        scanned_at: chrono::Local::now().to_rfc3339(),
+        repos,
+    };
+    let path = git_share_dir().join(format!("{safe}.git-status.json"));
+    let json = serde_json::to_string_pretty(&snapshot).map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn list_git_status() -> Result<Vec<HostGitSnapshot>, String> {
+    let dir = git_share_dir();
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
+        let p = e.path();
+        if p.file_name().and_then(|s| s.to_str()).map(|n| n.ends_with(".git-status.json")).unwrap_or(false) {
+            if let Ok(raw) = std::fs::read_to_string(&p) {
+                if let Ok(snap) = serde_json::from_str::<HostGitSnapshot>(&raw) {
+                    out.push(snap);
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
 // ─── File watcher (replaces UI polling) ────────────────────────
 fn classify_event_path(p: &Path) -> &'static str {
     let s = p.to_string_lossy();
@@ -1330,6 +1542,7 @@ fn classify_event_path(p: &Path) -> &'static str {
     if has("\\70_Clipboard\\") || has("/70_Clipboard/") { return "clipboard"; }
     if has("\\60_Notes\\") || has("/60_Notes/") { return "notes"; }
     if has("\\profiles\\") || has("/profiles/") { return "profiles"; }
+    if has("\\90_Git\\") || has("/90_Git/") { return "git"; }
     ""
 }
 
@@ -1343,6 +1556,7 @@ pub fn start_file_watcher(app: tauri::AppHandle) {
             share.join("10_Exchange"),
             share.join("00_System").join("70_Clipboard"),
             share.join("00_System").join("60_Notes"),
+            share.join("00_System").join("90_Git"),
             share.join("00_System").join("10_Config").join("profiles"),
         ];
         for p in &watch_paths {

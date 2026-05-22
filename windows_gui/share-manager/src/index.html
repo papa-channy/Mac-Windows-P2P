@@ -24,9 +24,9 @@
 
       <div class="nav-tools" id="nav-tools"></div>
 
-      <button id="refresh-btn" class="refresh" title="Renew">
+      <button id="refresh-btn" class="refresh" title="Refresh">
         <span class="refresh-icon" id="refresh-icon"></span>
-        <span>Renew</span>
+        <span>Refresh</span>
       </button>
 
       <button id="settings-btn" class="settings-btn" title="Settings">
@@ -162,6 +162,23 @@
         </header>
         <div class="log-body">
           <div id="log-list" class="log-list"></div>
+        </div>
+      </section>
+
+      <!-- GIT DASHBOARD PANEL -->
+      <section id="panel-git" class="panel hidden">
+        <header class="main-header">
+          <div>
+            <h2>🌿 Git 현황</h2>
+            <div id="git-subtitle" class="subtitle">레포별 Mac-로컬 / Win-로컬 동기화 상태</div>
+          </div>
+          <div class="header-actions">
+            <button id="git-scan" class="primary-btn">🔍 지금 스캔</button>
+            <button id="git-refresh" class="ghost-btn">↻ 다시 읽기</button>
+          </div>
+        </header>
+        <div class="git-body">
+          <div id="git-list" class="git-list"></div>
         </div>
       </section>
 

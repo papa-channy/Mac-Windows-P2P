@@ -189,6 +189,32 @@ impl Default for IntegritySettings {
     }
 }
 
+fn default_exclude_dirs() -> Vec<String> {
+    ["Windows", "Program Files", "Program Files (x86)", "ProgramData",
+     "$Recycle.Bin", "node_modules", "AppData", "Application Data",
+     "System Volume Information", "Temp", ".cargo", ".rustup", "target"]
+        .iter().map(|s| s.to_string()).collect()
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GitSettings {
+    /// Extra directories to also scan (beyond a full drive walk).
+    #[serde(default)]
+    pub extra_roots: Vec<String>,
+    /// Directory names pruned during the walk (perf + noise).
+    #[serde(default = "default_exclude_dirs")]
+    pub exclude_dirs: Vec<String>,
+    /// Whether a non-credentialed full-disk scan is enabled.
+    #[serde(default = "default_true")]
+    pub scan_enabled: bool,
+}
+
+impl Default for GitSettings {
+    fn default() -> Self {
+        Self { extra_roots: Vec::new(), exclude_dirs: default_exclude_dirs(), scan_enabled: true }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Settings {
     pub schema_version: u32,
@@ -197,6 +223,8 @@ pub struct Settings {
     pub appearance: AppearanceSettings,
     #[serde(default)]
     pub integrity: IntegritySettings,
+    #[serde(default)]
+    pub git: GitSettings,
 }
 
 impl Default for Settings {
@@ -216,6 +244,7 @@ impl Default for Settings {
                 icon_theme_path: None,
             },
             integrity: IntegritySettings::default(),
+            git: GitSettings::default(),
         }
     }
 }
