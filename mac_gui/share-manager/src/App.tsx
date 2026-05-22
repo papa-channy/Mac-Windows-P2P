@@ -13,6 +13,7 @@ import { AnnouncementModal } from "./components/AnnouncementModal";
 import { UpdaterBanner } from "./components/UpdaterBanner";
 import { DropOverlay } from "./components/DropOverlay";
 import { CategoryPickerModal } from "./components/CategoryPickerModal";
+import { PermissionsOnboarding } from "./components/PermissionsOnboarding";
 import { ItemsView } from "./views/ItemsView";
 import { TreeView } from "./views/TreeView";
 import { NotesView } from "./views/NotesView";
@@ -20,6 +21,7 @@ import { ClipboardView } from "./views/ClipboardView";
 import { SettingsView } from "./views/SettingsView";
 
 const LAST_SEEN_KEY = "share-manager.last_seen_version";
+const PERMS_ONBOARDED_KEY = "share-manager.permissions_onboarded";
 
 export function App() {
   return (
@@ -44,6 +46,7 @@ function AppInner() {
   >(null);
   const [update, setUpdate] = useState<AvailableUpdate | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [showPermsOnboarding, setShowPermsOnboarding] = useState(false);
 
   const refreshTransfers = useCallback(async () => {
     const allItemsLocal: Record<string, TransferItem[]> = {};
@@ -79,17 +82,27 @@ function AppInner() {
 
   // share-changed watcher event router. Phase I will expand this.
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
+    let unlistenShare: (() => void) | undefined;
+    let unlistenSent: (() => void) | undefined;
     (async () => {
       try {
-        unlisten = await listen<{ topic: string }>("share-changed", (e) => {
+        unlistenShare = await listen<{ topic: string }>("share-changed", (e) => {
           if (e.payload.topic === "transfers") refreshTransfers();
         });
       } catch {
         /* watcher not available; ignore */
       }
+      try {
+        // Service immediate-send path emits this when send_path finishes.
+        unlistenSent = await listen("transfers-changed", () => refreshTransfers());
+      } catch {
+        /* ignore */
+      }
     })();
-    return () => unlisten?.();
+    return () => {
+      unlistenShare?.();
+      unlistenSent?.();
+    };
   }, [refreshTransfers]);
 
   useEffect(() => {
@@ -110,6 +123,11 @@ function AppInner() {
       setAnnouncement({ entry, isWelcome: lastSeen === null });
     })();
     checkForUpdate().then((u) => u && setUpdate(u)).catch(() => void 0);
+
+    // First-launch permissions onboarding — shown once per machine.
+    if (!localStorage.getItem(PERMS_ONBOARDED_KEY)) {
+      setShowPermsOnboarding(true);
+    }
   }, [refreshTransfers]);
 
   const dismissAnnouncement = () => {
@@ -177,6 +195,13 @@ function AppInner() {
           onClose={dismissAnnouncement}
         />
       )}
+      <PermissionsOnboarding
+        isOpen={showPermsOnboarding}
+        onClose={() => {
+          localStorage.setItem(PERMS_ONBOARDED_KEY, "1");
+          setShowPermsOnboarding(false);
+        }}
+      />
     </div>
   );
 }

@@ -936,3 +936,46 @@ pub fn get_release_notes(app: tauri::AppHandle) -> Result<Vec<crate::announcemen
 pub fn current_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
+
+/// Probe a Full-Disk-Access-protected path. Returns true if we currently
+/// have FDA; false if we don't. As a side effect a failed read also
+/// causes macOS to register our bundle in the FDA list (so the user can
+/// actually find the toggle in System Settings without clicking +).
+#[tauri::command]
+pub fn has_full_disk_access() -> bool {
+    // TCC.db is owned by root and only readable with Full Disk Access.
+    // Every Mac has this file; opening it (read-only) is the canonical
+    // FDA probe used by Cocoa apps.
+    if std::fs::File::open("/Library/Application Support/com.apple.TCC/TCC.db").is_ok() {
+        return true;
+    }
+    // Fallback probe: ~/Library/Mail — also FDA-only. Helps when running
+    // on a stripped-down macOS install without the system TCC.db.
+    if let Ok(home) = std::env::var("HOME") {
+        let mail = std::path::PathBuf::from(home).join("Library").join("Mail");
+        if std::fs::read_dir(mail).is_ok() {
+            return true;
+        }
+    }
+    false
+}
+
+/// Open System Settings to the Privacy & Security → Full Disk Access pane,
+/// where the user can grant share-manager unrestricted filesystem access
+/// so it stops hitting per-folder TCC prompts.
+#[tauri::command]
+pub fn open_privacy_settings(pane: Option<String>) -> Result<(), String> {
+    // Known macOS x-apple anchors:
+    //   Privacy_AllFiles               → Full Disk Access
+    //   Privacy_DesktopFolder          → Desktop folder
+    //   Privacy_DocumentsFolder        → Documents folder
+    //   Privacy_DownloadsFolder        → Downloads folder
+    //   Privacy_AppBundles             → App management
+    let anchor = pane.as_deref().unwrap_or("Privacy_AllFiles");
+    let url = format!("x-apple.systempreferences:com.apple.preference.security?{anchor}");
+    std::process::Command::new("open")
+        .arg(&url)
+        .status()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}

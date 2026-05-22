@@ -1,5 +1,29 @@
 [
   {
+    "version": "0.2.2",
+    "date": "2026-05-23",
+    "title": "권한 안내 자동 감지 · Space 따라오기 진짜로",
+    "highlights": [
+      "FDA 리스트 자동 등록: 첫 실행 시 backend 가 TCC 보호 위치 (/Library/Application Support/com.apple.TCC/TCC.db) 접근 시도 → macOS 가 share-manager 를 '전체 디스크 접근' 리스트에 자동 추가. 더 이상 사용자가 + 버튼 + Finder 탐색 안 해도 됨",
+      "권한 부여 자동 감지: 모달이 1.5초 간격으로 has_full_disk_access 폴링 → 사용자가 토글 ON 하는 즉시 '✓ 권한 부여 완료' 토스트 + 자동 닫기",
+      "Space 따라오기 진짜 작동: tauri::RunEvent::Reopen (macOS dock 클릭) 에서 NSWindowCollectionBehaviorMoveToActiveSpace 를 show+focus 직전에 재적용 — single-instance plugin 이 catch 못하는 dock-reopen 경로까지 커버"
+    ],
+    "notes": "v0.2.1 권한 모달 동작 (수동 + Finder 탐색 + 사용자가 직접 닫기) 과 Space 따라오기 미작동 fix. 자동 업데이트로 받으면 첫 실행 시 share-manager 가 FDA 리스트에 자동 추가되어 보임."
+  },
+  {
+    "version": "0.2.1",
+    "date": "2026-05-23",
+    "title": "단일 인스턴스 · Service 즉시 송신 · 디스크 권한 안내",
+    "highlights": [
+      "단일 인스턴스 강제: Service 호출 / dock 더블클릭 / Spotlight 모두 기존 창으로 라우팅 — 더 이상 다중 share-manager 가 뜨지 않음",
+      "macOS Space 따라오기: 사용자가 다른 가상 데스크탑에 있으면 활성 Space 로 윈도우가 자동으로 이동 (NSWindowCollectionBehaviorMoveToActiveSpace)",
+      "Finder 우클릭 → Services → 'Windows로 보내기': 카테고리 picker 없이 즉시 documents 카테고리로 송신 + 시스템 알림으로 결과 표시 (`--send-now <path>`)",
+      "디스크 권한 first-launch 온보딩: NSDesktopFolder / NSDocumentsFolder / NSDownloadsFolder / NSRemovableVolumes / NSNetworkVolumes usage descriptions 추가 + Full Disk Access 패널 자동 오픈 안내 모달",
+      "기존 picker 흐름 (`--send <path>`) 도 유지 — 트리에서 → 전송 버튼은 그대로 카테고리 선택"
+    ],
+    "notes": "v0.2.0 사용 후 발견된 3가지 UX 문제 (다중 인스턴스, Service 가 picker 만 띄움, 매번 폴더 권한 prompt) 일괄 fix. 자동 업데이트로 받으면 즉시 적용. share-manager 가 한 번만 떠 있게 되고, 우클릭 송신이 한 클릭으로 끝남."
+  },
+  {
     "version": "0.2.0",
     "date": "2026-05-22",
     "title": "Windows 측과의 완전 동기화 — Light 테마, 검증, 클립보드 이미지",

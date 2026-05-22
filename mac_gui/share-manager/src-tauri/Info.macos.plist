@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Extra Info.plist keys merged into the generated bundle by tauri-build.
+
+  Each NS*UsageDescription key suppresses the per-folder TCC permission
+  prompt by giving the user a one-line reason. Without these the OS asks
+  every time we open ~/Desktop, ~/Documents, ~/Downloads, an external
+  drive, or the SMB-mounted share. With them the user is asked once per
+  folder and the answer is remembered.
+
+  For full filesystem access (no per-folder prompt at all) the user still
+  needs to drop share-manager into System Settings → Privacy & Security
+  → Full Disk Access manually — open_privacy_settings command opens that
+  pane on first launch.
+-->
+<plist version="1.0">
+<dict>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>share-manager 가 데스크탑의 파일·폴더를 Windows 로 송수신하려면 접근이 필요합니다.</string>
+
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>share-manager 가 Documents 의 파일·폴더를 Windows 로 송수신하려면 접근이 필요합니다.</string>
+
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>share-manager 가 Downloads 의 파일·폴더를 Windows 로 송수신하려면 접근이 필요합니다.</string>
+
+    <key>NSRemovableVolumesUsageDescription</key>
+    <string>share-manager 가 외장 디스크의 파일·폴더를 송수신하려면 접근이 필요합니다.</string>
+
+    <key>NSNetworkVolumesUsageDescription</key>
+    <string>share-manager 가 셰어 폴더 (/Volumes/Mac-Window_Share) 를 읽고 쓰려면 네트워크 볼륨 접근이 필요합니다.</string>
+
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Finder Service "Windows 로 보내기" 우클릭 메뉴를 통한 자동 전송에 필요합니다.</string>
+</dict>
+</plist>

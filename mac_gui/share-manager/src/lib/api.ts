@@ -142,6 +142,11 @@ export const api = {
   verifyTransfer: (transferId: string) =>
     invoke<VerifyResult>("verify_transfer", { transferId }),
 
+  // --- system / permissions ---
+  openPrivacySettings: (pane?: string) =>
+    invoke<void>("open_privacy_settings", { pane }),
+  hasFullDiskAccess: () => invoke<boolean>("has_full_disk_access"),
+
   // --- icon theme install (folder or git URL) ---
   installIconTheme: (folder: string) =>
     invoke<{ id: string; name: string; root_path: string; theme_json_path: string; icon_count: number }>(
