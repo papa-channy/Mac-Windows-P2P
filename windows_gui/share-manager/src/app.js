@@ -94,6 +94,7 @@ const DEFAULT_SETTINGS = {
   network: { remote_host: '192.168.50.2' },
   appearance: { icon_theme: 'default', icon_themes: [], icon_theme_path: null },
   integrity: { auto_verify_on_receive: true, show_manual_button: true },
+  git: { extra_roots: [], exclude_dirs: [], scan_enabled: true, owners: [], only_mine: true },
 };
 
 // Cached policy from shared policy.json (loaded on settings open)
@@ -147,6 +148,16 @@ const $themeGitUrl  = document.getElementById('theme-git-url');
 const $themeGitAdd  = document.getElementById('theme-git-add');
 const $integrityAuto   = document.getElementById('integrity-auto');
 const $integrityManual = document.getElementById('integrity-manual');
+const $gitToken        = document.getElementById('git-token');
+const $gitTokenSave    = document.getElementById('git-token-save');
+const $gitTokenStatus  = document.getElementById('git-token-status');
+const $gitTokenClear   = document.getElementById('git-token-clear');
+const $gitSshStatus    = document.getElementById('git-ssh-status');
+const $gitSshPubkey    = document.getElementById('git-ssh-pubkey');
+const $gitSshGen       = document.getElementById('git-ssh-gen');
+const $gitSshCopy      = document.getElementById('git-ssh-copy');
+const $gitOnlyMine     = document.getElementById('git-only-mine');
+const $gitOwners       = document.getElementById('git-owners');
 // Notes refs
 const $panelNotes   = document.getElementById('panel-notes');
 const $notesList    = document.getElementById('notes-list');
@@ -549,6 +560,7 @@ async function loadSettingsFromBackend() {
   state.settings.network = Object.assign({}, DEFAULT_SETTINGS.network, state.settings.network || {});
   state.settings.appearance = Object.assign({}, DEFAULT_SETTINGS.appearance, state.settings.appearance || {});
   state.settings.integrity = Object.assign({}, DEFAULT_SETTINGS.integrity, state.settings.integrity || {});
+  state.settings.git = Object.assign({}, DEFAULT_SETTINGS.git, state.settings.git || {});
   renderTreeShortcuts();
 }
 
@@ -568,6 +580,8 @@ function renderSettings() {
   const integ = state.settings.integrity || DEFAULT_SETTINGS.integrity;
   $integrityAuto.checked = integ.auto_verify_on_receive !== false;
   $integrityManual.checked = integ.show_manual_button !== false;
+  // Git section
+  renderGitSettings();
   // Shortcuts
   $shortcutsList.innerHTML = '';
   const sc = state.settings.tree.shortcuts || [];
@@ -1377,11 +1391,29 @@ function renderGitPanel() {
   for (const s of snaps) {
     for (const r of s.repos) {
       const key = r.owner_repo || ('local:' + (r.path.split(/[\\/]/).pop() || r.path));
-      if (!repoMap.has(key)) repoMap.set(key, { label: r.owner_repo || (r.path.split(/[\\/]/).pop() || r.path), hosts: {} });
+      if (!repoMap.has(key)) {
+        repoMap.set(key, {
+          label: r.owner_repo || (r.path.split(/[\\/]/).pop() || r.path),
+          owner: r.owner_repo ? r.owner_repo.split('/')[0] : null,
+          hosts: {},
+        });
+      }
       repoMap.get(key).hosts[s.host] = Object.assign({ os: s.os }, r);
     }
   }
-  $gitSubtitle.textContent = hosts.map(h => `${h.host} (${h.os}) · ${fmtRelative(h.scanned_at)}`).join('   /   ');
+
+  // "내 레포만" filter: keep only repos owned by your account/orgs.
+  const g = state.settings.git || {};
+  let entries = [...repoMap.values()];
+  const total = entries.length;
+  if (g.only_mine && g.owners && g.owners.length) {
+    const set = new Set(g.owners.map(o => o.toLowerCase()));
+    entries = entries.filter(e => e.owner && set.has(e.owner.toLowerCase()));
+  }
+  const filterNote = (g.only_mine && g.owners && g.owners.length)
+    ? ` · 내 레포 ${entries.length}/${total}`
+    : (total > entries.length ? '' : ` · ${total}개`);
+  $gitSubtitle.textContent = hosts.map(h => `${h.host} (${h.os}) · ${fmtRelative(h.scanned_at)}`).join('   /   ') + filterNote;
 
   const severity = (entry) => {
     const vals = Object.values(entry.hosts);
@@ -1391,7 +1423,12 @@ function renderGitPanel() {
     if (vals.length < hosts.length) sev += 1;
     return sev;
   };
-  const rows = [...repoMap.values()].sort((a, b) => severity(b) - severity(a) || a.label.localeCompare(b.label));
+  const rows = entries.sort((a, b) => severity(b) - severity(a) || a.label.localeCompare(b.label));
+
+  if (rows.length === 0) {
+    $gitList.innerHTML = `<div class="empty" style="padding:40px 24px"><div class="empty-icon">🌿</div><div class="empty-title">표시할 레포가 없어요</div><div class="empty-hint">"내 레포만"이 켜져 있으면 토큰을 검증해 소유 owner를 등록하거나, 설정에서 끄세요.</div></div>`;
+    return;
+  }
 
   $gitList.innerHTML = '';
   for (const entry of rows) {
@@ -1935,6 +1972,98 @@ $integrityAuto.addEventListener('change', async () => {
 $integrityManual.addEventListener('change', async () => {
   state.settings.integrity.show_manual_button = $integrityManual.checked;
   await persistSettings();
+});
+
+// ─── Git settings (PAT / SSH / owner filter) ────────────────────
+function gitSettings() {
+  if (!state.settings.git) state.settings.git = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.git));
+  return state.settings.git;
+}
+
+async function renderGitSettings() {
+  const g = gitSettings();
+  $gitOnlyMine.checked = g.only_mine !== false;
+  $gitOwners.textContent = (g.owners && g.owners.length)
+    ? `소유 owner: ${g.owners.join(', ')}`
+    : '토큰 검증하면 소유 owner가 여기 채워져요.';
+  // token presence
+  try {
+    const has = await invoke('git_has_token');
+    $gitTokenStatus.textContent = has ? '✅ 토큰 등록됨 (키체인). "저장 + 검증"으로 재확인 가능.' : '⚠ 등록된 토큰 없음.';
+  } catch (_) {}
+  // ssh
+  try {
+    const ssh = await invoke('git_ssh_status');
+    if (ssh.has_key) {
+      $gitSshStatus.textContent = `✅ SSH 키 있음: ${ssh.path}`;
+      $gitSshPubkey.value = ssh.public_key || '';
+      $gitSshPubkey.style.display = ssh.public_key ? 'block' : 'none';
+      $gitSshCopy.style.display = ssh.public_key ? 'inline-flex' : 'none';
+    } else {
+      $gitSshStatus.textContent = '⚠ SSH 키 없음 — "키 생성/표시"로 만들 수 있어요.';
+      $gitSshPubkey.style.display = 'none';
+      $gitSshCopy.style.display = 'none';
+    }
+  } catch (_) {}
+}
+
+$gitTokenSave.addEventListener('click', async () => {
+  const tok = ($gitToken.value || '').trim();
+  if (!tok) { toast('토큰을 입력하세요', 'error'); return; }
+  $gitTokenSave.disabled = true;
+  $gitTokenStatus.textContent = '검증 중…';
+  try {
+    await invoke('git_set_token', { token: tok });
+    const info = await invoke('git_test_token');
+    const owners = [info.login, ...(info.orgs || [])].filter(Boolean);
+    gitSettings().owners = owners;
+    await persistSettings();
+    $gitToken.value = '';
+    $gitTokenStatus.textContent = `✅ ${info.login}${info.name ? ' (' + info.name + ')' : ''} · org: ${(info.orgs || []).join(', ') || '없음'}`;
+    $gitOwners.textContent = `소유 owner: ${owners.join(', ')}`;
+    toast('토큰 검증 완료', 'success');
+    if (state.view === VIEW_GIT) renderGitPanel();
+  } catch (e) {
+    $gitTokenStatus.textContent = '❌ ' + e;
+    toast('토큰 검증 실패: ' + e, 'error');
+  } finally {
+    $gitTokenSave.disabled = false;
+  }
+});
+
+$gitTokenClear.addEventListener('click', async () => {
+  try {
+    await invoke('git_clear_token');
+    gitSettings().owners = [];
+    await persistSettings();
+    $gitTokenStatus.textContent = '⚠ 토큰 삭제됨.';
+    $gitOwners.textContent = '토큰 검증하면 소유 owner가 여기 채워져요.';
+    toast('토큰 삭제됨', 'success');
+  } catch (e) { toast('삭제 실패: ' + e, 'error'); }
+});
+
+$gitSshGen.addEventListener('click', async () => {
+  $gitSshGen.disabled = true;
+  try {
+    const pub = await invoke('git_generate_ssh_key');
+    $gitSshPubkey.value = pub;
+    $gitSshPubkey.style.display = 'block';
+    $gitSshCopy.style.display = 'inline-flex';
+    $gitSshStatus.textContent = '✅ SSH 키 준비됨 — 아래 공개키를 GitHub에 등록하세요.';
+    toast('SSH 키 생성/표시 완료', 'success');
+  } catch (e) { toast('SSH 키 실패: ' + e, 'error'); }
+  finally { $gitSshGen.disabled = false; }
+});
+
+$gitSshCopy.addEventListener('click', async () => {
+  try { await invoke('copy_to_os_clipboard', { text: $gitSshPubkey.value }); toast('공개키 복사됨', 'success'); }
+  catch (e) { toast('복사 실패: ' + e, 'error'); }
+});
+
+$gitOnlyMine.addEventListener('change', async () => {
+  gitSettings().only_mine = $gitOnlyMine.checked;
+  await persistSettings();
+  if (state.view === VIEW_GIT) renderGitPanel();
 });
 document.querySelectorAll('input[name="netmode"]').forEach(r => {
   r.addEventListener('change', e => changeNetworkMode(e.target.value));

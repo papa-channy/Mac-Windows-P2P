@@ -207,11 +207,24 @@ pub struct GitSettings {
     /// Whether a non-credentialed full-disk scan is enabled.
     #[serde(default = "default_true")]
     pub scan_enabled: bool,
+    /// GitHub owners you control (login + orgs), cached from PAT validation.
+    /// NOT a secret — used only to filter the dashboard to your own repos.
+    #[serde(default)]
+    pub owners: Vec<String>,
+    /// Show only repos whose owner is in `owners`.
+    #[serde(default = "default_true")]
+    pub only_mine: bool,
 }
 
 impl Default for GitSettings {
     fn default() -> Self {
-        Self { extra_roots: Vec::new(), exclude_dirs: default_exclude_dirs(), scan_enabled: true }
+        Self {
+            extra_roots: Vec::new(),
+            exclude_dirs: default_exclude_dirs(),
+            scan_enabled: true,
+            owners: Vec::new(),
+            only_mine: true,
+        }
     }
 }
 

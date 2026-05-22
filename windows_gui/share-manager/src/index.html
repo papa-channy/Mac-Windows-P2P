@@ -300,6 +300,44 @@
           </section>
 
           <section class="settings-section">
+            <h3>Git / GitHub</h3>
+            <div class="settings-row">
+              <div class="settings-label">GitHub 토큰 (PAT)</div>
+              <div class="settings-control">
+                <div class="path-row">
+                  <input id="git-token" type="password" class="text-input" placeholder="ghp_... 또는 github_pat_...">
+                  <button id="git-token-save" class="ghost-btn">저장 + 검증</button>
+                </div>
+                <div id="git-token-status" class="settings-hint">토큰 상태 확인 중…</div>
+                <button id="git-token-clear" class="ghost-btn" style="margin-top:6px">🗑 토큰 삭제</button>
+                <span class="settings-hint">OS 키체인에만 저장돼요(설정파일·셰어엔 안 들어감). 권장 스코프: Classic <code>repo</code> + <code>read:org</code> (읽기 전용).</span>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">SSH 키 (fetch용)</div>
+              <div class="settings-control">
+                <div id="git-ssh-status" class="settings-hint">확인 중…</div>
+                <textarea id="git-ssh-pubkey" class="text-input" rows="2" readonly style="display:none;font-family:Consolas,monospace;font-size:11px;resize:vertical"></textarea>
+                <div class="path-row" style="margin-top:6px">
+                  <button id="git-ssh-gen" class="ghost-btn">키 생성/표시</button>
+                  <button id="git-ssh-copy" class="ghost-btn" style="display:none">📋 공개키 복사</button>
+                </div>
+                <span class="settings-hint">공개키를 GitHub → Settings → SSH keys에 등록하면 private 레포 fetch 가능.</span>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">내 레포만 표시</div>
+              <div class="settings-control">
+                <label class="toggle-row">
+                  <input type="checkbox" id="git-only-mine">
+                  <span>내 계정·org 소유 레포만 대시보드에 표시 (서드파티 클론 숨김)</span>
+                </label>
+                <div id="git-owners" class="settings-hint"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section">
             <h3>외관</h3>
             <div class="settings-row">
               <div class="settings-label">아이콘 테마</div>

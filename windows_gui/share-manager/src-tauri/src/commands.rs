@@ -1534,6 +1534,118 @@ pub fn list_git_status() -> Result<Vec<HostGitSnapshot>, String> {
     Ok(out)
 }
 
+// ─── Git credentials (PAT in OS keychain) + SSH + API validation ──
+const KEYRING_SERVICE: &str = "mac-window-git";
+const KEYRING_USER: &str = "github-pat";
+
+fn keyring_entry() -> Result<keyring::Entry, String> {
+    keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| e.to_string())
+}
+
+fn get_token() -> Option<String> {
+    keyring_entry().ok().and_then(|e| e.get_password().ok())
+}
+
+#[tauri::command]
+pub fn git_set_token(token: String) -> Result<(), String> {
+    let t = token.trim();
+    if t.is_empty() {
+        return Err("빈 토큰".into());
+    }
+    keyring_entry()?.set_password(t).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn git_has_token() -> bool {
+    get_token().is_some()
+}
+
+#[tauri::command]
+pub fn git_clear_token() -> Result<(), String> {
+    let e = keyring_entry()?;
+    match e.delete_credential() {
+        Ok(_) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(x) => Err(x.to_string()),
+    }
+}
+
+fn gh_get(token: &str, url: &str) -> Result<serde_json::Value, String> {
+    ureq::get(url)
+        .set("Authorization", &format!("Bearer {token}"))
+        .set("User-Agent", "mac-window-share")
+        .set("Accept", "application/vnd.github+json")
+        .set("X-GitHub-Api-Version", "2022-11-28")
+        .call()
+        .map_err(|e| match e {
+            ureq::Error::Status(401, _) => "토큰 인증 실패 (401) — 토큰/스코프 확인".to_string(),
+            ureq::Error::Status(code, _) => format!("GitHub API {code}"),
+            other => format!("네트워크 오류: {other}"),
+        })?
+        .into_json::<serde_json::Value>()
+        .map_err(|e| e.to_string())
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TokenInfo {
+    pub login: String,
+    pub name: Option<String>,
+    pub orgs: Vec<String>,
+}
+
+#[tauri::command]
+pub fn git_test_token() -> Result<TokenInfo, String> {
+    let token = get_token().ok_or("등록된 토큰이 없습니다")?;
+    let user = gh_get(&token, "https://api.github.com/user")?;
+    let login = user.get("login").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let name = user.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let orgs_v = gh_get(&token, "https://api.github.com/user/orgs")
+        .unwrap_or(serde_json::Value::Array(vec![]));
+    let orgs: Vec<String> = orgs_v
+        .as_array()
+        .map(|a| a.iter().filter_map(|o| o.get("login").and_then(|v| v.as_str()).map(|s| s.to_string())).collect())
+        .unwrap_or_default();
+    Ok(TokenInfo { login, name, orgs })
+}
+
+fn home_dir() -> Option<PathBuf> {
+    std::env::var("USERPROFILE").ok().or_else(|| std::env::var("HOME").ok()).map(PathBuf::from)
+}
+
+#[tauri::command]
+pub fn git_ssh_status() -> Result<serde_json::Value, String> {
+    let ssh = home_dir().ok_or("홈 디렉터리 없음")?.join(".ssh");
+    for name in ["id_ed25519.pub", "mac_window_git_ed25519.pub", "id_rsa.pub"] {
+        let p = ssh.join(name);
+        if p.exists() {
+            let pubkey = std::fs::read_to_string(&p).unwrap_or_default();
+            return Ok(serde_json::json!({
+                "has_key": true, "public_key": pubkey.trim(), "path": p.to_string_lossy(),
+            }));
+        }
+    }
+    Ok(serde_json::json!({ "has_key": false }))
+}
+
+#[tauri::command]
+pub fn git_generate_ssh_key() -> Result<String, String> {
+    let ssh = home_dir().ok_or("홈 디렉터리 없음")?.join(".ssh");
+    std::fs::create_dir_all(&ssh).map_err(|e| e.to_string())?;
+    let key = ssh.join("mac_window_git_ed25519");
+    let pubp = ssh.join("mac_window_git_ed25519.pub");
+    if pubp.exists() {
+        return std::fs::read_to_string(&pubp).map(|s| s.trim().to_string()).map_err(|e| e.to_string());
+    }
+    let mut cmd = Command::new("ssh-keygen");
+    cmd.args(["-t", "ed25519", "-N", "", "-C", "mac-window-git", "-f"]).arg(&key);
+    hide_console(&mut cmd);
+    let out = cmd.output().map_err(|e| format!("ssh-keygen 실행 실패: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("ssh-keygen 오류: {}", String::from_utf8_lossy(&out.stderr)));
+    }
+    std::fs::read_to_string(&pubp).map(|s| s.trim().to_string()).map_err(|e| e.to_string())
+}
+
 // ─── File watcher (replaces UI polling) ────────────────────────
 fn classify_event_path(p: &Path) -> &'static str {
     let s = p.to_string_lossy();

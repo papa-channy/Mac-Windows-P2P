@@ -1048,7 +1048,8 @@ JSONL 공통: `{ ts, host, os, event, ... }`. `send_ok`(source/category/transfer
 ### 18.3 자격증명 (Stage 2) — PAT + SSH, **OS 키체인 전용**
 - **PAT**(fine-grained, 읽기전용): GitHub API(레포목록/PR/원격브랜치/compare). Windows=Credential Manager, Mac=Keychain (`keyring` crate, service `mac-window-git`). settings.json·셰어에 절대 미저장.
 - **SSH 키**(ed25519): `git fetch`로 원격 객체 확보(정밀 ahead/behind, 후일 머지예측). 공개키는 사용자가 GitHub에 등록.
-- Settings에 "Git" 섹션: PAT 입력(마스킹)+검증(`GET /user`), SSH 공개키 표시.
+- Settings에 "Git" 섹션: PAT 입력(마스킹)+검증(`GET /user`+`/user/orgs`), SSH 공개키 생성/표시.
+- **검증 시 소유 owner 추출**: `login` + org logins → 비밀 아닌 `git.owners`(settings)에 캐시. 대시보드 "내 레포만"(`git.only_mine`, 기본 on) 토글이 owner ∈ owners 인 레포만 표시(서드파티 클론·null-origin 숨김). **Classic PAT(`repo`+`read:org`) 하나로 개인+org 커버**; fine-grained는 owner당 토큰 1개.
 
 ### 18.4 원격 인지 (Stage 3)
 `GET /user/repos`(owner+org) 레포목록 → 로컬 클론과 `owner_repo` 매칭. `GET /repos/{o}/{r}/branches`,`/pulls`. 푸시된 SHA는 `compare` API로 정확 ahead/behind. **미푸시 커밋은 origin에 없어 Mac↔Win 정밀 diff 불가 → "발산 위험(미푸시 N)"으로만 표기.**
