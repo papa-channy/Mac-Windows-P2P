@@ -13,30 +13,30 @@ const webview = window.__TAURI__.webview && window.__TAURI__.webview.getCurrentW
   : null;
 
 const CATEGORIES = [
-  { key: 'documents',    label: '문서',     emoji: '📄', folder: '30_Documents'    },
-  { key: 'data',         label: '데이터',   emoji: '📊', folder: '20_Data'         },
-  { key: 'repos',        label: '코드',     emoji: '💻', folder: '10_Repos'        },
-  { key: 'research',     label: '리서치',   emoji: '🔬', folder: '40_Research'     },
-  { key: 'env',          label: '환경설정', emoji: '⚙',  folder: '50_Env'          },
-  { key: 'builds',       label: '빌드',     emoji: '🛠', folder: '60_Builds'       },
-  { key: 'assets',       label: '애셋',     emoji: '🎨', folder: '70_Assets'       },
-  { key: 'misc',         label: '기타',     emoji: '📦', folder: '90_Misc'         },
-  { key: 'unclassified', label: '미분류',   emoji: '❔', folder: '99_Unclassified' },
+  { key: 'documents',    label: 'Documents',   emoji: '📄', folder: '30_Documents'    },
+  { key: 'data',         label: 'Data',        emoji: '📊', folder: '20_Data'         },
+  { key: 'repos',        label: 'Code',        emoji: '💻', folder: '10_Repos'        },
+  { key: 'research',     label: 'Research',    emoji: '🔬', folder: '40_Research'     },
+  { key: 'env',          label: 'Env',         emoji: '⚙',  folder: '50_Env'          },
+  { key: 'builds',       label: 'Builds',      emoji: '🛠', folder: '60_Builds'       },
+  { key: 'assets',       label: 'Assets',      emoji: '🎨', folder: '70_Assets'       },
+  { key: 'misc',         label: 'Misc',        emoji: '📦', folder: '90_Misc'         },
+  { key: 'unclassified', label: 'Unclassified', emoji: '❔', folder: '99_Unclassified' },
 ];
 
 // Sidebar groups: each shows category counts for a particular (direction, state).
 const NAV_GROUPS = [
-  { id: 'inbox',    iconName: 'inbox',    title: '받기 (Mac → Windows)',    direction: 'mac_to_windows', state: 'ready' },
-  { id: 'outbox',   iconName: 'send',     title: '보낸 것 (Windows → Mac)', direction: 'windows_to_mac', state: 'ready' },
+  { id: 'inbox',    iconName: 'inbox',    title: 'In - from Mac',  direction: 'mac_to_windows', state: 'ready' },
+  { id: 'outbox',   iconName: 'send',     title: 'Out - to Mac',   direction: 'windows_to_mac', state: 'ready' },
 ];
 
 // 로그 hub: collapsible (default closed). 송신/수신/오류 = jsonl, 압축이미지 = grid, 작업로그 = jsonl.
 const LOG_CATEGORIES = [
-  { id: 'send',       iconName: 'upload',         label: '송신 로그',  subtitle: 'Windows → Mac 송신 기록' },
-  { id: 'recv',       iconName: 'download',       label: '수신 로그',  subtitle: 'Mac → Windows 수신 + 무결성 검증 기록' },
-  { id: 'error',      iconName: 'alert-triangle', label: '오류 로그',  subtitle: '송신/검증 실패 기록' },
-  { id: 'compressed', iconName: 'image',          label: '압축 이미지', subtitle: '30일 경과 후 압축 보관된 클립보드 이미지' },
-  { id: 'worklog',    iconName: 'file-clock',     label: '작업 로그',  subtitle: '프로그램 개선/오류 수정 기록' },
+  { id: 'send',       iconName: 'upload',         label: 'Sent',              subtitle: 'Windows → Mac 송신 기록' },
+  { id: 'recv',       iconName: 'download',       label: 'Received',          subtitle: 'Mac → Windows 수신 + 무결성 검증 기록' },
+  { id: 'error',      iconName: 'alert-triangle', label: 'Errors',            subtitle: '송신/검증 실패 기록' },
+  { id: 'compressed', iconName: 'image',          label: 'Compressed images', subtitle: '30일 경과 후 압축 보관된 클립보드 이미지' },
+  { id: 'worklog',    iconName: 'file-clock',     label: 'Worklog',           subtitle: '프로그램 개선/오류 수정 기록' },
 ];
 
 // ─── Lucide-style inline SVG icons (stroke-based, currentColor) ──
@@ -218,7 +218,7 @@ async function fetchGroup(group) {
     state.cache.set(cacheKey, items);
     return items;
   } catch (e) {
-    toast(`로드 실패 (${group.label}): ${e}`, 'error');
+    toast(`로드 실패 (${group.title}): ${e}`, 'error');
     return [];
   }
 }
@@ -1430,7 +1430,7 @@ function renderItems() {
     const cat = CATEGORIES.find(c => c.key === state.selection.categoryKey);
     $title.textContent = `${cat.emoji}  ${cat.label}`;
   } else {
-    $title.textContent = group.label;
+    $title.textContent = group.title;
   }
   $subtitle.textContent = `${filtered.length}개 항목 · ${group.direction === 'mac_to_windows' ? 'MacBook에서 받음' : 'MacBook으로 보냄'}`;
 
