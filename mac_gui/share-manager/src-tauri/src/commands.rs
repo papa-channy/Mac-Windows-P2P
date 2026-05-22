@@ -936,3 +936,23 @@ pub fn get_release_notes(app: tauri::AppHandle) -> Result<Vec<crate::announcemen
 pub fn current_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
+
+/// Open System Settings to the Privacy & Security → Full Disk Access pane,
+/// where the user can grant share-manager unrestricted filesystem access
+/// so it stops hitting per-folder TCC prompts.
+#[tauri::command]
+pub fn open_privacy_settings(pane: Option<String>) -> Result<(), String> {
+    // Known macOS x-apple anchors:
+    //   Privacy_AllFiles               → Full Disk Access
+    //   Privacy_DesktopFolder          → Desktop folder
+    //   Privacy_DocumentsFolder        → Documents folder
+    //   Privacy_DownloadsFolder        → Downloads folder
+    //   Privacy_AppBundles             → App management
+    let anchor = pane.as_deref().unwrap_or("Privacy_AllFiles");
+    let url = format!("x-apple.systempreferences:com.apple.preference.security?{anchor}");
+    std::process::Command::new("open")
+        .arg(&url)
+        .status()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}

@@ -17,23 +17,36 @@ pub(crate) mod test_util {
     pub static ENV_LOCK: Mutex<()> = Mutex::new(());
 }
 
+use tauri::{AppHandle, Emitter, Manager};
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // single-instance MUST be the first plugin per the docs: any
+        // second launch of the binary (via Service vendor, dock click,
+        // open command, …) routes its argv to the on_new_instance
+        // handler instead of spawning a second process.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            on_second_instance(app, argv);
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             clipboard::start_poller(app.handle().clone());
             watcher::start(app.handle().clone());
-            // Idempotent: re-creates the desktop symlink if the user dragged
-            // share-manager.app into /Applications and the link is missing
-            // or stale. Auto-update never invalidates this because the link
-            // resolves /Applications/share-manager.app dynamically.
             let _ = desktop_alias::ensure_on_first_launch(app.handle());
+
+            // macOS: window should follow the user to whatever Space
+            // they're on when they re-launch / re-foreground the app.
+            if let Some(win) = app.get_webview_window("main") {
+                apply_macos_space_behavior(&win);
+            }
+
             handle_launch_args(app.handle().clone());
             Ok(())
         })
@@ -81,31 +94,175 @@ pub fn run() {
             commands::desktop_alias_status,
             commands::get_release_notes,
             commands::current_app_version,
+            commands::open_privacy_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
-/// If the binary was invoked as `share-manager --send <path>`, emit a
-/// `send-request` event for the frontend to display the send dialog.
-/// This is the entry point the Swift Quick Action launcher hits.
-fn handle_launch_args(app: tauri::AppHandle) {
-    use tauri::Emitter;
-    let args: Vec<String> = std::env::args().collect();
-    let mut send_paths: Vec<String> = Vec::new();
+// ─── argv parsing ──────────────────────────────────────────────────
+
+#[derive(Default, Debug)]
+struct ParsedArgs {
+    /// Picker flow — show CategoryPickerModal in frontend.
+    send_paths: Vec<String>,
+    /// Immediate-send flow — Service vendor (right-click → Windows로 보내기).
+    /// Backend invokes send_path directly with the default category.
+    send_now_paths: Vec<String>,
+}
+
+fn parse_args(argv: &[String]) -> ParsedArgs {
+    let mut out = ParsedArgs::default();
     let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--send" if i + 1 < args.len() => {
-                send_paths.push(args[i + 1].clone());
+    while i < argv.len() {
+        match argv[i].as_str() {
+            "--send" if i + 1 < argv.len() => {
+                out.send_paths.push(argv[i + 1].clone());
+                i += 2;
+            }
+            "--send-now" if i + 1 < argv.len() => {
+                out.send_now_paths.push(argv[i + 1].clone());
                 i += 2;
             }
             _ => i += 1,
         }
     }
-    if send_paths.is_empty() { return; }
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(400));
-        let _ = app.emit("send-request", serde_json::json!({ "paths": send_paths }));
-    });
+    out
 }
+
+// ─── First-launch (process argv via std::env::args) ────────────────
+
+fn handle_launch_args(app: AppHandle) {
+    let argv: Vec<String> = std::env::args().collect();
+    let parsed = parse_args(&argv);
+    dispatch(app, parsed);
+}
+
+// ─── Second-launch (delivered by tauri-plugin-single-instance) ─────
+
+fn on_second_instance(app: &AppHandle, argv: Vec<String>) {
+    // Show + focus our window — let the OS know we're alive.
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+        apply_macos_space_behavior(&win);
+    }
+    let parsed = parse_args(&argv);
+    dispatch(app.clone(), parsed);
+}
+
+fn dispatch(app: AppHandle, parsed: ParsedArgs) {
+    if !parsed.send_paths.is_empty() {
+        let paths = parsed.send_paths.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            let _ = app.emit("send-request", serde_json::json!({ "paths": paths }));
+        });
+        return;
+    }
+    if !parsed.send_now_paths.is_empty() {
+        let paths = parsed.send_now_paths.clone();
+        let app_clone = app.clone();
+        std::thread::spawn(move || {
+            // Tiny delay so the window has time to come up if this is a
+            // first launch — share_root() may need to read the mount.
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            immediate_send_batch(&app_clone, &paths);
+        });
+    }
+}
+
+// ─── Immediate-send (Service-triggered, no picker) ─────────────────
+
+fn immediate_send_batch(app: &AppHandle, paths: &[String]) {
+    use tauri_plugin_notification::NotificationExt;
+    let mut ok_count = 0usize;
+    let mut first_err: Option<String> = None;
+    let default_category = crate::share::category_by_key("documents")
+        .expect("documents category must exist");
+    for p in paths {
+        match transfer::engine::send(&transfer::engine::TransferRequest {
+            source: std::path::PathBuf::from(p),
+            category: default_category,
+            direction: share::Direction::MacToWindows,
+            share_root: share::share_root(),
+            source_host: hostname_or("Mac"),
+            source_user: std::env::var("USER").unwrap_or_else(|_| "user".into()),
+            batch_name: None,
+            version: 1,
+            overwrite_if_exists: false,
+            now: chrono::Local::now(),
+        }) {
+            Ok(_) => ok_count += 1,
+            Err(e) => {
+                if first_err.is_none() {
+                    first_err = Some(format!("{p}: {e}"));
+                }
+            }
+        }
+    }
+    let title = if ok_count == paths.len() {
+        format!("✓ Windows로 {ok_count}개 전송 완료")
+    } else if ok_count == 0 {
+        "✗ 전송 실패".to_string()
+    } else {
+        format!("⚠ {} / {} 전송", ok_count, paths.len())
+    };
+    let body = first_err.unwrap_or_else(|| {
+        let summary: Vec<String> = paths
+            .iter()
+            .map(|p| {
+                std::path::Path::new(p)
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(p)
+                    .to_string()
+            })
+            .collect();
+        summary.join(", ")
+    });
+    let _ = app
+        .notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show();
+
+    // Tell the frontend to refresh its transfers list — it'll watch the
+    // share via the watcher too, but emit a hint so the UI updates fast.
+    let _ = app.emit("transfers-changed", serde_json::Value::Null);
+}
+
+fn hostname_or(fallback: &str) -> String {
+    if let Ok(out) = std::process::Command::new("scutil").args(["--get", "LocalHostName"]).output() {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !s.is_empty() { return s; }
+        }
+    }
+    std::env::var("HOSTNAME").unwrap_or_else(|_| fallback.into())
+}
+
+// ─── macOS — make our window follow the user across Spaces ─────────
+
+#[cfg(target_os = "macos")]
+fn apply_macos_space_behavior(window: &tauri::WebviewWindow) {
+    use objc2::msg_send;
+    // NSWindowCollectionBehaviorMoveToActiveSpace = 1 << 1
+    // Combined with .managed (1 << 2) it stays a normal window but
+    // follows the user to whatever space they're on when activated.
+    const MOVE_TO_ACTIVE_SPACE: u64 = 1 << 1;
+    const MANAGED: u64 = 1 << 2;
+    let behavior: u64 = MOVE_TO_ACTIVE_SPACE | MANAGED;
+    match window.ns_window() {
+        Ok(ptr) if !ptr.is_null() => unsafe {
+            let _: () = msg_send![ptr as *mut objc2::runtime::AnyObject,
+                setCollectionBehavior: behavior];
+        },
+        _ => {}
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn apply_macos_space_behavior(_window: &tauri::WebviewWindow) {}

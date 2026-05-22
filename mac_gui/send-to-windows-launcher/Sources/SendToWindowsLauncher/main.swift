@@ -47,7 +47,7 @@ func launch(with urls: [URL]) {
     }
     var args: [String] = []
     for url in urls {
-        args.append("--send")
+        args.append("--send-now")
         args.append(url.path)
     }
     let task = Process()
