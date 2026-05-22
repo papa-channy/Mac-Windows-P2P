@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.2.0",
+    "date": "2026-05-22",
+    "title": "Windows 측과의 완전 동기화 — Light 테마, 검증, 클립보드 이미지",
+    "highlights": [
+      "Light 디자인 토큰 + 사이드바 그룹 navigation (Inbox / Outbox / Received) 카테고리별 count badge — Windows GUI 와 시각·UX 동일",
+      "빠른 전송: 트리 브라우저 + 윈도우 전체 drag-drop + 카테고리 picker · 다중 드롭은 자동 미분류",
+      "전송 항목: parseTransferName 으로 깔끔한 표시 이름 · DetailsModal · 🔍 검증 버튼 (manifest SHA-256 재계산 → 무결성 확인)",
+      "설정 풀구현: 트리 깊이 / 단축폴더 / 네트워크 연결확인+속도측정 / 정책 모드 / 호스트 프로필 / VSCode 아이콘 테마 (4개 카탈로그 마켓플레이스 VSIX 원클릭)",
+      "클립보드 v2: 텍스트 + 이미지 자동 캡처 · PNG dedup · 30일 TTL 자동 정리 · 클릭하면 OS 클립보드로 재주입",
+      "양 OS 무결성 contract: dir-hash 알고리즘 byte-identical 검증 완료 (Mac → Windows / Windows → Mac 양방향 SHA-256 round-trip)",
+      "테스트 36개 통합 + E2E 실셰어 송수신 검증"
+    ],
+    "notes": "v0.1.0 의 다크 placeholder 디자인을 완전히 폐기하고 Windows GUI 와 동일한 light contract 위에서 재구축. 자동 업데이트로 받으면 사이드바 그룹·트리·검증 버튼 모두 즉시 등장."
+  },
+  {
     "version": "0.1.0",
     "date": "2026-05-21",
     "title": "첫 정식 릴리스 — Tauri + React 로 재구축",
