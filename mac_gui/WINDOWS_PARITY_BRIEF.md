@@ -1017,58 +1017,325 @@ JSONL 공통: `{ ts, host, os, event, ... }`. `send_ok`(source/category/transfer
 
 ---
 
-## 18. Git 상태 대시보드 (3-way repo sync) — 단계별, Windows 선구현
+## 18. Git 상태 대시보드 — Mac 미러용 종합 핸드오프
 
-직결망으로 두 머신의 git 레포 상태(원격 / Mac-로컬 / Win-로컬)를 비교해 머지충돌·잘못된 상태 작업을 사전 발견하는 대시보드. v1 = 니즈 1~6, 이후 7(머지충돌 예측)·8(룰베이스 복구)은 고도화.
+직결망 공유 폴더를 통해 **원격(GitHub) / Mac-로컬 / Win-로컬** 3-source 상태를 한 화면에서 비교해 머지충돌·잘못된 상태 작업을 사전 발견. Windows 측 선구현 완료. Mac 측이 동일 계약·동일 UX로 미러 구현. **모든 결정은 이 §18 + `mockups/quality/ADR/*.md` 참조.**
 
-### 18.1 셰어 디렉터리 + 스냅샷 (Stage 1)
+### 18.0 한눈 정리 — 무엇을 어떻게
+
 ```
-00_System/90_Git/<sanitized-host>.git-status.json
+사용자 클릭                                    Windows 구현 (선)         Mac 미러 구현 (해당)
+─────────────────────────────────────────  ───────────────────────  ──────────────────────
+1. 사이드바 "Git"                              VIEW_GIT 진입             동일 nav 항목
+2. Layer 1 카드 그리드 + 3-node Bridge          renderGitL1Dashboard      React 컴포넌트
+3. 카드 클릭 → Layer 2 스윔레인                 openGitDetail              모달/Drawer
+4. 헤더 "Inspector" → Layer 3                  openGitInspector           모달
+5. Layer 3 사이드바 5탭 (★ 라이트 테마)          renderGitInspectorTab     동일 탭 구조
+   ├─ Raw Diffs    (working diff 파일별)
+   ├─ Daemon Logs  (80_Logs send/recv/error/worklog 통합)
+   ├─ Git Config   (.git/config dump)
+   ├─ All Commits  (테이블)
+   └─ Sync Timeline (★ 3-panel narrative — 18.5)
 ```
-각 OS가 자기 로컬 레포를 스캔해 게시 (프로필 게시 패턴과 동일). 스키마:
+
+### 18.1 셰어 데이터 계약 — 파일 스키마
+
+#### `00_System/90_Git/<sanitized-host>.git-status.json`
+각 OS가 자기 레포 상태를 게시 (스냅샷). `host`는 sanitized identifier (영숫자+`-_`).
+
 ```json
-{ "schema_version":1, "host":"DESKTOP-Q0S7LSQ", "os":"windows", "scanned_at":"RFC3339",
-  "repos":[{
-    "owner_repo":"papa-channy/Mac-Windows-P2P",  // origin URL → owner/repo 정규화 (없으면 null)
-    "path":"D:\\dev\\Mac-Windows-P2P", "branch":"main", "head":"<sha40>",
-    "upstream":"origin/main",            // 없으면 null
-    "dirty":0, "dirty_files":[],         // git status --porcelain 라인
-    "unpushed":0, "ahead":0, "behind":0, // rev-list --left-right --count @{u}...HEAD
-    "stash":0, "remote_url":"https://github.com/...",
-    "last_commit":{"sha","msg","date"} }] }
+{
+  "schema_version": 1,
+  "host": "DESKTOP-Q0S7LSQ",          // 또는 "chans-MacBook-Pro"
+  "os": "windows",                    // "macos" | "windows" | "linux"
+  "scanned_at": "2026-05-24T10:00:00+09:00",
+  "repos": [
+    {
+      "owner_repo": "papa-channy/Mac-Windows-P2P",  // origin URL→ "owner/repo" 정규화. 없으면 null.
+      "path": "D:\\dev\\Mac-Windows-P2P",            // Mac은 "/Users/chan/dev/..."
+      "branch": "main",
+      "head": "<full-40-char-sha>",
+      "upstream": "origin/main",                     // 없으면 null
+      "dirty": 2,
+      "dirty_files": [" M src/foo.rs", "?? scratch.md"],  // git status --porcelain 라인 그대로
+      "unpushed": 1,
+      "ahead": 1,
+      "behind": 0,
+      "stash": 0,
+      "remote_url": "https://github.com/papa-channy/Mac-Windows-P2P.git",
+      "last_commit": { "sha": "...", "msg": "...", "date": "RFC3339" }
+    }
+  ]
+}
 ```
-- **스캔**: 전체 디스크 walk(시스템/`node_modules`/`target`/`.git` 등 제외, 설정 `git.exclude_dirs`), `.git` 보유 폴더 = 레포. 각 레포는 `git -C` 셸아웃으로 위 필드 추출.
-- **게시 토큰 금지**: 스냅샷엔 메타데이터만. 자격증명은 키체인만(§18.3).
-- **watcher**: `90_Git` 변경 시 `share-changed` 토픽 `"git"` emit.
-- **Mac 미러**: `<mac-host>.git-status.json` 동일 스키마로 게시. `os:"macos"`. 드라이브 walk 대신 `~`(+추가 루트) walk.
 
-### 18.2 대시보드 (Stage 1: 2-way 로컬 → Stage 3: 3-way)
-`owner_repo` 기준 양쪽 스냅샷 병합. 레포별로 호스트 행(OS배지·브랜치·HEAD·dirty/미푸시/뒤처짐 플래그). HEAD가 호스트마다 다르거나 dirty/미푸시 있으면 "⚠ 불일치", 전부 같고 깨끗하면 "✓ 동기화됨". Stage 3에서 원격 컬럼 추가.
+#### `00_System/90_Git/<sanitized-host>.git-log.json`
+같은 walk에서 함께 게시. 각 레포의 default+현재 브랜치 최근 50커밋.
 
-### 18.3 자격증명 (Stage 2) — PAT + SSH, **OS 키체인 전용**
-- **PAT**(fine-grained, 읽기전용): GitHub API(레포목록/PR/원격브랜치/compare). Windows=Credential Manager, Mac=Keychain (`keyring` crate, service `mac-window-git`). settings.json·셰어에 절대 미저장.
-- **SSH 키**(ed25519): `git fetch`로 원격 객체 확보(정밀 ahead/behind, 후일 머지예측). 공개키는 사용자가 GitHub에 등록.
-- Settings에 "Git" 섹션: PAT 입력(마스킹)+검증(`GET /user`+`/user/orgs`), SSH 공개키 생성/표시.
-- **검증 시 소유 owner 추출**: `login` + org logins → 비밀 아닌 `git.owners`(settings)에 캐시. 대시보드 "내 레포만"(`git.only_mine`, 기본 on) 토글이 owner ∈ owners 인 레포만 표시(서드파티 클론·null-origin 숨김). **Classic PAT(`repo`+`read:org`) 하나로 개인+org 커버**; fine-grained는 owner당 토큰 1개.
+```json
+{
+  "schema_version": 1,
+  "host": "...", "os": "...", "scanned_at": "RFC3339",
+  "logs": {
+    "papa-channy/Mac-Windows-P2P": {
+      "main": [
+        { "sha": "...", "parents": ["..."], "msg": "...", "author": "...", "date": "RFC3339" }
+      ]
+    }
+  }
+}
+```
 
-### 18.4 원격 인지 (Stage 3)
-`GET /user/repos`(owner+org) 레포목록 → 로컬 클론과 `owner_repo` 매칭. `GET /repos/{o}/{r}/branches`,`/pulls`. 푸시된 SHA는 `compare` API로 정확 ahead/behind. **미푸시 커밋은 origin에 없어 Mac↔Win 정밀 diff 불가 → "발산 위험(미푸시 N)"으로만 표기.**
+#### `00_System/90_Git/remote-cache.json` (선택)
+원격 API 호출 결과 캐시. 메타데이터만 (토큰 금지).
 
-### 18.5 직결 트리거 (Stage 4)
-백그라운드 reachability 폴러(peer TCP 445/share 경로). down→up 전이 시 자기 스냅샷 증분 재게시(mtime 변경 + 원격 SHA 변경 레포만) + `"git"` 토픽. 각 OS self-refresh.
+```json
+{ "fetched_at": "RFC3339",
+  "repos": [{ "owner_repo": "...", "default_branch": "main",
+              "default_sha": "<40>", "branches": [{name,sha}],
+              "open_prs": [{number,title,head,base}],
+              "error": null|"msg" }] }
+```
 
-### 18.7 레포 상세 그래프 (Stage 5, Windows 선구현)
-레포 클릭 → 원격/Mac/Win 3소스 커밋 이력을 한 화면에. **Rust 자료처리 + Win 바닐라SVG/HTML, Mac React** (동일 JSON 계약).
-- **커밋 로그 게시**: `90_Git/<host>.git-log.json` = `{schema_version, host, os, scanned_at, logs:{<owner_repo>:{<branch>:[CommitNode]}}}`. `CommitNode{sha,parents[],msg,author,date}`. default+현재 브랜치, 각 최근 50. `scan_and_publish_git`이 status+log를 한 walk로 게시.
-- **`build_repo_graph(owner_repo)`**: 모든 호스트 git-log + 원격 커밋(`GET /repos/{o}/{r}/commits?sha={branch}&per_page=50`) 병합 → `per_branch{<b>:{commits:[{sha,short,parents,msg,author,date,in:{src:bool},tips:[src],ancestor:bool}], pointers:{src:sha}, common_ancestor, summary:{host:{ahead,behind,has_remote}}}}, hosts, default_branch, branches`. (출처 key: "remote" + 각 host명. host os는 hosts[]에서.)
-- **Sync Map**(기본): 커밋 행마다 출처 점(📦/🍎/🪟) + tip 포인터 알약 + 공통조상 강조 + 상단 호스트 요약칩(ahead/behind/dirty/미푸시). **DAG 토글**(5d): 레인 그래프.
-- 미푸시는 origin에 없어 정밀 Mac↔Win diff 불가 → ahead/behind는 집합차 근사 + "발산" 표기.
+#### `00_System/80_Logs/verify/<transfer_id>.json`
+무결성 검증 캐시 — git 무관, 송수신 시스템 산출. Layer 3 Daemon Logs 의 source.
 
-### 18.6 Mac 체크리스트
-- [ ] `90_Git/<host>.git-status.json` 동일 스키마 게시 (`os:"macos"`)
-- [ ] 로컬 스캔(~ + 추가 루트), git CLI 메타데이터
-- [ ] PAT/SSH 키체인 등록 UI + API(레포목록/PR/compare)
-- [ ] 직결 up 트리거 폴러 + 증분 재게시
+### 18.2 백엔드 커맨드 표면 (Windows Rust → Mac 미러)
+
+> `src-tauri/src/commands.rs` 등록. Mac 측은 같은 이름·같은 시그니처로 구현.
+
+| 커맨드 | 시그니처 | 설명 |
+|---|---|---|
+| `scan_and_publish_git` | `(app) -> usize` | 디스크 walk → status + git-log 한 번에 게시. 반환=레포 수 |
+| `list_git_status` | `() -> Vec<HostGitSnapshot>` | `*.git-status.json` 전부 읽기 |
+| `list_git_logs` | `() -> JSON` | `*.git-log.json` 전부 → `{host: doc}` |
+| `build_repo_graph` | `(owner_repo) -> RepoGraph` | 모든 호스트 git-log + 원격 commits API 병합 → 18.4 스키마 |
+| `github_fetch_remote` | `(owner_repos[]) -> Vec<RemoteRepoState>` | API로 default_branch+branches+PR. `remote-cache.json` 갱신 |
+| `read_remote_cache` | `() -> JSON` | 캐시 읽기 |
+| `git_set_token / git_has_token / git_clear_token / git_test_token` | — | PAT 키체인 CRUD + `/user`+`/user/orgs` 검증 |
+| `git_ssh_status / git_generate_ssh_key` | — | ed25519 키 탐지/생성 |
+| `git_file_diff` | `(repo_path, file, side?) -> String` | working/staged/remote diff |
+| `git_config_read` | `(repo_path) -> String` | `.git/config` 덤프 |
+| `git_list_branches` | `(repo_path) -> Vec<String>` | 로컬 브랜치 목록 |
+| `auto_verify_pending` | `() -> u32` | 받기 자동 무결성 검증 (Git 무관, §17) |
+
+### 18.3 자격증명 모델 — PAT + SSH, **OS 키체인 전용**
+
+- **PAT** (Classic 권장, `repo` + `read:org`): GitHub API. Windows Credential Manager / macOS Keychain (`keyring` crate, service=`mac-window-git`, account=`github-pat`). **settings.json·셰어에 절대 미저장**.
+- **SSH 키** (ed25519): `git fetch` 용. 공개키는 사용자가 GitHub Settings → SSH keys에 등록.
+- Settings → "Git / GitHub" 섹션: PAT 입력(masked) + 저장+검증 + 삭제 / SSH 공개키 생성·표시·복사 / "내 레포만" 토글.
+- **`git_test_token`**: `GET /user` 의 login + `GET /user/orgs` 의 logins → `settings.git.owners`(비밀 아님, settings.json에 캐시 OK)에 저장.
+- **`settings.git.only_mine`** (기본 true): 대시보드에서 `owner ∈ owners` 인 레포만 표시 → 서드파티 클론·`null-origin` 자동 숨김.
+- **Cross-OS feature flag**: keyring crate는 OS별 native feature 필수. Windows=`features=["windows-native"]`, Mac=`features=["apple-native"]`. **없으면 mock store로 동작해서 저장/조회가 안 맞음** (실제 우리도 한 번 잡힘 — 커밋 `01320fb`).
+
+### 18.4 RepoGraph 출력 스키마 (`build_repo_graph`)
+
+```json
+{
+  "owner_repo": "papa-channy/Mac-Windows-P2P",
+  "default_branch": "main",
+  "branches": ["main", "feature/onboarding"],
+  "hosts": [{ "host": "chans-MacBook-Pro", "os": "macos" }, ...],
+  "has_token": true,
+  "per_branch": {
+    "main": {
+      "commits": [
+        { "sha", "short", "parents":[..], "msg", "author", "date",
+          "in": { "remote": bool, "<host1>": bool, "<host2>": bool },
+          "tips": ["remote", "<host>", ...],   // 이 sha를 어떤 소스의 HEAD가 가리키는지
+          "ancestor": bool                     // LCA 여부
+        }
+      ],
+      "pointers": { "remote": sha, "<host>": sha, ... },
+      "common_ancestor": sha,                  // 50커밋 범위 밖이면 null
+      "summary": {
+        "<host>": { "ahead": N, "behind": N, "has_remote": bool }
+      }
+    }
+  }
+}
+```
+
+### 18.5 3-Layer UI 아키텍처 (★ Mac이 미러)
+
+#### Layer 1 — Dashboard (`VIEW_GIT` 진입)
+- **Hero stats** 3카드: 전체 / 동기화 / 충돌 위험 (충돌>0 시 부드러운 빨간 그라데이션 + crimson 숫자)
+- **Repo Card 그리드** — 카드마다:
+  - 상태 배지 (icon + label): `synced` ✓ / `diverged` ⚠ / `dirty` ⚠ / `conflict` 🚨 / `partial` ◦
+  - 카드 제목 (mono, owner/repo)
+  - "방금 전 스캔" 메타 (clock 아이콘)
+  - **3-node Bridge**: `🍎 MAC ── 📦 ORIGIN ── 🪟 WIN` 가로 배치
+    - 각 노드: 38×38 둥근 사각 아이콘 타일 + LED 점(우하단, emerald=online)
+    - Mac = **Apple 로고** (filled SVG, 검정), Origin = **GitHub octocat** (filled, 검정), Win = **Windows 4-pane** (filled, `#00A4EF`)
+    - third 라인: dirty 개수 / SHA(remote) / "Clean"(check-circle-2) / "없음"
+  - 충돌 배너 (있을 때): shield-alert 아이콘 + `N개 파일이 양쪽 머신에서 동시 수정 중`
+- 카드 hover: border 강조 + chev → translateX
+
+#### Layer 2 — Repo Detail (modal, light)
+- **헤더**: `display: grid; grid-template-columns: minmax(0,1fr) auto auto auto` + `overflow: hidden`
+  - 제목 ellipsis (가장 먼저 줄어듦)
+  - branch select max-width 200, 자체 ellipsis + `title` attr (hover tooltip)
+  - Inspector 버튼 (라이트 ghost: white bg + accent terminal icon)
+  - close X 32×32
+  - **ADR-0002** 참조 — 이전 다중 시도 후 영구 해결됨
+- **3 스윔레인** (Mac / Origin / Win):
+  - 레인 헤더: 36×36 브랜드 아이콘 타일 + 제목(컬러) + host·sha(mono) + ahead/behind 칩
+  - 본문: **Work In Progress** (dirty 파일, conflict 파일은 빨간 강조 + `CONFLICT` 라벨) + **미푸시 커밋** + **Stash**
+  - Origin lane은 큰 보라 글로우 dot + 카드(SHA+메시지) + 열린 PR 목록
+- 하단 **Connector Bar**: Mac(apple icon) — ↑↓ chips — Origin(github icon) — ↑↓ chips — Win(windows icon)
+  - 동기화면 emerald check chip
+
+#### Layer 3 — Raw Inspector (modal, **라이트 — ADR-0001**)
+- **헤더**: Back 버튼 + breadcrumb(`>_ owner/repo / Inspector`) + close X
+- **사이드바** "DATA CATEGORIES": 5 탭, active 시 sky 좌측 stripe + light blue tint
+- 5 탭 내용:
+  1. **Raw Diffs**: 파일별 diff 카드. GitHub 라이트 모드 컬러 (+`#1F883D` / −`#CF222E` / `@@`=`#0969DA`) on `#F6F8FA`
+  2. **Daemon Logs**: 4-column grid (ts mono muted / level pill / cat pill / message). pill 컬러: SUCCESS=emerald, ERROR=rose, INFO=sky, WORKLOG=violet
+  3. **Git Config**: 경로 헤더 + `.git/config` 본문 (light code surface `#F6F8FA`, line-height 1.85)
+  4. **All Commits**: SHA / Message / Branch / Author / Date 테이블. SHA는 accent sky mono. 날짜 nowrap
+  5. **Sync Timeline** ★ (§18.6)
+
+### 18.6 Sync Timeline — narrative 3-panel (★ ADR-0003 + ADR-0004)
+
+레포 클릭 → Inspector 5번째 탭. 점만 보이는 그래프가 아니라 "**무엇이 / 왜 / 어떻게**" 답하는 narrative.
+
+#### Panel 1 — Status Summary
+```
+┌─────────────────────────────────────────────────────┐
+│ [⚠] 발산 · Mac이 origin보다 1커밋 앞섬               │
+│     main 브랜치 · 공통 조상 f1b62e3                  │
+├─────────────────────────────────────────────────────┤
+│ [GitHub] GitHub origin       66e3506   [기준]       │
+│ [Apple]  chans-MacBook-Pro   mac0001   [↑1] [미푸시1]│
+│ [Win]    DESKTOP-Q0S7LSQ     c5d1cdb   [origin과 동일]│
+├─────────────────────────────────────────────────────┤
+│ ⚡ 권장: Mac에서 git push 후 Win에서 git pull       │
+└─────────────────────────────────────────────────────┘
+```
+- **Verdict 규칙** (`computeGitNarrative()` 표):
+
+| 상태 조건 | Verdict | Action |
+|---|---|---|
+| `macA && winA` | `양쪽 발산 · Mac ↑n / Win ↑m` (danger) | `양쪽 미푸시 — 통합 결정 후 한쪽씩 push` |
+| `macA only` | `Mac이 origin보다 nA커밋 앞섬` (warn) | `Mac에서 git push 후 Win에서 git pull` |
+| `winA only` | `Win이 origin보다 nA커밋 앞섬` (warn) | `Win에서 git push 후 Mac에서 git pull` |
+| `macB \|\| winB` | `뒤처짐 · [hosts]` (warn) | `[hosts]에서 git pull 권장` |
+| dirty 겹침 | `충돌 임박 · 양쪽에서 같은 파일 수정 중` (danger) | `Resolver로 파일 단위 결정` |
+| `macDirty \|\| winDirty` only | `동기화됨 · 미커밋 변경 N개` (warn) | `로컬 변경사항을 커밋 후 push 권장` |
+| 모두 동일 | `모든 호스트가 origin과 일치` (synced) | `추가 작업 필요 없음` |
+| host 누락 | `원격 데이터 없음` (partial) | `원격 동기화 / 스캔 필요` |
+
+#### Panel 2 — Visual Graph (SVG)
+- **3 가로 레인**: Remote (보라) / Mac (파랑) / Win (틸) — `220px` 라벨 영역(긴 호스트명도 잘리지 않음)
+- 각 레인 28×28 브랜드 아이콘 타일
+- 점 클릭 가능 (data-sha) → Panel 3 업데이트
+- **LCA**: amber 점선 vertical line + 위쪽 라벨 박스 `⊥ 공통 조상 · sha`
+- **공유 spine**: 모든 호스트 공유 커밋은 점선 vertical로 잇기
+- Tip pill: 컬러 fill + 흰 텍스트, `origin/main · sha7` / `<host> HEAD · sha7`
+- padR 360px 확보 — tip pill 잘림 방지
+- 하단 **legend** 행 (원격 / Mac / Win / 공유 / LCA)
+
+#### Panel 3 — Selected Commit
+- 큰 mono SHA pill (accent sky)
+- 커밋 메시지 (굵음)
+- 저자 · 상대시간
+- "존재" 소스 pill (`remote` / `<mac-host>` / `<win-host>`)
+- LCA면 `⊥ 공통 조상` 칩, tip이면 어느 ref 인지 칩
+
+### 18.7 디자인 토큰 (Mac 동일 사용)
+
+```
+Brand semantic
+  remote:        #6E40C9  (purple)
+  mac:           #2563EB  (cobalt blue)
+  win brand:     #00A4EF  (Microsoft blue, 아이콘 fill 한정)
+  win text/edge: #0F766E  (teal — UI 컬러)
+
+State semantic
+  sync:    #10B981   warn: #F59E0B   danger: #E11D48   stash: #64748B
+
+Surface
+  --surface:        #FFFFFF
+  --surface-low:    #F8F8FA
+  --surface-2:      #F4F4F7
+  --surface-hi:     #ECECF1
+  --border:         #E4E4EA
+  --border-strong:  #D0D0D8
+
+Text
+  --text-pri:  #1B1B22   --text-sec: #6B6B75   --text-dim: #A0A0A8
+
+Code surface (Inspector diff/config)
+  bg:  #F6F8FA       text: #1F2328
+  +:   #1F883D  on  rgba(31,136,61,0.12)
+  −:   #CF222E  on  rgba(207,34,46,0.10)
+  @@:  #0969DA  on  rgba(9,105,218,0.08)
+
+Typography
+  UI:    system-ui (San Francisco / Segoe UI Variable)
+  Mono:  JetBrains Mono, Fira Code, SF Mono, Consolas (체인)
+
+Spacing scale
+  4 / 8 / 12 / 16 / 20 / 22 / 24 / 28 / 32
+
+Radius
+  pill: 999px · chip: 6px · card sm: 10px · card md: 12px · card lg: 14~16px
+
+Icons
+  Lucide stroke=2 for UI (monitor, hard-drive 아닌 ★ apple/windows/github 브랜드 SVG는 fill).
+  brand SVG path 는 18.5 Layer 1 노드 참조 (filled, viewBox 24).
+```
+
+### 18.8 ADR 인덱스 (자세한 내용은 mockups/quality/ADR/)
+
+- **ADR-0001 — Inspector 라이트 통일**: 앱 전체 라이트 → Inspector도 라이트. 코드 영역은 GitHub-light 컬러.
+- **ADR-0002 — 모달 헤더 오버플로**: grid `minmax(0,1fr) auto auto auto` + `display:contents` controls + select max-width 200.
+- **ADR-0003 — Sync Timeline 디자인**: 220px 라벨 영역, 86px 레인 높이, 브랜드 SVG 타일, light 팔레트.
+- **ADR-0004 — Sync Timeline narrative**: Status Summary + Graph + Selected Commit 3-panel + verdict-action 규칙표.
+
+### 18.9 직결망 up 자동 트리거 (Stage 4 — Mac과 함께 진행)
+
+> 이 항목만 양측 동시 구현이 의미 있음 (Mac만 트리거 받아봐야 Win이 안 들으면 무의미).
+
+- 백그라운드 reachability 폴러: peer TCP 445 또는 share 경로 존재 체크. 5~10초 간격.
+- down→up 전이 감지 시:
+  - 자기 스냅샷 증분 재게시 (mtime 바뀐 레포 + 원격 SHA 변한 레포만)
+  - `share-changed` 토픽 `"git"` emit → 프론트 자동 갱신
+- 양쪽 self-refresh (한쪽이 트리거를 다른 쪽에 보내는 게 아니라 각자 알아채고 갱신)
+- 실패 시 30초 폴링 fallback
+
+### 18.10 Mac 미러 체크리스트 (구체)
+
+#### 백엔드 (Rust)
+- [ ] `keyring = { version = "3", features = ["apple-native"] }` 추가
+- [ ] `scan_and_publish_git()`: `~`+추가 루트 walk, `<mac-hostname>.git-status.json` + `.git-log.json` 게시
+- [ ] `build_repo_graph()`: 18.4 RepoGraph 스키마 정확히 출력
+- [ ] `git_set/has/clear/test_token`: macOS Keychain 사용
+- [ ] `git_ssh_status/git_generate_ssh_key`: `~/.ssh` 에 ed25519
+- [ ] `git_file_diff(repo_path, file, side)`, `git_config_read(repo_path)`, `git_list_branches(repo_path)`
+- [ ] `github_fetch_remote(owner_repos[])`: ureq 또는 동등 HTTPS, `remote-cache.json` 갱신
+
+#### 프론트엔드 (React)
+- [ ] Layer 1 Dashboard: 18.5 디자인 그대로. 3-node Bridge에 **Apple/Windows 브랜드 SVG** 사용 (monitor·hard-drive 금지)
+- [ ] Layer 2 Detail: 3-column 스윔레인 + Connector bar. 헤더는 grid `minmax(0,1fr) auto auto auto` (ADR-0002 — 긴 브랜치명 잘림 0)
+- [ ] Layer 3 Inspector **라이트 테마** (ADR-0001):
+  - 5 탭 동일 (Raw Diffs / Daemon Logs / Git Config / All Commits / Sync Timeline)
+  - GitHub-light diff 컬러
+  - 로그 4-column grid + semantic pill
+- [ ] Sync Timeline 3-panel narrative (ADR-0003 + 0004):
+  - Panel 1 Status Summary — verdict-action 표(§18.6) 그대로 코드화
+  - Panel 2 SVG Graph — 220px 라벨, 브랜드 타일, padR 360
+  - Panel 3 Selected Commit — 점 클릭 → 업데이트
+
+#### 디자인 토큰 (전역 CSS)
+- [ ] §18.7 컬러·타이포·spacing·icon 동일 적용
+
+#### 검증 기준
+- [ ] **UPC-1**: 모든 텍스트 잘림 0
+- [ ] **UPC-2**: 라이트 테마 일관 (Inspector 다크 잔재 없음)
+- [ ] **UPC-3**: 이모지 0 (Lucide/브랜드 SVG만)
+- [ ] **UPC-4**: Mac=Apple / Win=Windows / Origin=GitHub 브랜드 아이콘
+- [ ] **UPC-5~9**: `mockups/quality/CHECKLIST.md` UPC 표 그대로
 
 ---
 
@@ -1084,3 +1351,4 @@ JSONL 공통: `{ ts, host, os, event, ... }`. `send_ok`(source/category/transfer
 | 2026-05-22 | §17 로그 허브(80_Logs), 수신 자동검증 + ✓/✗ 배지 + integrity 설정, 이미지 압축 보관(compress action), 클립보드 썸네일 깜빡임 수정. Windows v0.3. |
 | 2026-05-23 | §18 Git 상태 대시보드 계약 추가 (Stage1: 90_Git 스냅샷 + 로컬 스캔 + 2-way 대시보드, Windows 선구현). 사이드바 영어화(In/Out/카테고리/Notes/Refresh 등). |
 | 2026-05-23 | Git Stage2(PAT/SSH 키체인 등록 + 내 레포만 필터 + keyring windows-native), Stage3(github_fetch_remote: 브랜치 SHA+PR → 원격/Mac/Win 3-way + vs-원격 태그 + 발산 위험 표기, remote-cache.json). Windows 선구현. |
+| 2026-05-24 | §18 전면 재작성 — Mac 핸드오프용 종합 문서. 3-layer UI 아키텍처(L1 Dashboard / L2 Swimlanes / L3 Inspector 라이트 5탭), Sync Timeline narrative 3-panel + verdict-action 규칙표, 디자인 토큰, 전체 백엔드 커맨드 목록. ADR-0001~0004 (`mockups/quality/ADR/`). UPC 9항. Phase 1+1.5 적용 완료, Mac 미러 준비 끝. |
