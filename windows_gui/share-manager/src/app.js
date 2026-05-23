@@ -82,6 +82,9 @@ const ICONS = {
   'zap':           '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
   'package':       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>',
   'gitfork':       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>',
+  // Brand logos (filled — not stroked)
+  'apple':         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M16.06 13.06c-.03-2.66 2.17-3.93 2.27-3.99-1.23-1.8-3.16-2.05-3.84-2.08-1.64-.17-3.19.97-4.02.97-.83 0-2.11-.94-3.46-.92-1.78.03-3.41 1.03-4.33 2.62-1.84 3.2-.47 7.94 1.33 10.54.88 1.27 1.93 2.7 3.31 2.65 1.33-.05 1.83-.86 3.44-.86 1.6 0 2.05.86 3.46.83 1.43-.02 2.34-1.29 3.22-2.57 1.01-1.47 1.43-2.91 1.46-2.98-.03-.01-2.8-1.07-2.84-4.23zM13.93 5.4c.72-.88 1.21-2.09 1.07-3.31-1.04.05-2.32.7-3.07 1.56-.67.76-1.26 2-1.1 3.17 1.17.09 2.37-.59 3.1-1.42z"/></svg>',
+  'windows':       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.48 10.5 4.4v7.7H3V5.48zm0 13.04v-6.34h7.5v7.42L3 18.52zm8.5-7.42V4.2L21 2.8v9.3h-9.5zm0 1.08H21V21.2l-9.5-1.4v-7.62z"/></svg>',
 };
 
 function svgIcon(name) {
@@ -1537,7 +1540,7 @@ function renderGitL1Dashboard() {
   const filterNote = (g.only_mine && g.owners && g.owners.length)
     ? ` · 내 레포 ${entries.length}/${total}`
     : ` · ${entries.length}개`;
-  $gitSubtitle.textContent = `Overview → Focus → Debug 3-layer · 동기화 ${syncedCount} · 발산 ${divergedCount} · 충돌 ${conflictCount}${filterNote}`;
+  $gitSubtitle.textContent = `${entries.length}개 레포 모니터링 중 · 동기화 ${syncedCount} · 발산 ${divergedCount} · 충돌 ${conflictCount}${filterNote}`;
 
   const hero = `
     <section class="git-hero">
@@ -1613,7 +1616,7 @@ function renderGitL1Card(s) {
 }
 
 function gitNodeBlock(key, data, dirty) {
-  const ICON_NAME = { mac: 'monitor', remote: 'github', win: 'hard-drive' };
+  const ICON_NAME = { mac: 'apple', remote: 'github', win: 'windows' };
   const LBL = { mac: 'MAC', remote: 'ORIGIN', win: 'WIN' };
   const dim = !data;
   let third = '';
@@ -1774,7 +1777,7 @@ async function openGitDetail(ownerRepo) {
   $gitDetailTitle.textContent = ownerRepo;
   $gitDetailBranch.innerHTML = '';
   $gitDetailSummary.innerHTML = '';
-  if ($gitDetailMode) $gitDetailMode.innerHTML = `${svgIcon('terminal')}<span>Raw 데이터 인스펙터</span>`;
+  if ($gitDetailMode) $gitDetailMode.innerHTML = `${svgIcon('terminal')}<span>Inspector</span>`;
   $gitDetailBody.innerHTML = '<div class="git-detail-loading">레포 상태 로드 중…</div>';
   $gitDetail.classList.remove('hidden');
   // Compute summary directly from snapshots (no API call needed for Layer 2).
@@ -1821,9 +1824,9 @@ function renderGitL2Lanes(ownerRepo) {
   $gitDetailBody.innerHTML = `
     <div class="git-l2-shell">
       ${summary.overlaps.length ? '<div class="git-l2-pulse"></div>' : ''}
-      ${gitLaneCol(macHost, 'mac', 'monitor', 'macOS 로컬', summary.overlaps, macAhead, macBehind)}
+      ${gitLaneCol(macHost, 'mac', 'apple', 'macOS 로컬', summary.overlaps, macAhead, macBehind)}
       ${gitLaneOrigin(rem, ownerRepo)}
-      ${gitLaneCol(winHost, 'win', 'hard-drive', 'Windows 로컬', summary.overlaps, winAhead, winBehind)}
+      ${gitLaneCol(winHost, 'win', 'windows', 'Windows 로컬', summary.overlaps, winAhead, winBehind)}
     </div>
     ${gitConnectorBar(macAhead, macBehind, winAhead, winBehind)}
   `;
@@ -1838,11 +1841,11 @@ function gitConnectorBar(ma, mb, wa, wb) {
     : `${wa ? `<span class="conn-up">${svgIcon('arrow-up')}${wa}</span>` : ''}${wb ? `<span class="conn-down">${svgIcon('arrow-down')}${wb}</span>` : ''}`;
   return `
     <div class="git-l2-connbar">
-      <span class="conn-label mac">${svgIcon('monitor')}<span>Mac</span></span>
+      <span class="conn-label mac">${svgIcon('apple')}<span>Mac</span></span>
       <span class="conn-arrows mac">${macSummary}</span>
       <span class="conn-mid">${svgIcon('github')}<span>Origin</span></span>
       <span class="conn-arrows win">${winSummary}</span>
-      <span class="conn-label win">${svgIcon('hard-drive')}<span>Win</span></span>
+      <span class="conn-label win">${svgIcon('windows')}<span>Win</span></span>
     </div>`;
 }
 
@@ -2005,7 +2008,7 @@ async function renderGIDiffs(ownerRepo) {
     try { diff = await invoke('git_file_diff', { repoPath: path, file, side: 'working' }); } catch (_) {}
     out += `
       <div class="gi-diff-card">
-        <header class="gi-diff-head">📄 <span class="mono">${escape(file)}</span></header>
+        <header class="gi-diff-head">${svgIcon('file-code')}<span class="mono">${escape(file)}</span></header>
         <pre class="gi-diff-pre">${gitColorDiff(diff || '(no diff hunks)')}</pre>
       </div>`;
   }
@@ -2047,7 +2050,7 @@ async function renderGILogs(ownerRepo) {
     <div class="gi-logs">
       ${lines.map(l => {
         const lc = l.level === 'ERROR' ? 'l-err' : l.level === 'SUCCESS' ? 'l-ok' : 'l-info';
-        return `<div class="gi-log-line"><span class="l-ts">[${escape(l.ts.slice(11, 19))}]</span> <span class="l-lvl ${lc}">[${escape(l.level)}]</span> <span class="l-cat">[${escape(l.cat.toUpperCase())}]</span> <span>${escape(l.main)}</span></div>`;
+        return `<div class="gi-log-line"><span class="l-ts">${escape(l.ts.slice(11, 19))}</span><span class="l-lvl ${lc}">${escape(l.level)}</span><span class="l-cat">${escape(l.cat.toUpperCase())}</span><span class="l-msg">${escape(l.main)}</span></div>`;
       }).join('')}
       <div class="gi-log-tail">_ waiting for new logs…</div>
     </div>`;
@@ -2062,7 +2065,7 @@ async function renderGIConfig(ownerRepo) {
   try { conf = await invoke('git_config_read', { repoPath: path }); } catch (e) { conf = '(read failed: ' + e + ')'; }
   $gitInspectorBody.innerHTML = `
     <div class="gi-config">
-      <div class="gi-config-path">📁 <span class="mono">${escape(path)}/.git/config</span></div>
+      <div class="gi-config-path">${svgIcon('settings')}<span class="mono">${escape(path)}/.git/config</span></div>
       <pre class="gi-config-pre">${escape(conf)}</pre>
     </div>`;
 }
