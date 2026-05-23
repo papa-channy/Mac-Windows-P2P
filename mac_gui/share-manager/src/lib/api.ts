@@ -177,42 +177,37 @@ export const api = {
   inspectHtmlAssets: (path: string) =>
     invoke<HtmlInspect>("inspect_html_assets", { path }),
 
-  // --- T1.1 git skeleton (stubs in Wave A; real bodies in Wave B) ---
+  // --- T1.2 git dashboard (real bodies; signatures match brief §18.2) ---
   git: {
     scanRepos: () => invoke<string[]>("scan_git_repos"),
     scanAndPublish: () => invoke<number>("scan_and_publish_git"),
     publishStatus: (repoPath: string) =>
       invoke<void>("publish_git_status", { repoPath }),
-    listStatus: () => invoke<unknown[]>("list_git_status"),
-    listLogs: () => invoke<unknown[]>("list_git_logs"),
-    fetchRemote: (owner: string, repo: string) =>
-      invoke<unknown>("github_fetch_remote", { owner, repo }),
-    readRemoteCache: (owner: string, repo: string) =>
-      invoke<unknown>("read_remote_cache", { owner, repo }),
-    buildRepoGraph: () => invoke<unknown>("build_repo_graph"),
+    listStatus: () => invoke<HostGitSnapshot[]>("list_git_status"),
+    listLogs: () => invoke<Record<string, GitLogDoc>>("list_git_logs"),
+    /** Hits api.github.com for the given owner/repo list with the stored
+     * PAT, returns the live results and updates remote-cache.json. */
+    fetchRemote: (ownerRepos: string[]) =>
+      invoke<RemoteRepoState[]>("github_fetch_remote", { ownerRepos }),
+    readRemoteCache: () => invoke<RemoteCacheDoc>("read_remote_cache"),
+    /** Build the per-repo merged graph (§18.4 schema). */
+    buildRepoGraph: (ownerRepo: string) =>
+      invoke<RepoGraph>("build_repo_graph", { ownerRepo }),
     fileDiff: (repoPath: string, filePath: string, rev?: string) =>
       invoke<string>("git_file_diff", { repoPath, filePath, rev }),
     configRead: (repoPath: string) =>
       invoke<string>("git_config_read", { repoPath }),
     listBranches: (repoPath: string) =>
-      invoke<unknown[]>("git_list_branches", { repoPath }),
-    setToken: (host: string, token: string) =>
-      invoke<void>("git_set_token", { host, token }),
-    hasToken: (host: string) =>
-      invoke<{ has_token: boolean; host: string | null }>("git_has_token", { host }),
-    clearToken: (host: string) =>
-      invoke<void>("git_clear_token", { host }),
-    testToken: (host: string) =>
-      invoke<unknown>("git_test_token", { host }),
-    sshStatus: () =>
-      invoke<{ key_path: string; exists: boolean; pub_exists: boolean; agent_loaded: boolean }>(
-        "git_ssh_status",
-      ),
-    generateSshKey: (comment: string) =>
-      invoke<{ key_path: string; exists: boolean; pub_exists: boolean; agent_loaded: boolean }>(
-        "git_generate_ssh_key",
-        { comment },
-      ),
+      invoke<string[]>("git_list_branches", { repoPath }),
+    /** Single shared PAT — no host param per brief §18.3. */
+    setToken: (token: string) =>
+      invoke<void>("git_set_token", { token }),
+    hasToken: () =>
+      invoke<{ has_token: boolean }>("git_has_token"),
+    clearToken: () => invoke<void>("git_clear_token"),
+    testToken: () => invoke<TokenInfo>("git_test_token"),
+    sshStatus: () => invoke<GitSshStatus>("git_ssh_status"),
+    generateSshKey: () => invoke<GitSshStatus>("git_generate_ssh_key"),
   },
 
   // --- icon theme install (folder or git URL) ---
@@ -299,4 +294,129 @@ export interface HtmlInspect {
   has_inline_style: boolean;
   parent_dir: string;
   assets: HtmlAsset[];
+}
+
+// ─── Git dashboard DTOs (mirror src-tauri/src/git.rs) ──────────────
+
+export interface GitCommitInfo {
+  sha: string;
+  msg: string;
+  date: string;
+}
+
+export interface RepoStatus {
+  owner_repo: string | null;
+  path: string;
+  branch: string;
+  head: string;
+  upstream: string | null;
+  dirty: number;
+  dirty_files: string[];
+  unpushed: number;
+  ahead: number;
+  behind: number;
+  stash: number;
+  last_commit: GitCommitInfo | null;
+  remote_url: string | null;
+}
+
+export interface HostGitSnapshot {
+  schema_version: number;
+  host: string;
+  os: "macos" | "windows" | "linux" | string;
+  scanned_at: string;
+  repos: RepoStatus[];
+}
+
+export interface CommitNode {
+  sha: string;
+  parents: string[];
+  msg: string;
+  author: string;
+  date: string;
+}
+
+/** One host's git-log.json contents (the `{logs: {ownerRepo: {branch: [..]}}}` doc). */
+export interface GitLogDoc {
+  schema_version: number;
+  host: string;
+  os: string;
+  scanned_at: string;
+  logs: Record<string, Record<string, CommitNode[]>>;
+}
+
+export interface RemoteBranch {
+  name: string;
+  sha: string;
+}
+export interface RemotePr {
+  number: number;
+  title: string;
+  head: string;
+  base: string;
+}
+export interface RemoteRepoState {
+  owner_repo: string;
+  default_branch: string;
+  default_sha: string;
+  branches: RemoteBranch[];
+  open_prs: RemotePr[];
+  fetched_at: string;
+  error: string | null;
+}
+export interface RemoteCacheDoc {
+  fetched_at?: string;
+  repos: RemoteRepoState[];
+}
+
+export interface TokenInfo {
+  login: string;
+  name: string | null;
+  orgs: string[];
+}
+
+export interface GitSshStatus {
+  has_key: boolean;
+  public_key: string | null;
+  path: string | null;
+}
+
+/** RepoGraph node — one commit in the merged per-branch view (§18.4). */
+export interface RepoGraphCommit {
+  sha: string;
+  short: string;
+  parents: string[];
+  msg: string;
+  author: string;
+  date: string;
+  /** source-key → whether this commit appears in that source's history */
+  in: Record<string, boolean>;
+  /** source-keys whose HEAD points at this commit */
+  tips: string[];
+  /** is this the latest common ancestor across all sources */
+  ancestor: boolean;
+}
+
+export interface RepoGraphPerHostSummary {
+  ahead: number;
+  behind: number;
+  has_remote: boolean;
+}
+
+export interface RepoGraphBranch {
+  commits: RepoGraphCommit[];
+  /** source-key → tip SHA */
+  pointers: Record<string, string>;
+  common_ancestor: string | null;
+  /** host → ahead/behind vs remote */
+  summary: Record<string, RepoGraphPerHostSummary>;
+}
+
+export interface RepoGraph {
+  owner_repo: string;
+  default_branch: string;
+  branches: string[];
+  hosts: { host: string; os: string }[];
+  has_token: boolean;
+  per_branch: Record<string, RepoGraphBranch>;
 }

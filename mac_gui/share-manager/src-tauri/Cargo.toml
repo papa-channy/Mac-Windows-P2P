@@ -33,6 +33,7 @@ hex = "0.4"
 unicode-normalization = "0.1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 keyring = { version = "3", default-features = false, features = ["apple-native"] }
+ureq = { version = "2", features = ["json"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.9"
