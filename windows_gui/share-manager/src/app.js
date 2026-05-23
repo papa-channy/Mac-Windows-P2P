@@ -1644,37 +1644,143 @@ function renderGitSyncMap(pb, graph) {
     return;
   }
   const srcKeys = ['remote', ...(graph.hosts || []).map(h => h.host)];
-  let rows = '';
+
+  // Order: oldest LEFT → newest RIGHT (pb.commits is newest-first).
+  const all = [...pb.commits].reverse();
+  // Trim to the relevant window: ancestor - 2 onward (so divergence is the focus).
+  let start = 0;
+  const ancFromOld = all.findIndex(c => c.ancestor);
+  if (ancFromOld >= 0) start = Math.max(0, ancFromOld - 2);
+  const win = all.slice(start);
+  const n = win.length;
+
+  // Lanes
+  const lanes = srcKeys.map((k, idx) => {
+    const lbl = gitSrcLabel(k, graph);
+    const name = k === 'remote' ? 'GitHub' : k;
+    return { key: k, idx, label: name, cls: lbl.cls, icon: lbl.icon };
+  });
+
+  // Layout
+  const padL = 130, padR = 180, padT = 36, padB = 28;
+  const laneH = 64;
+  const dotR = 8;
+  const xStep = 40;
+  const W = padL + padR + Math.max(1, n - 1) * xStep + 80;
+  const H = padT + lanes.length * laneH + padB;
+
+  const xAt = (i) => padL + i * xStep;
+  const yAt = (laneIdx) => padT + laneIdx * laneH + laneH / 2;
+
+  let svg = `<svg class="git-river" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`;
+
+  // Lane backgrounds + labels
+  for (const lane of lanes) {
+    const y = yAt(lane.idx);
+    svg += `<rect x="${padL - 30}" y="${y - laneH/2 + 10}" width="${W - padL - padR + 60}" height="${laneH - 20}" class="lane-bg lane-${lane.cls}" rx="8" />`;
+    svg += `<text x="14" y="${y + 5}" class="lane-label lane-${lane.cls}">${lane.icon}  ${escape(lane.label)}</text>`;
+  }
+
+  // Lane connection lines (between present dots per lane)
+  for (const lane of lanes) {
+    const presentXs = win.map((c, i) => (c.in && c.in[lane.key]) ? xAt(i) : null).filter(x => x !== null);
+    if (presentXs.length >= 2) {
+      const y = yAt(lane.idx);
+      svg += `<line x1="${Math.min(...presentXs)}" y1="${y}" x2="${Math.max(...presentXs)}" y2="${y}" class="lane-line lane-${lane.cls}" />`;
+    }
+  }
+
+  // Vertical "all-shared" indicator: at each X where ALL lanes have this commit
+  for (let i = 0; i < n; i++) {
+    const c = win[i];
+    const presence = lanes.map(l => c.in && c.in[l.key]);
+    if (presence.every(Boolean) && lanes.length >= 2) {
+      const ys = lanes.map(l => yAt(l.idx));
+      svg += `<line x1="${xAt(i)}" y1="${Math.min(...ys)}" x2="${xAt(i)}" y2="${Math.max(...ys)}" class="share-bar" />`;
+    }
+  }
+
+  // Common ancestor highlight (vertical band + label)
+  const ancI = win.findIndex(c => c.ancestor);
+  if (ancI >= 0) {
+    const x = xAt(ancI);
+    svg += `<line x1="${x}" y1="${padT - 14}" x2="${x}" y2="${H - padB + 8}" class="anc-line" />`;
+    svg += `<text x="${x}" y="${padT - 18}" text-anchor="middle" class="anc-label">⊥ 공통 조상 ${escape(win[ancI].short)}</text>`;
+  }
+
+  // Dots per (commit, lane)
+  for (let i = 0; i < n; i++) {
+    const c = win[i];
+    for (const lane of lanes) {
+      if (!(c.in && c.in[lane.key])) continue;
+      const isTip = (c.tips || []).includes(lane.key);
+      const r = isTip ? dotR + 2 : (c.ancestor ? dotR + 1 : dotR);
+      const cls = `dot dot-${lane.cls}${isTip ? ' dot-tip' : ''}${c.ancestor ? ' dot-anc' : ''}`;
+      svg += `<circle cx="${xAt(i)}" cy="${yAt(lane.idx)}" r="${r}" class="${cls}" data-sha="${escape(c.sha)}">`;
+      svg += `<title>${escape(c.short)} · ${escape(c.msg)} · ${escape(c.author)} · ${escape(fmtRelative(c.date))}</title>`;
+      svg += `</circle>`;
+    }
+  }
+
+  // Tip pointer pills next to each lane's rightmost present dot
+  for (const lane of lanes) {
+    let rightI = -1;
+    for (let i = n - 1; i >= 0; i--) {
+      if (win[i].in && win[i].in[lane.key]) { rightI = i; break; }
+    }
+    if (rightI < 0) continue;
+    const x = xAt(rightI) + dotR + 10;
+    const y = yAt(lane.idx);
+    const label = lane.key === 'remote'
+      ? ('origin/' + (graph.default_branch || state.gitDetail.branch))
+      : (lane.label + ' HEAD');
+    // estimate width: 8px per char (CJK-safe-ish)
+    const w = Math.max(80, label.length * 8 + 36);
+    svg += `<g transform="translate(${x},${y - 14})">`;
+    svg += `<rect x="0" y="0" rx="7" ry="7" width="${w}" height="28" class="pill-bg pill-${lane.cls}" />`;
+    svg += `<text x="12" y="18" class="pill-text pill-${lane.cls}">${lane.icon}  ${escape(label)}</text>`;
+    svg += `</g>`;
+  }
+
+  svg += `</svg>`;
+
+  // Detail list (full 50 commits) collapsible below the river
+  let listRows = '';
   for (const c of pb.commits) {
     let dots = '';
     for (const k of srcKeys) {
       const present = c.in && c.in[k];
       const lbl = gitSrcLabel(k, graph);
-      dots += `<span class="git-dot ${lbl.cls} ${present ? 'on' : 'off'}" title="${escape(k)}${present ? ' 있음' : ' 없음'}">${present ? '●' : '·'}</span>`;
+      dots += `<span class="git-dot ${lbl.cls} ${present ? 'on' : 'off'}" title="${escape(k)}">${present ? '●' : '·'}</span>`;
     }
     let pills = '';
     for (const t of (c.tips || [])) {
       const lbl = gitSrcLabel(t, graph);
-      const label = t === 'remote' ? ('origin/' + (graph.default_branch || branch)) : (t + ' HEAD');
-      pills += `<span class="git-pill ${lbl.cls}">${lbl.icon} ${escape(label)}</span>`;
+      pills += `<span class="git-pill ${lbl.cls}">${lbl.icon}</span>`;
     }
-    const anc = c.ancestor ? '<span class="git-anc">⊥ 공통 조상</span>' : '';
-    rows += `
-      <div class="git-commit-row${c.ancestor ? ' ancestor' : ''}" data-sha="${escape(c.sha)}" title="클릭: SHA 복사">
+    listRows += `
+      <div class="git-commit-row${c.ancestor ? ' ancestor' : ''}" data-sha="${escape(c.sha)}">
         <span class="git-dots">${dots}</span>
         <span class="git-csha">${escape(c.short)}</span>
         <span class="git-cmsg">${escape(c.msg)}</span>
-        <span class="git-cpills">${pills}${anc}</span>
+        <span class="git-cpills">${pills}${c.ancestor ? '<span class="git-anc">⊥</span>' : ''}</span>
         <span class="git-cmeta">${escape(c.author)} · ${escape(fmtRelative(c.date))}</span>
       </div>`;
   }
-  $gitDetailBody.innerHTML = `<div class="git-syncmap">${rows}</div>`;
-  $gitDetailBody.querySelectorAll('.git-commit-row').forEach(el => {
-    el.addEventListener('click', async () => {
-      const sha = el.getAttribute('data-sha');
-      try { await invoke('copy_to_os_clipboard', { text: sha }); toast('SHA 복사됨: ' + sha.slice(0, 7), 'success'); } catch (_) {}
-    });
-  });
+
+  $gitDetailBody.innerHTML = `
+    <div class="git-river-wrap">${svg}</div>
+    <details class="git-detail-list">
+      <summary>📋 커밋 목록 (전체 ${pb.commits.length}개)</summary>
+      <div class="git-syncmap">${listRows}</div>
+    </details>`;
+
+  // Click dots + rows → copy SHA
+  const copy = async (sha) => {
+    try { await invoke('copy_to_os_clipboard', { text: sha }); toast('SHA 복사됨: ' + sha.slice(0, 7), 'success'); } catch (_) {}
+  };
+  $gitDetailBody.querySelectorAll('.dot[data-sha]').forEach(el => el.addEventListener('click', () => copy(el.getAttribute('data-sha'))));
+  $gitDetailBody.querySelectorAll('.git-commit-row[data-sha]').forEach(el => el.addEventListener('click', () => copy(el.getAttribute('data-sha'))));
 }
 
 function renderGitDag(pb, graph) {

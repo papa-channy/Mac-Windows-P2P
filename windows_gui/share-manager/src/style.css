@@ -919,6 +919,38 @@ button { font-family: inherit; }
 .git-pill.win { background: rgba(10,132,255,0.14); color: #0a84ff; }
 .git-anc { font-size: 10.5px; font-weight: 600; color: #9a6700; background: rgba(212,167,44,0.16); padding: 1px 7px; border-radius: 4px; white-space: nowrap; }
 .git-cmeta { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+
+/* ─── Sync River (SVG visualization) ──────────────────────────── */
+.git-river-wrap { overflow-x: auto; padding: 10px 0 18px; }
+.git-river { display: block; }
+.git-river .lane-bg.lane-remote { fill: rgba(130,80,223,0.06); stroke: rgba(130,80,223,0.18); stroke-width: 1; }
+.git-river .lane-bg.lane-mac    { fill: rgba(45,164,78,0.06);  stroke: rgba(45,164,78,0.18);  stroke-width: 1; }
+.git-river .lane-bg.lane-win    { fill: rgba(10,132,255,0.06); stroke: rgba(10,132,255,0.18); stroke-width: 1; }
+.git-river .lane-label { font-size: 12.5px; font-weight: 600; font-family: "Segoe UI Variable", system-ui, sans-serif; }
+.git-river .lane-label.lane-remote { fill: #8250df; }
+.git-river .lane-label.lane-mac    { fill: #2da44e; }
+.git-river .lane-label.lane-win    { fill: #0a84ff; }
+.git-river .lane-line.lane-remote { stroke: #8250df; stroke-width: 2.5; opacity: 0.55; }
+.git-river .lane-line.lane-mac    { stroke: #2da44e; stroke-width: 2.5; opacity: 0.55; }
+.git-river .lane-line.lane-win    { stroke: #0a84ff; stroke-width: 2.5; opacity: 0.55; }
+.git-river .share-bar { stroke: #9d9da8; stroke-width: 2.5; stroke-dasharray: 2 3; opacity: 0.4; }
+.git-river .anc-line  { stroke: #d4a72c; stroke-width: 1.5; stroke-dasharray: 4 4; opacity: 0.7; }
+.git-river .anc-label { font-size: 11px; font-weight: 600; fill: #9a6700; }
+.git-river .dot { cursor: pointer; transition: r 0.1s; }
+.git-river .dot:hover { r: 11; }
+.git-river .dot-remote { fill: #8250df; }
+.git-river .dot-mac    { fill: #2da44e; }
+.git-river .dot-win    { fill: #0a84ff; }
+.git-river .dot-tip { stroke: #FFFFFF; stroke-width: 3; }
+.git-river .dot-anc { stroke: #d4a72c; stroke-width: 2.5; }
+.git-river .pill-bg.pill-remote { fill: #8250df; }
+.git-river .pill-bg.pill-mac    { fill: #2da44e; }
+.git-river .pill-bg.pill-win    { fill: #0a84ff; }
+.git-river .pill-text { fill: #FFFFFF; font-size: 11.5px; font-weight: 700; font-family: "Segoe UI Variable", system-ui, sans-serif; }
+
+.git-detail-list { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 8px; }
+.git-detail-list summary { cursor: pointer; padding: 8px 4px; font-size: 12px; font-weight: 600; color: var(--text-sec); }
+.git-detail-list summary:hover { color: var(--text-pri); }
 .theme-opt-meta { font-size: 11px; color: var(--text-sec); }
 .theme-opt-remove {
   background: transparent;
