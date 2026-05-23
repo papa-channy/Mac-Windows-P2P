@@ -39,7 +39,7 @@ export function ItemsView({ selection, items, onRefresh }: Props) {
     return items.filter((it) => it.category_key === cat.key);
   }, [items, cat]);
 
-  const title = cat ? `${cat.emoji}  ${cat.label}` : group?.label ?? "항목";
+  const title = cat ? `${cat.emoji}  ${cat.label}` : group?.title ?? "항목";
   const directionLabel =
     group?.direction === "mac_to_windows" ? "Windows로 보냄" : "Windows에서 받음";
 

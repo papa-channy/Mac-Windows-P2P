@@ -1,4 +1,4 @@
-import { NAV_GROUPS } from "../lib/nav";
+import { NAV_GROUPS, LOG_CATEGORIES } from "../lib/nav";
 import { CATEGORIES } from "../lib/categories";
 import type { SidebarSelection } from "../lib/nav";
 import { CategoryIcon } from "./IconImg";
@@ -26,8 +26,13 @@ export function Sidebar({
   const isActive = (s: SidebarSelection) => {
     if (settingsActive) return false;
     if (selection.panel !== s.panel) return false;
-    if (s.panel !== "items") return true;
-    return selection.group === s.group && selection.categoryKey === s.categoryKey;
+    if (s.panel === "items") {
+      return selection.group === s.group && selection.categoryKey === s.categoryKey;
+    }
+    if (s.panel === "logs") {
+      return selection.logCategory === s.logCategory;
+    }
+    return true;
   };
 
   return (
@@ -61,7 +66,7 @@ export function Sidebar({
             <div className="nav-group" key={group.id}>
               <div className="nav-group-header">
                 <span>{group.emoji}</span>
-                <span>{group.label}</span>
+                <span>{group.title}</span>
               </div>
               <button
                 className={
@@ -114,6 +119,27 @@ export function Sidebar({
           );
         })}
       </nav>
+
+      <div className="nav-group">
+        <div className="nav-group-header">
+          <span>📑</span>
+          <span>Log Hub</span>
+        </div>
+        {LOG_CATEGORIES.map((lc) => (
+          <button
+            key={lc.id}
+            className={
+              "nav-item" +
+              (isActive({ panel: "logs", logCategory: lc.id }) ? " active" : "")
+            }
+            onClick={() => onSelect({ panel: "logs", logCategory: lc.id })}
+            title={lc.subtitle}
+          >
+            <span className="nav-item-emoji">{lc.emoji}</span>
+            <span className="nav-item-label">{lc.label}</span>
+          </button>
+        ))}
+      </div>
 
       <div className="nav-tools">
         <button

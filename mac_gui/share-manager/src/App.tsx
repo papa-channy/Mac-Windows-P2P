@@ -24,6 +24,24 @@ import { SettingsView } from "./views/SettingsView";
 const LAST_SEEN_KEY = "share-manager.last_seen_version";
 const PERMS_ONBOARDED_KEY = "share-manager.permissions_onboarded";
 
+// Placeholder until T4 (Log Hub backend + view) lands in Wave B. Renders
+// a static "coming soon" panel so the sidebar Log Hub items navigate
+// somewhere instead of throwing.
+function LogHubPlaceholder({ logCategory }: { logCategory?: string }) {
+  return (
+    <section className="view-empty">
+      <h2>Log Hub</h2>
+      <p>
+        Selected: <code>{logCategory ?? "(none)"}</code>
+      </p>
+      <p style={{ opacity: 0.7 }}>
+        Backend &amp; view land in Wave B (T4). This placeholder exists so
+        the sidebar routes resolve before the real implementation ships.
+      </p>
+    </section>
+  );
+}
+
 export function App() {
   return (
     <ToastProvider>
@@ -174,6 +192,7 @@ function AppInner() {
         )}
         {activePanel === "notes" && <NotesView />}
         {activePanel === "clipboard" && <ClipboardView />}
+        {activePanel === "logs" && <LogHubPlaceholder logCategory={selection.logCategory} />}
         {activePanel === "settings" && <SettingsView />}
       </main>
 
