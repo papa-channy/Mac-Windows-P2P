@@ -56,6 +56,16 @@ export function Sidebar({
           <span className="nav-item-emoji">🚀</span>
           <span className="nav-item-label">빠른 전송</span>
         </button>
+        <button
+          className={
+            "nav-item" +
+            (isActive({ panel: "git" }) ? " active" : "")
+          }
+          onClick={() => onSelect({ panel: "git" })}
+        >
+          <span className="nav-item-emoji">🌿</span>
+          <span className="nav-item-label">Git</span>
+        </button>
       </div>
 
       <nav className="nav">

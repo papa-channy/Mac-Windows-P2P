@@ -21,7 +21,9 @@ import { TreeView } from "./views/TreeView";
 import { NotesView } from "./views/NotesView";
 import { ClipboardView } from "./views/ClipboardView";
 import { LogsView } from "./views/LogsView";
+import { GitView } from "./views/GitView";
 import { SettingsView } from "./views/SettingsView";
+import { GitProvider } from "./lib/gitStore";
 
 const LAST_SEEN_KEY = "share-manager.last_seen_version";
 const PERMS_ONBOARDED_KEY = "share-manager.permissions_onboarded";
@@ -31,7 +33,9 @@ export function App() {
     <ToastProvider>
       <SettingsProvider>
         <IconThemeProvider>
-          <AppInner />
+          <GitProvider>
+            <AppInner />
+          </GitProvider>
         </IconThemeProvider>
       </SettingsProvider>
     </ToastProvider>
@@ -177,6 +181,7 @@ function AppInner() {
         {activePanel === "notes" && <NotesView />}
         {activePanel === "clipboard" && <ClipboardView />}
         {activePanel === "logs" && <LogsView logCategory={selection.logCategory} />}
+        {activePanel === "git" && <GitView />}
         {activePanel === "settings" && <SettingsView />}
       </main>
 

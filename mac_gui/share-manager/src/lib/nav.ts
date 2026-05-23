@@ -73,7 +73,7 @@ export const LOG_CATEGORIES: LogCategory[] = [
 ];
 
 export interface SidebarSelection {
-  panel: "items" | "tree" | "notes" | "clipboard" | "settings" | "logs";
+  panel: "items" | "tree" | "notes" | "clipboard" | "settings" | "logs" | "git";
   /** Only meaningful when panel === "items" */
   group?: string;
   /** category key or "_all" — only meaningful when panel === "items" */
