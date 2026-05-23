@@ -1,9 +1,21 @@
-import { useCallback, useEffect, useState } from "react";
+// ClipboardView — T2 + T2.5 combined panel.
+//
+//   Top:    SharedClipboardPanel — sticky-note style current.json
+//   Bottom: Streaming jsonl timeline (per-OS clipboard polls)
+//
+// Sort toggle on the timeline:
+//   - "newest": every entry chronological, newest first (default)
+//   - "by-host": grouped by host name, then newest-first within group
+
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { api, type ClipboardEntry, type ClipboardImageEntry } from "../lib/api";
 import { useToast } from "../lib/toast";
 import { fmtRelative } from "../lib/format";
 import { useShareTopic } from "../lib/useShareTopic";
+import { SharedClipboardPanel } from "../components/SharedClipboardPanel";
+
+type SortMode = "newest" | "by-host";
 
 function isUrl(s: string): boolean {
   return /^https?:\/\//.test(s.trim());
@@ -11,6 +23,7 @@ function isUrl(s: string): boolean {
 
 export function ClipboardView() {
   const [entries, setEntries] = useState<ClipboardEntry[]>([]);
+  const [sortMode, setSortMode] = useState<SortMode>("newest");
   const toast = useToast();
 
   const refresh = useCallback(
@@ -19,10 +32,6 @@ export function ClipboardView() {
   );
   useEffect(() => {
     refresh();
-    // Belt-and-suspenders 2s poll. With the share-changed watcher wired up
-    // (below) the typical refresh happens via the event; the interval
-    // catches the case where the watcher dropped events (SMB hiccup) or
-    // the user's own NSPasteboard poll just appended to its own jsonl.
     const t = window.setInterval(refresh, 2000);
     return () => window.clearInterval(t);
   }, [refresh]);
@@ -42,6 +51,9 @@ export function ClipboardView() {
       toast("복사 실패: " + String(err), "error");
     }
   };
+
+  // Memoize the grouped view so we don't reshuffle on every refresh tick.
+  const groups = useMemo(() => groupEntries(entries, sortMode), [entries, sortMode]);
 
   return (
     <section className="panel">
@@ -66,29 +78,117 @@ export function ClipboardView() {
           </button>
         </div>
       </header>
+
       <div className="clip-timeline-body">
-        <div className="clip-timeline">
-          {entries.map((e, idx) =>
-            e.kind === "image" ? (
-              <ImageEntry key={idx} entry={e} onClick={() => onClickEntry(e)} />
-            ) : (
-              <TextEntry key={idx} entry={e} onClick={() => onClickEntry(e)} />
-            ),
-          )}
-          {entries.length === 0 && (
-            <div className="empty">
-              <div className="empty-icon">📋</div>
-              <div className="empty-title">기록이 없어요</div>
-              <div className="empty-hint">텍스트나 이미지를 복사하면 자동으로 여기 쌓여요.</div>
-            </div>
-          )}
+        <SharedClipboardPanel />
+
+        <div className="clip-sort-row">
+          <span className="clip-sort-label">정렬</span>
+          <div className="clip-sort-tabs" role="tablist">
+            <button
+              role="tab"
+              className={"clip-sort-tab" + (sortMode === "newest" ? " active" : "")}
+              onClick={() => setSortMode("newest")}
+            >
+              ⏱ 최신순
+            </button>
+            <button
+              role="tab"
+              className={"clip-sort-tab" + (sortMode === "by-host" ? " active" : "")}
+              onClick={() => setSortMode("by-host")}
+            >
+              👥 호스트별
+            </button>
+          </div>
+          <span className="clip-sort-count">총 {entries.length}건</span>
         </div>
+
+        {groups.length === 0 ? (
+          <div className="empty">
+            <div className="empty-icon">📋</div>
+            <div className="empty-title">기록이 없어요</div>
+            <div className="empty-hint">텍스트나 이미지를 복사하면 자동으로 여기 쌓여요.</div>
+          </div>
+        ) : sortMode === "by-host" ? (
+          <div className="clip-timeline grouped">
+            {groups.map((g) => (
+              <div className="clip-group" key={g.key}>
+                <header className="clip-group-head">
+                  <span
+                    className={
+                      "clip-entry-os " +
+                      (g.os === "macos" ? "clip-entry-os-mac" : "clip-entry-os-win")
+                    }
+                  >
+                    {g.os === "macos" ? "Mac" : "Win"}
+                  </span>
+                  <span className="clip-group-host">{g.host}</span>
+                  <span className="clip-group-count">{g.entries.length}건</span>
+                </header>
+                <div className="clip-group-body">
+                  {g.entries.map((e, idx) =>
+                    e.kind === "image" ? (
+                      <ImageEntry
+                        key={idx}
+                        entry={e}
+                        onClick={() => onClickEntry(e)}
+                      />
+                    ) : (
+                      <TextEntry key={idx} entry={e} onClick={() => onClickEntry(e)} />
+                    ),
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="clip-timeline">
+            {entries.map((e, idx) =>
+              e.kind === "image" ? (
+                <ImageEntry key={idx} entry={e} onClick={() => onClickEntry(e)} />
+              ) : (
+                <TextEntry key={idx} entry={e} onClick={() => onClickEntry(e)} />
+              ),
+            )}
+          </div>
+        )}
       </div>
     </section>
   );
 }
 
-// ─── Entry components ─────────────────────────────────────────────
+interface Group {
+  key: string;
+  host: string;
+  os: string;
+  entries: ClipboardEntry[];
+}
+
+function groupEntries(entries: ClipboardEntry[], mode: SortMode): Group[] {
+  if (mode !== "by-host") {
+    return entries.length > 0
+      ? [{ key: "_all", host: "_", os: "_", entries }]
+      : [];
+  }
+  const m = new Map<string, Group>();
+  for (const e of entries) {
+    const key = `${e.os}:${e.host}`;
+    let g = m.get(key);
+    if (!g) {
+      g = { key, host: e.host, os: e.os, entries: [] };
+      m.set(key, g);
+    }
+    g.entries.push(e);
+  }
+  // Sort groups: macOS first, then alphabetical by host; entries within
+  // each group are already newest-first because backend returns them that way.
+  return [...m.values()].sort((a, b) => {
+    if (a.os !== b.os) return a.os === "macos" ? -1 : 1;
+    return a.host.localeCompare(b.host);
+  });
+}
+
+// ─── Entry components (unchanged) ─────────────────────────────────
 
 function EntryHead({ entry }: { entry: ClipboardEntry }) {
   return (

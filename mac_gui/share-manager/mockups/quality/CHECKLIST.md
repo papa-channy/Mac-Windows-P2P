@@ -245,14 +245,14 @@ share-manager 의 Git 관련 모든 UI 컴포넌트를 하나씩 점검해 완�
 
 | ID | 컴포넌트 | 상태 | ADR | 비고 |
 |---|---|---|---|---|
-| L3-A | Inspector 헤더 | ⏳ pending verify | 0001 | 라이트 적용 — 시각 확인 필요 |
-| L3-B | Inspector 사이드바 | ⏳ pending verify | 0001 | 라이트 적용 — 활성 탭 sky stripe |
-| L3-C | Raw Diffs | ⏳ pending verify | 0001 | GitHub 라이트 mode (`#1F883D`/`#CF222E`/`#0969DA`) |
-| L3-D | Daemon Logs | ⏳ pending verify | 0001 | 4-col grid, semantic pills |
-| L3-E | Git Config | ⏳ pending verify | 0001 | `#F6F8FA` 코드 베이스 |
-| L3-F | All Commits | ⏳ pending verify | 0001 | nowrap 추가, hover surface-2 |
-| L3-G | Sync Timeline | ⏳ pending verify | 0001, 0003 | 220px 라벨 영역, 86px 레인높이, 브랜드 아이콘 SVG inline, legend 하단 |
-| L2-A | 모달 헤더 | ⏳ pending verify | 0002 | grid `minmax(0,1fr) auto auto auto` + `display:contents` controls, branch select `max-width:200px` + title tooltip |
+| L3-A | Inspector 헤더 | ✅ implemented (C2, commit `3ccae97`) | 0001 | `.gi-head` 라이트 chrome — Back/Breadcrumb/Close |
+| L3-B | Inspector 사이드바 | ✅ implemented (C2) | 0001 | `.gi-tab.active` sky stripe (`#0EA5E9` 좌 3px) |
+| L3-C | Raw Diffs | ✅ implemented (C2) | 0001 | `.d-add #1F883D` / `.d-del #CF222E` / `.d-hunk #0969DA` on `#F6F8FA` |
+| L3-D | Daemon Logs | ✅ implemented (C2) | 0001 | 4-col grid `70 70 90 1fr` · `.l-lvl.l-ok/l-err/l-info` |
+| L3-E | Git Config | ✅ implemented (C2) | 0001 | `.gi-config-pre` line-height 1.85, `#F6F8FA` |
+| L3-F | All Commits | ✅ implemented (C2) | 0001 | `.gi-table` + `.nowrap`, mono SHA accent sky |
+| L3-G | Sync Timeline | ✅ implemented (C2) | 0001, 0003 | 220px label gutter / 360px tip gutter / 86px laneH / brand emoji + LCA amber marker / dot onClick → React state |
+| L2-A | 모달 헤더 | ✅ implemented (C2) | 0002 | `.git-detail-head` grid `minmax(0,1fr) auto auto auto; overflow:hidden`, `.git-detail-branch` max-width 200, title attr |
 
 
 ---
@@ -271,3 +271,30 @@ Mac 측 한정 OS 차이. 이 행들은 `mac_gui/` 만 검증 대상. 자세한 
 | MAC-6 | 단일 인스턴스 + Space follow | tauri-plugin-single-instance + NSWindowCollectionBehaviorMoveToActiveSpace | v0.2.1/0.2.2 에서 이미 적용 |
 | MAC-7 | Full Disk Access onboarding | 첫 launch 시 PermissionsOnboarding 모달 + open_privacy_settings 자동 안내 + has_full_disk_access 폴링 | v0.2.2/0.2.3 적용 |
 | MAC-8 | Notarized Developer ID 서명 | release.sh 파이프라인 (signed + stapled + DMG + updater minisign) | v0.1.0~v0.2.4 매 릴리스 |
+
+### §10 진행표
+
+| ID | 상태 | 검증 위치 |
+|---|---|---|
+| MAC-1 | ✅ implemented | `src/styles/global.css` mono token + Inspector tabs |
+| MAC-2 | ✅ implemented | `src-tauri/tauri.conf.json` `decorations: true` |
+| MAC-3 | ✅ implemented (C1) | `src-tauri/Cargo.toml` keyring apple-native + `git.rs::keyring_entry` |
+| MAC-4 | ✅ implemented (C1) | `git.rs::git_ssh_status` checks `~/.ssh/{id_ed25519, mac_window_git_ed25519, id_rsa}.pub` |
+| MAC-5 | ✅ implemented | `mac_gui/install.sh::mw` CLI + `mount.rs` |
+| MAC-6 | ✅ implemented | `lib.rs::apply_macos_space_behavior` + tauri-plugin-single-instance |
+| MAC-7 | ✅ implemented | `PermissionsOnboarding` component + `has_full_disk_access` |
+| MAC-8 | ✅ implemented | `mac_gui/scripts/release.sh` |
+
+### Wave B/C (T1.2 ~ T6) 추가 진행
+
+| 트랙 | 상태 | 커밋 |
+|---|---|---|
+| T4 Log Hub backend + LogsView | ✅ | `4fc8400` |
+| T6 HTML asset inspector | ✅ | `4fc8400` |
+| T1.2 real git impl (17 commands) | ✅ | `aae7243` |
+| T1.3 TS data layer (gitStore + narrative) | ✅ | `aae7243` |
+| T1.4 L1 Dashboard (RepoCard + 3-node bridge) | ✅ | `d46105d` |
+| T1.7 Creds UX (TokenSettings + SshSettings) | ✅ | `d46105d` |
+| T1.5 L2 Detail Modal (3 swimlanes + connector bar) | ✅ | `3ccae97` |
+| T1.6 L3 Inspector (5 tabs + SVG timeline) | ✅ | `3ccae97` |
+| T2.5 Shared clipboard + sort toggle | ✅ | C3 (this commit) |

@@ -148,11 +148,11 @@ export const api = {
   hasFullDiskAccess: () => invoke<boolean>("has_full_disk_access"),
 
   // --- T2 shared clipboard (Windows §13 v2 mirror) ---
-  readSharedClipboard: () => invoke<unknown>("read_shared_clipboard"),
+  readSharedClipboard: () => invoke<SharedClipboardEntry>("read_shared_clipboard"),
   writeSharedClipboard: (content: string) =>
-    invoke<unknown>("write_shared_clipboard", { content }),
+    invoke<SharedClipboardEntry>("write_shared_clipboard", { content }),
   listClipboardHistory: (limit?: number) =>
-    invoke<unknown[]>("list_clipboard_history", { limit }),
+    invoke<SharedClipboardEntry[]>("list_clipboard_history", { limit }),
   listCompressedImages: () =>
     invoke<{ ref: string; size_bytes: number; ts: string }[]>("list_compressed_images"),
   compressedImagePath: (imageRef: string) =>
@@ -281,6 +281,19 @@ export interface LogEntry {
   stderr?: string;
   direction?: string;
   [extra: string]: unknown;
+}
+
+/**
+ * Shared clipboard entry (current.json + history/<ts>.json). Mirror of
+ * clipboard.rs::read_shared_clipboard. `empty` is true only when no
+ * current.json exists yet — all other fields are populated.
+ */
+export interface SharedClipboardEntry {
+  content: string;
+  kind: "text";
+  created_at: string | null;
+  from: { host: string; os: string } | null;
+  empty?: boolean;
 }
 
 /** HTML inspector pre-flight result — mirror of commands.rs::HtmlInspect. */
