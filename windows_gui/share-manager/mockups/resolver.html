@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>3-way Resolver — Mac / Base / Win</title>
+<link rel="stylesheet" href="design-system.css" />
+<style>
+  .resolver-shell { display: grid; grid-template-columns: 240px 1fr; gap: 14px; }
+  @media (max-width: 1100px) { .resolver-shell { grid-template-columns: 1fr; } }
+
+  .file-list {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+    padding: 10px 0; box-shadow: var(--shadow-sm);
+    height: fit-content; position: sticky; top: 80px;
+  }
+  .fl-head { padding: 4px 14px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: var(--text-3); text-transform: uppercase; }
+  .fl-item { display: flex; align-items: center; gap: 8px; padding: 10px 14px; cursor: pointer; font-size: 12.5px; border-left: 3px solid transparent; }
+  .fl-item:hover { background: var(--surface-2); }
+  .fl-item.active { background: rgba(225,29,72,0.06); border-left-color: var(--c-danger); }
+  .fl-item .fl-name { font-family: var(--font-mono); }
+  .fl-progress { margin-left: auto; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 4px; }
+  .fl-progress.todo { background: rgba(225,29,72,0.12); color: var(--c-danger); }
+  .fl-progress.done { background: rgba(16,185,129,0.12); color: #047857; }
+
+  .resolve-pane {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+    overflow: hidden; box-shadow: var(--shadow-sm);
+  }
+  .rp-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .rp-title { font-family: var(--font-mono); font-weight: 700; font-size: 15px; }
+  .progress-bar { width: 200px; height: 6px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+  .progress-bar > div { height: 100%; background: var(--c-sync); }
+
+  .columns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--border); }
+  .col-head {
+    display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+    background: var(--surface-2); font-weight: 700; font-size: 13px;
+  }
+  .col-head.mac  { background: var(--c-mac-bg); color: var(--c-mac); }
+  .col-head.base { background: var(--surface-3); color: var(--text); }
+  .col-head.win  { background: var(--c-win-bg); color: var(--c-win); }
+  .col-head .ic { width: 16px; height: 16px; }
+
+  .col-body { background: var(--surface); padding: 0; min-height: 360px; }
+
+  /* Diff block */
+  .hunk { border-bottom: 1px solid var(--border); }
+  .hunk-meta { padding: 6px 14px; font-family: var(--font-mono); font-size: 11px; color: var(--text-3); background: var(--surface-2); display: flex; justify-content: space-between; align-items: center; }
+  .hunk-meta.resolved { background: rgba(16,185,129,0.08); color: #047857; }
+  .hunk-actions { display: flex; gap: 6px; }
+  .hunk-actions button {
+    padding: 3px 8px; font: inherit; font-size: 10.5px; font-weight: 700;
+    border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface); cursor: pointer;
+  }
+  .hunk-actions button.mac { color: var(--c-mac); border-color: var(--c-mac-bd); }
+  .hunk-actions button.win { color: var(--c-win); border-color: var(--c-win-bd); }
+  .hunk-actions button.base { color: var(--text-3); }
+  .hunk-actions button.pick.mac.picked { background: var(--c-mac); color: #fff; border-color: var(--c-mac); }
+  .hunk-actions button.pick.win.picked { background: var(--c-win); color: #fff; border-color: var(--c-win); }
+  .hunk-actions button.pick.base.picked { background: var(--text); color: #fff; border-color: var(--text); }
+
+  .code-block {
+    font-family: var(--font-mono); font-size: 12px; line-height: 1.6;
+    padding: 8px 0; white-space: pre;
+  }
+  .code-line { display: flex; gap: 10px; padding: 0 14px; }
+  .code-line .ln { width: 28px; color: var(--text-4); text-align: right; user-select: none; }
+  .code-line.add { background: rgba(16,185,129,0.08); }
+  .code-line.del { background: rgba(225,29,72,0.08); }
+  .code-line.add .ln { color: #047857; }
+  .code-line.del .ln { color: #9f1239; }
+  .code-line .mark { width: 12px; color: var(--text-4); }
+  .code-line.add .mark { color: #047857; }
+  .code-line.del .mark { color: #9f1239; }
+  .code-line.picked-mac { box-shadow: inset 3px 0 0 var(--c-mac); }
+  .code-line.picked-win { box-shadow: inset -3px 0 0 var(--c-win); }
+
+  .resolve-foot { padding: 14px 18px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  .resolve-foot .summary { font-size: 12px; color: var(--text-3); margin-right: auto; }
+</style>
+</head>
+<body>
+<script src="shared.js"></script>
+<script>
+  const body = bootPage('resolver', '3-way Resolver — Mac · Base · Win',
+    '충돌 발생 시 세 버전을 나란히 보고 hunk마다 Mac/Win/Base 중 어느 걸 채택할지 결정. Base = 공통 조상.');
+
+  body.innerHTML = `
+    <section class="card card-padded" style="display:flex; align-items:center; gap:14px; margin-bottom:14px;">
+      <span style="font-size:20px;">🚨</span>
+      <div>
+        <div style="font-weight:700; font-size:14px;">papa-channy/seed-cli · 3개 파일에 충돌</div>
+        <div style="color:var(--text-3); font-size:12px;">Mac과 Win에서 동시에 수정된 파일들. 각 hunk마다 어느 쪽을 채택할지 결정하면 자동으로 머지 커밋 후보가 만들어져요.</div>
+      </div>
+      <div style="margin-left:auto;">
+        <button class="gh-btn">취소</button>
+        <button class="gh-btn primary">머지 커밋 생성 (1/3 완료)</button>
+      </div>
+    </section>
+
+    <div class="resolver-shell">
+      <aside class="file-list">
+        <div class="fl-head">충돌 파일 (3)</div>
+        <div class="fl-item active">
+          <span class="dot danger"></span>
+          <span class="fl-name">src/lib.rs</span>
+          <span class="fl-progress todo">2/5</span>
+        </div>
+        <div class="fl-item">
+          <span class="dot danger"></span>
+          <span class="fl-name">Cargo.toml</span>
+          <span class="fl-progress todo">0/2</span>
+        </div>
+        <div class="fl-item">
+          <span class="dot sync"></span>
+          <span class="fl-name">README.md</span>
+          <span class="fl-progress done">3/3 ✓</span>
+        </div>
+        <div class="fl-head" style="margin-top:8px;">자동 해결됨 (8)</div>
+        <div class="fl-item" style="opacity:0.6;">
+          <span class="dot sync"></span>
+          <span class="fl-name">.gitignore</span>
+          <span class="fl-progress done">Mac</span>
+        </div>
+        <div class="fl-item" style="opacity:0.6;">
+          <span class="dot sync"></span>
+          <span class="fl-name">src/cli.rs</span>
+          <span class="fl-progress done">Win</span>
+        </div>
+        <div class="fl-item" style="opacity:0.6;">
+          <span class="dot sync"></span>
+          <span class="fl-name">tests/parse.rs</span>
+          <span class="fl-progress done">병합</span>
+        </div>
+      </aside>
+
+      <section class="resolve-pane">
+        <div class="rp-head">
+          <span class="rp-title">src/lib.rs</span>
+          <span class="chip danger">3 hunks · 충돌</span>
+          <span class="chip muted">5개 중 2개 해결</span>
+          <div style="margin-left:auto; display:flex; align-items:center; gap:10px;">
+            <span style="font-size:11px; color:var(--text-3);">진행률</span>
+            <div class="progress-bar"><div style="width:40%"></div></div>
+            <span style="font-size:11px; font-weight:700;">40%</span>
+          </div>
+        </div>
+
+        <div class="columns">
+          <div class="col-head mac"><span class="ic">${ICONS.apple}</span> Mac 버전 (chan@MacBook)</div>
+          <div class="col-head base"><span class="ic" style="color:var(--c-warn)">⊥</span> Base · 공통 조상 (f1b62e3)</div>
+          <div class="col-head win"><span class="ic">${ICONS.windows}</span> Win 버전 (DESKTOP-Q0S7LSQ)</div>
+        </div>
+
+        ${hunk({
+          id: 1, resolved: false, picked: null,
+          range: '@@ −18,8 +18,9 @@ pub fn parse',
+          mac: [
+            { ln: 18, mark:'-', t: 'pub fn parse(s: &str) -> Result<Cmd> {' },
+            { ln: 18, mark:'+', t: 'pub fn parse(input: &str) -> anyhow::Result<Cmd> {' },
+            { ln: 19, mark:'+', t: '    let s = input.trim();' },
+            { ln: 20, mark:' ', t: '    if s.is_empty() {' },
+            { ln: 21, mark:' ', t: '        return Err(anyhow!("empty"));' },
+            { ln: 22, mark:' ', t: '    }' },
+            { ln: 23, mark:'+', t: '    if s.starts_with(\'#\') { return Ok(Cmd::Comment); }' },
+          ],
+          base: [
+            { ln: 18, mark:' ', t: 'pub fn parse(s: &str) -> Result<Cmd> {' },
+            { ln: 19, mark:' ', t: '    if s.is_empty() {' },
+            { ln: 20, mark:' ', t: '        return Err(anyhow!("empty"));' },
+            { ln: 21, mark:' ', t: '    }' },
+            { ln: 22, mark:' ', t: '    // parse here' },
+          ],
+          win: [
+            { ln: 18, mark:'-', t: 'pub fn parse(s: &str) -> Result<Cmd> {' },
+            { ln: 18, mark:'+', t: 'pub fn parse(s: &str) -> Result<Cmd, ParseError> {' },
+            { ln: 19, mark:' ', t: '    if s.is_empty() {' },
+            { ln: 20, mark:'-', t: '        return Err(anyhow!("empty"));' },
+            { ln: 20, mark:'+', t: '        return Err(ParseError::Empty);' },
+            { ln: 21, mark:' ', t: '    }' },
+            { ln: 22, mark:'+', t: '    log::debug!("parsing: {}", s);' },
+          ],
+        })}
+
+        ${hunk({
+          id: 2, resolved: true, picked: 'mac',
+          range: '@@ −42,3 +42,4 @@ impl Cmd',
+          mac: [
+            { ln: 42, mark:' ', t: 'impl Cmd {' },
+            { ln: 43, mark:'+', t: '    pub fn name(&self) -> &str { ... }' },
+            { ln: 44, mark:' ', t: '    pub fn args(&self) -> &[String] { ... }' },
+          ],
+          base: [
+            { ln: 42, mark:' ', t: 'impl Cmd {' },
+            { ln: 43, mark:' ', t: '    pub fn args(&self) -> &[String] { ... }' },
+          ],
+          win: [
+            { ln: 42, mark:' ', t: 'impl Cmd {' },
+            { ln: 43, mark:'+', t: '    /// 명령 인자 목록.' },
+            { ln: 44, mark:' ', t: '    pub fn args(&self) -> &[String] { ... }' },
+          ],
+        })}
+
+        ${hunk({
+          id: 3, resolved: false, picked: null,
+          range: '@@ −101,5 +101,8 @@ enum Cmd',
+          mac: [
+            { ln: 101, mark:' ', t: 'pub enum Cmd {' },
+            { ln: 102, mark:' ', t: '    Run(Vec<String>),' },
+            { ln: 103, mark:'+', t: '    Comment,' },
+            { ln: 104, mark:'+', t: '    Empty,' },
+            { ln: 105, mark:' ', t: '}' },
+          ],
+          base: [
+            { ln: 101, mark:' ', t: 'pub enum Cmd {' },
+            { ln: 102, mark:' ', t: '    Run(Vec<String>),' },
+            { ln: 103, mark:' ', t: '}' },
+          ],
+          win: [
+            { ln: 101, mark:' ', t: 'pub enum Cmd {' },
+            { ln: 102, mark:' ', t: '    Run(Vec<String>),' },
+            { ln: 103, mark:'+', t: '    Help,' },
+            { ln: 104, mark:' ', t: '}' },
+          ],
+        })}
+
+        <div class="resolve-foot">
+          <span class="summary">남은 hunk 3개 중 2개 미해결 — 결정해야 머지 가능</span>
+          <button class="gh-btn">⏮ 이전 충돌</button>
+          <button class="gh-btn">다음 충돌 ⏭</button>
+          <button class="gh-btn primary">파일 해결 완료 → 다음 파일</button>
+        </div>
+      </section>
+    </div>
+  `;
+
+  function hunk(h) {
+    const cell = (side, lines) => `
+      <div class="code-block">
+        ${lines.map(l => `
+          <div class="code-line ${l.mark==='+'?'add':l.mark==='-'?'del':''} ${h.picked===side?('picked-'+side):''}">
+            <span class="ln">${l.ln}</span><span class="mark">${l.mark}</span><span>${ESC(l.t)}</span>
+          </div>`).join('')}
+      </div>`;
+    return `
+      <div class="hunk">
+        <div class="hunk-meta ${h.resolved?'resolved':''}">
+          <span><span class="mono">${ESC(h.range)}</span> ${h.resolved?` · ✓ ${h.picked==='mac'?'Mac 채택':h.picked==='win'?'Win 채택':'Base 유지'}`:' · 미해결'}</span>
+          <span class="hunk-actions">
+            <button class="pick mac ${h.picked==='mac'?'picked':''}">${ICONS.apple ? '🍎' : '🍎'} Mac 채택</button>
+            <button class="pick base ${h.picked==='base'?'picked':''}">⊥ Base 유지</button>
+            <button class="pick win ${h.picked==='win'?'picked':''}">🪟 Win 채택</button>
+            <button>둘 다 (수동)</button>
+          </span>
+        </div>
+        <div class="columns">
+          ${cell('mac', h.mac)}
+          ${cell('base', h.base)}
+          ${cell('win', h.win)}
+        </div>
+      </div>`;
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>3-Way Sync Dashboard — Mac-Window Git Sync</title>
+<link rel="stylesheet" href="design-system.css" />
+<style>
+  /* Page-specific */
+  .hero {
+    display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 14px; margin-bottom: 26px;
+  }
+  .hero-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 18px 20px;
+    box-shadow: var(--shadow-sm);
+  }
+  .hero-card .h-label { font-size: 11.5px; color: var(--text-3); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+  .hero-card .h-value { font-size: 30px; font-weight: 700; letter-spacing: -0.01em; margin-top: 2px; }
+  .hero-card .h-sub { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+
+  .hero-card.alert { background: linear-gradient(180deg, rgba(225,29,72,0.04), rgba(225,29,72,0.00)); border-color: rgba(225,29,72,0.25); }
+  .hero-card.alert .h-value { color: var(--c-danger); }
+
+  /* Hero ring graph: 3-source agreement */
+  .ring-row { display: flex; align-items: center; gap: 18px; }
+  .ring { width: 76px; height: 76px; }
+  .ring text { font-family: var(--font-ui); font-weight: 800; font-size: 20px; fill: var(--text); }
+
+  .filter-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 12px; }
+
+  .repo-grid {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;
+  }
+  @media (min-width: 1280px) {
+    .repo-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+
+  .repo-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 16px 18px 14px;
+    box-shadow: var(--shadow-sm);
+    transition: border-color .12s, transform .12s, box-shadow .12s;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .repo-card:hover { border-color: var(--text-4); transform: translateY(-1px); box-shadow: var(--shadow); }
+  .repo-card.warn   { border-left: 3px solid var(--c-warn); }
+  .repo-card.danger { border-left: 3px solid var(--c-danger); }
+  .repo-card.danger::before {
+    content: ''; position: absolute; top: 0; right: 0; width: 80px; height: 80px;
+    background: radial-gradient(circle at 100% 0%, rgba(225,29,72,0.10), transparent 70%);
+    pointer-events: none;
+  }
+  .repo-head { display: flex; align-items: center; gap: 8px; }
+  .repo-name { font-weight: 700; letter-spacing: -0.005em; font-size: 14.5px; font-family: var(--font-mono); }
+  .repo-name .owner { color: var(--text-3); font-weight: 600; }
+  .repo-lang { margin-left: auto; font-size: 10.5px; padding: 2px 7px; background: var(--surface-2); border-radius: 4px; color: var(--text-3); font-weight: 700; letter-spacing: 0.04em; }
+
+  .mini-river { margin: 14px 0 10px; height: 78px; width: 100%; }
+
+  .repo-stats { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .repo-foot { margin-top: 10px; display: flex; align-items: center; gap: 8px; }
+  .repo-foot .last { color: var(--text-3); font-size: 11.5px; margin-left: auto; }
+
+  /* Activity sparkline (top-right of header for context) */
+  .summary-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; font-size: 12px; }
+</style>
+</head>
+<body>
+<script src="shared.js"></script>
+<script>
+  const body = bootPage('home', '3-Way Git Sync 대시보드',
+    '원격(GitHub) · macOS · Windows 세 머신의 git 상태를 한눈에. ⚠는 발산, 🚨는 충돌 임박.');
+
+  // Compute portfolio-level stats
+  const total = REPOS.length;
+  let danger = 0, warn = 0, sync = 0, missing = 0;
+  let totalDirty = 0, totalUnpushed = 0, totalBehind = 0, openPRs = 0;
+  for (const r of REPOS) {
+    const s = statusOf(r).kind;
+    if (s === 'conflict') danger++;
+    else if (s === 'diverged' || s === 'dirty') warn++;
+    else if (s === 'synced') sync++;
+    else missing++;
+    totalDirty    += (r.mac?.dirty || 0) + (r.win?.dirty || 0);
+    totalUnpushed += (r.mac?.unpushed || 0) + (r.win?.unpushed || 0);
+    totalBehind   += (r.mac?.behind || 0) + (r.win?.behind || 0);
+    openPRs       += r.remote?.prs || 0;
+  }
+  const syncedPct = Math.round((sync / total) * 100);
+
+  // ── Hero stats ─────────────────────────────────────────────
+  body.insertAdjacentHTML('beforeend', `
+    <section class="hero">
+      <div class="hero-card alert" style="display:flex; gap:18px; align-items:center;">
+        <div>
+          <div class="h-label">충돌 임박 (현재)</div>
+          <div class="h-value">${danger}건</div>
+          <div class="h-sub">Mac · Win에서 같은 파일을 동시에 수정 중 — 머지 전 정리 필요</div>
+        </div>
+        <div style="margin-left:auto">
+          <svg class="ring" viewBox="0 0 36 36">
+            <circle cx="18" cy="18" r="15" fill="none" stroke="var(--border)" stroke-width="3"/>
+            <circle cx="18" cy="18" r="15" fill="none" stroke="var(--c-sync)" stroke-width="3"
+              stroke-dasharray="${syncedPct} ${100-syncedPct}" stroke-dashoffset="25" transform="rotate(-90 18 18)" stroke-linecap="round"/>
+            <text x="18" y="22" text-anchor="middle">${syncedPct}%</text>
+          </svg>
+        </div>
+      </div>
+
+      <div class="hero-card">
+        <div class="h-label">3-Node 상태</div>
+        <div style="display:flex; gap:10px; margin-top:8px; flex-direction:column;">
+          <div style="display:flex; gap:8px; align-items:center;">
+            <span class="dot remote"></span>
+            <span style="font-weight:700; font-size:13px;">GitHub</span>
+            <span class="chip muted" style="margin-left:auto">${HOSTS.remote.detail}</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <span class="dot mac"></span>
+            <span style="font-weight:700; font-size:13px;">${HOSTS.mac.label}</span>
+            <span class="chip muted" style="margin-left:auto">${HOSTS.mac.detail}</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <span class="dot win"></span>
+            <span style="font-weight:700; font-size:13px;">${HOSTS.win.label}</span>
+            <span class="chip muted" style="margin-left:auto">${HOSTS.win.detail}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-card" style="display:flex; flex-direction:column; gap:6px;">
+        <div class="h-label">포트폴리오 요약</div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px 12px; margin-top:4px;">
+          <div><div style="font-size:18px; font-weight:700">${total}</div><div class="h-sub">레포</div></div>
+          <div><div style="font-size:18px; font-weight:700; color:var(--c-sync)">${sync}</div><div class="h-sub">동기화됨</div></div>
+          <div><div style="font-size:18px; font-weight:700; color:var(--c-warn)">${warn}</div><div class="h-sub">발산/미커밋</div></div>
+          <div><div style="font-size:18px; font-weight:700; color:var(--c-danger)">${danger}</div><div class="h-sub">충돌 임박</div></div>
+        </div>
+        <div style="border-top:1px solid var(--border); margin-top:6px; padding-top:8px; display:flex; gap:10px; font-size:12px; color:var(--text-3);">
+          <span>📝 ${totalDirty} dirty</span>
+          <span>↑ ${totalUnpushed} 미푸시</span>
+          <span>↓ ${totalBehind} 뒤처짐</span>
+          <span style="margin-left:auto">PR ${openPRs}</span>
+        </div>
+      </div>
+    </section>
+  `);
+
+  // ── Filter bar ─────────────────────────────────────────────
+  body.insertAdjacentHTML('beforeend', `
+    <div class="filter-row">
+      <div class="filter-bar">
+        <button class="filter-chip on">전체 ${total}</button>
+        <button class="filter-chip danger" style="color:var(--c-danger)">🚨 충돌 임박 ${danger}</button>
+        <button class="filter-chip" style="color:#92400e">⚠ 발산 ${warn}</button>
+        <button class="filter-chip" style="color:#047857">✓ 동기화 ${sync}</button>
+        <button class="filter-chip">단일 호스트 ${missing}</button>
+        <span style="width:1px; height:18px; background:var(--border); margin: 0 4px;"></span>
+        <button class="filter-chip">소유: papa-channy</button>
+        <button class="filter-chip">소유: Flogi-dev</button>
+      </div>
+      <div class="summary-bar">
+        ${icon('search')} <input type="text" placeholder="레포 검색…" style="border:0; background:transparent; outline:none; font:inherit; width:180px;">
+      </div>
+    </div>
+  `);
+
+  // ── Repo cards with mini Sync River ───────────────────────
+  const sorted = [...REPOS].sort((a, b) => severity(b) - severity(a));
+  const cards = sorted.map(r => repoCard(r)).join('');
+  body.insertAdjacentHTML('beforeend', `<section class="repo-grid">${cards}</section>`);
+
+  function repoCard(r) {
+    const status = statusOf(r);
+    const cardCls = status.kind === 'conflict' ? 'repo-card danger'
+                  : status.kind === 'diverged' || status.kind === 'dirty' ? 'repo-card warn'
+                  : 'repo-card';
+    const [owner, name] = r.owner_repo.split('/');
+    const stats = [];
+    if (r.mac && (r.mac.ahead || r.mac.behind)) stats.push(`<span class="chip mac">🍎 ${r.mac.ahead?`↑${r.mac.ahead}`:''}${r.mac.behind?` ↓${r.mac.behind}`:''}</span>`);
+    if (r.win && (r.win.ahead || r.win.behind)) stats.push(`<span class="chip win">🪟 ${r.win.ahead?`↑${r.win.ahead}`:''}${r.win.behind?` ↓${r.win.behind}`:''}</span>`);
+    if ((r.mac?.dirty || 0) + (r.win?.dirty || 0)) stats.push(`<span class="chip warn">📝 dirty ${(r.mac?.dirty||0)+(r.win?.dirty||0)}</span>`);
+    if ((r.mac?.unpushed || 0) + (r.win?.unpushed || 0)) stats.push(`<span class="chip warn">↑ 미푸시 ${(r.mac?.unpushed||0)+(r.win?.unpushed||0)}</span>`);
+    if (r.remote.prs) stats.push(`<span class="chip remote">PR ${r.remote.prs}</span>`);
+    if ((r.dirtyOverlap || []).length) stats.push(`<span class="chip danger pulse">🚨 충돌위험 ${r.dirtyOverlap.length}파일</span>`);
+    return `
+      <a href="syncmap.html#${encodeURIComponent(r.owner_repo)}" style="text-decoration:none; color:inherit; display:block;">
+      <div class="${cardCls}">
+        <div class="repo-head">
+          <div class="repo-name"><span class="owner">${ESC(owner)}/</span>${ESC(name)}</div>
+          <span class="repo-lang">${ESC(LANG_ICON[r.lang] || '·')} ${ESC(r.lang)}</span>
+        </div>
+        <div class="mini-river">${miniRiver(r)}</div>
+        <div class="repo-stats">
+          <span class="chip ${status.cls}">${status.label}</span>
+          ${stats.join('')}
+        </div>
+        <div class="repo-foot">
+          <span class="chip remote mono">📦 ${ESC(r.remote.head)}</span>
+          ${r.mac ? `<span class="chip mac mono">🍎 ${ESC(r.mac.head)}</span>` : '<span class="chip muted">🍎 없음</span>'}
+          ${r.win ? `<span class="chip win mono">🪟 ${ESC(r.win.head)}</span>` : '<span class="chip muted">🪟 없음</span>'}
+          <span class="last">12분 전 스캔</span>
+        </div>
+      </div>
+      </a>
+    `;
+  }
+
+  // Mini Sync River: a compact 3-lane horizontal SVG for the card
+  function miniRiver(r) {
+    const W = 460, H = 78;
+    const lanes = [
+      { key: 'remote', y: 16, present: true,           tip: r.remote.head,  cls: 'remote' },
+      { key: 'mac',    y: 38, present: !!r.mac,        tip: r.mac?.head,    cls: 'mac' },
+      { key: 'win',    y: 60, present: !!r.win,        tip: r.win?.head,    cls: 'win' },
+    ];
+    // Place: trunk runs from x=20 to x=W-130 (leave room for tip pills).
+    const x0 = 16, x1 = W - 138;
+    const lcaX = r.lca ? x0 + (x1 - x0) * 0.45 : null;
+    let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="xMidYMid meet">`;
+    // Lane bg + horizontal line
+    for (const l of lanes) {
+      const color = l.cls === 'remote' ? 'var(--c-remote)' : l.cls === 'mac' ? 'var(--c-mac)' : 'var(--c-win)';
+      svg += `<rect x="0" y="${l.y-9}" width="${W}" height="18" rx="9" fill="var(--surface-2)" />`;
+      if (l.present) {
+        svg += `<line x1="${x0}" y1="${l.y}" x2="${x1-8}" y2="${l.y}" stroke="${color}" stroke-width="2.5" opacity="0.55"/>`;
+      } else {
+        svg += `<text x="${x0+4}" y="${l.y+4}" font-size="10" fill="var(--text-3)">이 호스트엔 없음</text>`;
+      }
+    }
+    // Shared dots: 5 along trunk + lca + tip
+    const dotXs = [x0+18, x0+60, x0+110, x0+170, x0+240];
+    if (lcaX !== null) {
+      for (const l of lanes) if (l.present) svg += `<circle cx="${lcaX}" cy="${l.y}" r="4" fill="${l.cls==='remote'?'var(--c-remote)':l.cls==='mac'?'var(--c-mac)':'var(--c-win)'}"/>`;
+      svg += `<line x1="${lcaX}" y1="6" x2="${lcaX}" y2="${H-6}" stroke="var(--c-warn)" stroke-width="1.2" stroke-dasharray="3 3" opacity="0.7"/>`;
+      svg += `<text x="${lcaX}" y="${H-1}" text-anchor="middle" font-size="9" fill="#92400e" font-weight="700">⊥ LCA</text>`;
+    }
+    for (const x of dotXs) for (const l of lanes) if (l.present) svg += `<circle cx="${x}" cy="${l.y}" r="3" fill="${l.cls==='remote'?'var(--c-remote)':l.cls==='mac'?'var(--c-mac)':'var(--c-win)'}" opacity="0.45"/>`;
+    // Tip dots + pills
+    for (const l of lanes) {
+      if (!l.present) continue;
+      const tipX = x1 - 6;
+      const color = l.cls === 'remote' ? '#6E40C9' : l.cls === 'mac' ? '#2563EB' : '#0F766E';
+      svg += `<circle cx="${tipX}" cy="${l.y}" r="6" fill="${color}" stroke="#fff" stroke-width="2"/>`;
+      const label = (l.cls === 'remote' ? '📦 ' : l.cls === 'mac' ? '🍎 ' : '🪟 ') + (l.tip || '');
+      const pillX = tipX + 8, pillW = 120;
+      svg += `<rect x="${pillX}" y="${l.y-10}" width="${pillW}" height="20" rx="6" fill="${color}"/>`;
+      svg += `<text x="${pillX+8}" y="${l.y+4}" fill="#fff" font-size="11" font-weight="700">${label}</text>`;
+    }
+    // Mac divergence: small fork up from LCA
+    if (r.mac && r.win && r.mac.head !== r.win.head && lcaX !== null) {
+      const macY = 38;
+      svg += `<path d="M ${lcaX} ${macY} Q ${lcaX+30} ${macY-12} ${x1-20} ${macY}" stroke="var(--c-mac)" stroke-width="2.5" fill="none" opacity="0.55"/>`;
+    }
+    svg += `</svg>`;
+    return svg;
+  }
+</script>
+</body>
+</html>

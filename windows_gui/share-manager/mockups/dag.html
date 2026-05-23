@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>Multi-DAG — 색상 레인 그래프</title>
+<link rel="stylesheet" href="design-system.css" />
+<style>
+  .detail-shell { display: grid; grid-template-columns: 1fr 340px; gap: 18px; align-items: flex-start; }
+  @media (max-width: 1100px) { .detail-shell { grid-template-columns: 1fr; } }
+
+  .detail-head { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 14px 18px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; box-shadow: var(--shadow-sm); }
+  .dh-repo { font-family: var(--font-mono); font-weight: 700; font-size: 16px; }
+  .dh-repo .owner { color: var(--text-3); font-weight: 600; }
+  .toggle-group { display: inline-flex; padding: 3px; background: var(--surface-2); border-radius: var(--r); border: 1px solid var(--border); }
+  .toggle-group button { padding: 5px 11px; border: 0; background: transparent; border-radius: 6px; font: inherit; font-size: 12px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+  .toggle-group button.on { background: var(--surface); box-shadow: var(--shadow-sm); color: var(--text); }
+
+  .dag-shell { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); margin-top: 14px; overflow: hidden; box-shadow: var(--shadow-sm); }
+  .dag-toolbar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface-2); font-size: 12px; }
+  .dag-toolbar .legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+
+  .dag-grid { display: grid; grid-template-columns: 1fr; }
+  .dag-canvas { overflow-x: auto; }
+  .commit-row { display: grid; grid-template-columns: 320px 80px 1fr auto auto; align-items: center; padding: 6px 14px; border-top: 1px solid var(--surface-2); font-size: 12.5px; cursor: pointer; }
+  .commit-row:hover { background: var(--surface-2); }
+  .commit-row.selected { background: rgba(37,99,235,0.06); }
+  .commit-row .lane-area { position: relative; height: 28px; }
+  .commit-row .lane-area svg { position: absolute; top: 0; left: 0; }
+  .commit-row .csha { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); }
+  .commit-row .cmsg { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .commit-row .cmeta { color: var(--text-3); font-size: 11.5px; white-space: nowrap; }
+  .commit-row .ctags { display: flex; gap: 4px; }
+  .ref-pill { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 4px; font-size: 10.5px; font-weight: 700; color: #fff; }
+
+  /* Inspector reuses sync map style */
+  .inspector { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px 18px; box-shadow: var(--shadow-sm); position: sticky; top: 80px; }
+  .ins-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .ins-title { font-weight: 700; font-size: 14px; }
+  .ins-sha { font-family: var(--font-mono); font-size: 13px; padding: 2px 6px; background: var(--surface-2); border-radius: 4px; }
+  .ins-msg { font-size: 13px; color: var(--text); margin: 8px 0 12px; line-height: 1.5; }
+  .ins-section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: var(--text-3); text-transform: uppercase; margin: 14px 0 6px; }
+
+  /* Floating WIP & branch tip overlay for the DAG */
+  .lane-band { fill: var(--surface-2); opacity: 0.6; }
+</style>
+</head>
+<body>
+<script src="shared.js"></script>
+<script>
+  const body = bootPage('dag', 'Multi-DAG · 색상 레인',
+    'GitKraken 스타일 — 브랜치마다 색이 다르고, 부모-자식이 곡선으로 이어져요. 같은 레포에서 어떤 브랜치들이 살아있는지·어디서 갈라졌는지 한눈에.');
+
+  const owner_repo = decodeURIComponent((location.hash || '#papa-channy/Mac-Windows-P2P').slice(1));
+  const r = REPOS.find(x => x.owner_repo === owner_repo) || REPOS[0];
+
+  // ── DAG data (hand-positioned for clean mockup) ────────────────
+  // Lanes: 0 main (purple), 1 feature/sync-map (blue), 2 feature/log-hub (teal),
+  //        3 mac local (mac color), 4 win local (win color)
+  const LANE_COLOR = ['#6E40C9','#2563EB','#0F766E','#F59E0B','#E11D48'];
+  const LANE_LABEL = ['main','feature/sync-map','feature/log-hub','mac-local/onboarding','win-local/wip'];
+  // commits as [lane, y, sha, msg, when, refs:[ {lane,label,host?}], parents: [{lane,y}] ]
+  // y in row units; we'll convert to pixels
+  const C = [
+    [0, 0,  '826e9bb', 'Sync Map → SVG visualization', '2시간 전',  [{type:'remote',label:'origin/main'},{type:'win',label:'win HEAD'}]],
+    [0, 1,  'c0ea1ba', "Merge 'main' of origin",        '16시간 전', []],
+    [3, 1.6,'mac0001', 'wip: mac 로컬 작업 (미푸시)',    '9시간 전',  [{type:'mac',label:'mac HEAD'}]],
+    [0, 2,  'b9acd22', 'share-manager(win): debounce',  '16시간 전', []],
+    [1, 2.5,'7c3e211', 'feat: SVG sync river prototype','15시간 전', [{type:'branch',label:'sync-map'}]],
+    [0, 3,  'f1b62e3', "Merge 'main' of origin",        '16시간 전', [], 'lca'],
+    [1, 3.5,'a14ddef', 'WIP: river polish',             '14시간 전', []],
+    [0, 4,  '6ff9045', 'release v0.2.4 — clip cache',   '16시간 전', []],
+    [2, 4.5,'9af2b10', 'feat(log): compressed images',  '18시간 전', [{type:'branch',label:'log-hub'}]],
+    [0, 5,  '66e3506', 'Merge remote-tracking',          '17시간 전', []],
+    [2, 5.5,'b7c0011', 'log hub backend types',         '19시간 전', []],
+    [0, 6,  '71bd782', 'Git dashboard Stage 3',         '17시간 전', []],
+    [0, 7,  '025ba5d', 'v0.2.1 release',                '18시간 전', []],
+    [0, 8,  'e25865b', 'v0.2.3 — re-show perms',        '18시간 전', []],
+    [0, 9,  '0d201c2', 'log hub + receive verify',      '21시간 전', []],
+  ];
+  // Edges (child → parent) by row index pairs
+  const EDGES = [
+    [0,1],[1,3],[2,5],[1,4],[4,5],[3,5],[5,6],[6,7],[5,7],[7,8],[8,9],[6,9],[9,10],[10,11],[11,12],[12,13],[13,14],
+  ];
+
+  const W = 900, rowH = 38, padT = 28, padL = 60, padR = 24;
+  const H = padT + C.length * rowH + 14;
+  const colX = i => padL + i * 46;
+
+  // Build canvas SVG with curved edges + dots; then the row list mirrors the dot positions horizontally.
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg" style="display:block;">`;
+  // lane bands
+  for (let i = 0; i < 5; i++) {
+    svg += `<rect x="${colX(i)-12}" y="${padT-10}" width="24" height="${H-padT-2}" class="lane-band"/>`;
+    svg += `<text x="${colX(i)}" y="18" text-anchor="middle" font-size="10.5" font-weight="800" fill="${LANE_COLOR[i]}">${ESC(LANE_LABEL[i])}</text>`;
+  }
+  // edges
+  for (const [a, b] of EDGES) {
+    const A = C[a], B = C[b];
+    const x1 = colX(A[0]), y1 = padT + A[1] * rowH;
+    const x2 = colX(B[0]), y2 = padT + B[1] * rowH;
+    const color = LANE_COLOR[A[0]];
+    if (A[0] === B[0]) {
+      svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="2.5"/>`;
+    } else {
+      // Bezier curve — child lane color
+      const my = (y1 + y2) / 2;
+      svg += `<path d="M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}" fill="none" stroke="${color}" stroke-width="2.5"/>`;
+    }
+  }
+  // dots + refs
+  for (let i = 0; i < C.length; i++) {
+    const c = C[i];
+    const x = colX(c[0]), y = padT + c[1] * rowH;
+    const color = LANE_COLOR[c[0]];
+    const isLca = c[6] === 'lca';
+    svg += `<circle cx="${x}" cy="${y}" r="${isLca?9:6.5}" fill="${color}" stroke="#fff" stroke-width="2"><title>${ESC(c[2])} · ${ESC(c[3])}</title></circle>`;
+    if (isLca) {
+      svg += `<circle cx="${x}" cy="${y}" r="13" fill="none" stroke="var(--c-warn)" stroke-width="2.5" class="lca-pulse"/>`;
+      svg += `<text x="${x+20}" y="${y+4}" font-size="10.5" font-weight="800" fill="#92400e">⊥ LCA</text>`;
+    }
+    // ref pills next to dot
+    const refs = c[5];
+    let rx = x + 12;
+    for (const ref of refs) {
+      const color = ref.type === 'remote' ? '#6E40C9' : ref.type === 'mac' ? '#2563EB' : ref.type === 'win' ? '#0F766E' : '#64748B';
+      const icon = ref.type === 'remote' ? '📦' : ref.type === 'mac' ? '🍎' : ref.type === 'win' ? '🪟' : '🌿';
+      const w = (ref.label.length * 6.5) + 22;
+      svg += `<g><rect x="${rx}" y="${y-9}" width="${w}" height="18" rx="5" fill="${color}"/><text x="${rx+6}" y="${y+4}" font-size="10.5" font-weight="800" fill="#fff">${icon} ${ESC(ref.label)}</text></g>`;
+      rx += w + 4;
+    }
+  }
+  // WIP anchor (top)
+  svg += `<g><rect x="${padL-12}" y="${padT-26}" width="240" height="18" rx="6" fill="rgba(245,158,11,0.16)" stroke="var(--c-warn)" stroke-dasharray="3 3"/>`;
+  svg += `<text x="${padL-4}" y="${padT-12}" font-size="11" font-weight="700" fill="#92400e">📝 WIP · Mac dirty 2 · Win dirty 0 · stash 1</text></g>`;
+  svg += `</svg>`;
+
+  body.innerHTML = `
+    <div class="detail-shell">
+      <main>
+        <section class="detail-head">
+          <div class="dh-repo"><span class="owner">${ESC(r.owner_repo.split('/')[0])}/</span>${ESC(r.owner_repo.split('/')[1])}</div>
+          <select class="dh-sel"><option>모든 브랜치</option><option>main</option><option>feature/sync-map</option></select>
+          <div class="toggle-group">
+            <button onclick="location.href='syncmap.html#${encodeURIComponent(r.owner_repo)}'">📊 Sync Map</button>
+            <button class="on">🌳 Multi-DAG</button>
+          </div>
+          <div style="margin-left:auto; display:flex; gap:6px;">
+            <button class="gh-btn">${icon('search')} 검색</button>
+            <button class="gh-btn">${icon('refresh')} 다시 읽기</button>
+            <button class="gh-btn" onclick="location.href='index.html'">${icon('x')}</button>
+          </div>
+        </section>
+
+        <section class="dag-shell">
+          <div class="dag-toolbar">
+            <span><span class="legend-dot" style="background:#6E40C9"></span>main</span>
+            <span><span class="legend-dot" style="background:#2563EB"></span>feature/sync-map</span>
+            <span><span class="legend-dot" style="background:#0F766E"></span>feature/log-hub</span>
+            <span><span class="legend-dot" style="background:#F59E0B"></span>mac-local 브랜치</span>
+            <span style="margin-left:auto; color:var(--text-3);">곡선 = 부모 연결 · 점 굵기↑ = LCA · 노란 원형 펄스 = 공통 조상</span>
+          </div>
+          <div class="dag-canvas">${svg}</div>
+          <div>
+            ${C.map((c, i) => `
+              <div class="commit-row${i===0?' selected':''}">
+                <div></div>
+                <div class="csha">${ESC(c[2])}</div>
+                <div class="cmsg">${ESC(c[3])}</div>
+                <div class="ctags">${c[5].map(ref => {
+                  const cls = ref.type === 'remote' ? 'remote' : ref.type === 'mac' ? 'mac' : ref.type === 'win' ? 'win' : 'muted';
+                  return `<span class="ref-pill" style="background:${ref.type==='remote'?'#6E40C9':ref.type==='mac'?'#2563EB':ref.type==='win'?'#0F766E':'#64748B'}">${ESC(ref.label)}</span>`;
+                }).join('')} ${c[6]==='lca'?'<span class="chip warn">⊥ LCA</span>':''}</div>
+                <div class="cmeta">papa-channy · ${ESC(c[4])}</div>
+              </div>`).join('')}
+          </div>
+        </section>
+      </main>
+
+      <aside>
+        <div class="inspector">
+          <div class="ins-head">
+            <span class="ins-title">${ESC(C[0][3])}</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+            <span class="ins-sha">${ESC(C[0][2])}</span>
+            <span class="chip muted">papa-channy</span>
+            <span class="chip muted">2시간 전</span>
+          </div>
+          <div class="ins-msg">share-manager: Sync Map → real SVG visualization (3-lane river)</div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <span class="ref-pill" style="background:#6E40C9">📦 origin/main</span>
+            <span class="ref-pill" style="background:#0F766E">🪟 win HEAD</span>
+          </div>
+          <div class="ins-section-title">변경 파일 (2)</div>
+          <div style="font-family:var(--font-mono); font-size:11.5px; color:var(--text-2);">
+            <div>+153 −15 src/app.js</div>
+            <div>+47 −1 src/style.css</div>
+          </div>
+          <div class="ins-section-title">부모</div>
+          <div style="font-family:var(--font-mono); font-size:12px;">c0ea1ba</div>
+          <div style="margin-top:14px; display:flex; gap:6px; flex-wrap:wrap;">
+            <button class="gh-btn">SHA 복사</button>
+            <button class="gh-btn">GitHub 열기</button>
+            <button class="gh-btn">Compare</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  `;
+</script>
+</body>
+</html>

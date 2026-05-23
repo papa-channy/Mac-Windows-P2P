@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>Sync Map — 3-Way 동기화 상세</title>
+<link rel="stylesheet" href="design-system.css" />
+<style>
+  /* Detail layout: river + inspector */
+  .detail-shell { display: grid; grid-template-columns: 1fr 340px; gap: 18px; align-items: flex-start; }
+  @media (max-width: 1100px) { .detail-shell { grid-template-columns: 1fr; } }
+
+  /* ── Header bar (sticky-ish) ── */
+  .detail-head {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 14px 18px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .dh-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .dh-repo { font-family: var(--font-mono); font-weight: 700; font-size: 16px; }
+  .dh-repo .owner { color: var(--text-3); font-weight: 600; }
+  .dh-sel {
+    appearance: none; -webkit-appearance: none;
+    padding: 6px 30px 6px 12px; font-size: 12.5px; font-weight: 600;
+    border: 1px solid var(--border-strong); border-radius: var(--r);
+    background: var(--surface) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238A8E97' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>") right 8px center / 12px no-repeat;
+  }
+  .toggle-group { display: inline-flex; padding: 3px; background: var(--surface-2); border-radius: var(--r); border: 1px solid var(--border); }
+  .toggle-group button {
+    padding: 5px 11px; border: 0; background: transparent; border-radius: 6px;
+    font: inherit; font-size: 12px; font-weight: 600; color: var(--text-2); cursor: pointer;
+  }
+  .toggle-group button.on { background: var(--surface); box-shadow: var(--shadow-sm); color: var(--text); }
+
+  /* 3-host summary strip */
+  .host-strip { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .host-tile {
+    border: 1px solid var(--border); border-radius: var(--r);
+    padding: 12px 14px; background: var(--surface);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .host-tile.remote { border-color: var(--c-remote-bd); }
+  .host-tile.mac    { border-color: var(--c-mac-bd); }
+  .host-tile.win    { border-color: var(--c-win-bd); }
+  .host-ic { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; }
+  .host-ic.remote { color: var(--c-remote); }
+  .host-ic.mac    { color: var(--c-mac); }
+  .host-ic.win    { color: var(--c-win); }
+  .host-meta { line-height: 1.3; }
+  .host-name { font-weight: 700; font-size: 13px; }
+  .host-stat { font-size: 11.5px; color: var(--text-3); }
+  .host-tags { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 50%; }
+
+  /* River viz container */
+  .river-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 18px 12px 12px;
+    margin-top: 14px;
+    box-shadow: var(--shadow-sm);
+    overflow-x: auto;
+  }
+
+  /* Inspector */
+  .inspector {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 16px 18px;
+    box-shadow: var(--shadow-sm);
+    position: sticky; top: 80px;
+  }
+  .ins-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .ins-title { font-weight: 700; font-size: 14px; }
+  .ins-sha { font-family: var(--font-mono); font-size: 13px; padding: 2px 6px; background: var(--surface-2); border-radius: 4px; }
+  .ins-msg { font-size: 13px; color: var(--text); margin: 8px 0 12px; line-height: 1.5; }
+  .ins-section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: var(--text-3); text-transform: uppercase; margin: 14px 0 6px; }
+  .file-line { display: flex; gap: 8px; align-items: center; padding: 4px 0; font-family: var(--font-mono); font-size: 11.5px; }
+  .file-add { color: var(--c-sync); font-weight: 700; }
+  .file-del { color: var(--c-danger); font-weight: 700; }
+
+  /* SVG visual tokens */
+  .river text { font-family: var(--font-ui); }
+  .lane-bg-remote { fill: rgba(110,64,201,0.06); }
+  .lane-bg-mac    { fill: rgba(37,99,235,0.06); }
+  .lane-bg-win    { fill: rgba(15,118,110,0.06); }
+  .lane-stroke-remote { stroke: var(--c-remote); }
+  .lane-stroke-mac    { stroke: var(--c-mac); }
+  .lane-stroke-win    { stroke: var(--c-win); }
+  .lane-label { font-size: 12.5px; font-weight: 700; }
+  .lane-sub   { font-size: 10.5px; }
+  .commit-dot.remote { fill: var(--c-remote); }
+  .commit-dot.mac    { fill: var(--c-mac); }
+  .commit-dot.win    { fill: var(--c-win); }
+  .share-spine { stroke: #9d9da8; stroke-width: 2; stroke-dasharray: 2 3; opacity: 0.45; }
+  .lca-band   { fill: rgba(245,158,11,0.18); }
+  .lca-line   { stroke: var(--c-warn); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: 0.85; }
+  .lca-label  { font-weight: 800; font-size: 11.5px; fill: #92400e; }
+  .lca-ring   { fill: none; stroke: var(--c-warn); stroke-width: 2.5; }
+  .wip-anchor { fill: rgba(245,158,11,0.10); stroke: var(--c-warn); stroke-width: 1.5; stroke-dasharray: 4 3; }
+  .wip-label  { font-weight: 700; font-size: 11.5px; fill: #92400e; }
+  .fork-curve { fill: none; stroke-width: 2.5; opacity: 0.7; }
+
+  /* Pulse animation for LCA */
+  @keyframes lca-pulse {
+    0%, 100% { opacity: 0.65; }
+    50%      { opacity: 0.30; }
+  }
+  .lca-pulse { animation: lca-pulse 2.2s ease-in-out infinite; }
+
+  /* Ripple ring around tip pointers */
+  .tip-ripple { transform-origin: center; animation: ripple 2s ease-out infinite; }
+
+  /* Conflict warning radar (when dirty overlaps) */
+  .radar-line { stroke: var(--c-danger); stroke-width: 1.5; stroke-dasharray: 4 3; opacity: 0.55; }
+</style>
+</head>
+<body>
+<script src="shared.js"></script>
+<script>
+  const body = bootPage('sync', 'Sync Map — 레포 상세',
+    '시간이 왼쪽 → 오른쪽으로 흘러요. 색 점이 그 머신에 그 커밋이 있다는 뜻. 위아래로 점선 기둥이 이어진 곳은 "3대가 다 가진 커밋"이에요.');
+
+  // pick by hash, default first
+  const owner_repo = decodeURIComponent((location.hash || '#papa-channy/Mac-Windows-P2P').slice(1));
+  const r = REPOS.find(x => x.owner_repo === owner_repo) || REPOS[0];
+
+  body.innerHTML = `
+    <div class="detail-shell">
+      <main>
+        <section class="detail-head">
+          <div class="dh-row">
+            <div class="dh-repo"><span class="owner">${ESC(r.owner_repo.split('/')[0])}/</span>${ESC(r.owner_repo.split('/')[1])}</div>
+            <select class="dh-sel">
+              <option>main</option>
+              <option>feature/onboarding</option>
+              <option>dev</option>
+            </select>
+            <div class="toggle-group">
+              <button class="on">📊 Sync Map</button>
+              <button onclick="location.href='dag.html#${encodeURIComponent(r.owner_repo)}'">🌳 Multi-DAG</button>
+            </div>
+            <div style="margin-left:auto; display:flex; gap:6px;">
+              <button class="gh-btn">${icon('refresh')} 다시 읽기</button>
+              <button class="gh-btn" onclick="location.href='index.html'">${icon('x')}</button>
+            </div>
+          </div>
+          <div class="host-strip">
+            ${hostTile('remote', r)}
+            ${hostTile('mac', r)}
+            ${hostTile('win', r)}
+          </div>
+        </section>
+
+        <section class="river-card">
+          ${renderRiver(r)}
+        </section>
+
+        <section class="card" style="margin-top:14px;">
+          <div class="card-head">
+            <span class="card-title">📋 커밋 목록 (전체 36개)</span>
+            <span class="chip muted" style="margin-left:auto">최신순</span>
+          </div>
+          <div style="padding: 6px 4px 12px;">
+            ${commitList(r)}
+          </div>
+        </section>
+      </main>
+
+      <aside>
+        <div class="inspector" id="inspector">
+          <div class="ins-head">
+            <span class="ins-title">🍎 mac0001</span>
+            <span class="ins-sha" style="margin-left:auto">mac0001b…</span>
+          </div>
+          <div class="ins-msg">wip: mac 로컬 작업 (아직 미푸시)</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <span class="chip mac">🍎 chan@MacBook</span>
+            <span class="chip muted">12시간 전</span>
+            <span class="chip warn">↑ 미푸시</span>
+          </div>
+          <div class="ins-section-title">위치</div>
+          <div class="kv">
+            <div class="k">원격</div><div class="v" style="color:var(--text-3)">없음 (미푸시)</div>
+            <div class="k">Mac</div><div class="v" style="color:var(--c-mac)"><b>HEAD</b> — feature/onboarding</div>
+            <div class="k">Win</div><div class="v" style="color:var(--text-3)">없음</div>
+            <div class="k">부모</div><div class="v mono">f1b62e3</div>
+          </div>
+          <div class="ins-section-title">변경 파일 (4)</div>
+          <div class="file-line"><span class="file-add">+18</span><span class="file-del">−2</span><span>src/notes/today.md</span></div>
+          <div class="file-line"><span class="file-add">+8</span><span class="file-del">−0</span><span>scratch.txt</span></div>
+          <div class="file-line"><span class="file-add">+1</span><span class="file-del">−1</span><span>TODO.md</span></div>
+          <div class="file-line"><span class="file-add">+0</span><span class="file-del">−47</span><span>archive/old.json</span></div>
+          <div style="margin-top:14px; display:flex; gap:6px;">
+            <button class="gh-btn">SHA 복사</button>
+            <button class="gh-btn">파일 비교</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  `;
+
+  function hostTile(key, r) {
+    const ctx = key === 'remote' ? { name: 'GitHub', icon: ICONS.github, data: r.remote, missing: false }
+              : key === 'mac'    ? { name: 'chan@MacBook', icon: ICONS.apple, data: r.mac, missing: !r.mac }
+              :                    { name: 'DESKTOP-Q0S7LSQ', icon: ICONS.windows, data: r.win, missing: !r.win };
+    if (ctx.missing) {
+      return `<div class="host-tile"><span class="host-ic" style="color:var(--text-4)">${ctx.icon}</span>
+        <div class="host-meta"><div class="host-name" style="color:var(--text-4)">${ESC(ctx.name)}</div>
+          <div class="host-stat">이 호스트엔 이 레포 없음</div></div></div>`;
+    }
+    const tags = [];
+    const d = ctx.data;
+    if (key !== 'remote') {
+      if (d.ahead)    tags.push(`<span class="chip ${key}">↑ ${d.ahead}</span>`);
+      if (d.behind)   tags.push(`<span class="chip warn">↓ ${d.behind}</span>`);
+      if (d.dirty)    tags.push(`<span class="chip warn">dirty ${d.dirty}</span>`);
+      if (d.unpushed) tags.push(`<span class="chip warn">↑ 미푸시 ${d.unpushed}</span>`);
+      if (d.stash)    tags.push(`<span class="chip muted">stash ${d.stash}</span>`);
+      if (!tags.length) tags.push(`<span class="chip sync">= 원격</span>`);
+    } else {
+      tags.push(`<span class="chip remote">PR ${d.prs}</span>`);
+    }
+    return `
+      <div class="host-tile ${key}">
+        <span class="host-ic ${key}">${ctx.icon}</span>
+        <div class="host-meta">
+          <div class="host-name">${ESC(ctx.name)}</div>
+          <div class="host-stat">${key === 'remote' ? 'origin/main · ' : ''}<span class="mono">${ESC(d.head)}</span></div>
+        </div>
+        <div class="host-tags">${tags.join('')}</div>
+      </div>`;
+  }
+
+  // ────────────── The Sync River (the flagship visualization) ──────────────
+  function renderRiver(r) {
+    // synthetic timeline of commits for the chosen branch
+    // base trunk shared 5 commits, then Mac forks 1 above, remote/win continue 3
+    const trunk = [
+      { sha:'71bd782', msg:'share-manager: Git dashboard Stage 3', date:'17시간 전', sources:['remote','mac','win'] },
+      { sha:'66e3506', msg:'Merge remote-tracking',                date:'17시간 전', sources:['remote','mac','win'] },
+      { sha:'6ff9045', msg:'release v0.2.4 — clipboard cache',     date:'16시간 전', sources:['remote','mac','win'] },
+      { sha:'f1b62e3', msg:"Merge 'main' of origin",               date:'16시간 전', sources:['remote','mac','win'], lca: true },
+      { sha:'b9acd22', msg:'share-manager(win): debounce',         date:'16시간 전', sources:['remote','win'] },
+      { sha:'c0ea1ba', msg:"Merge 'main' of origin",               date:'16시간 전', sources:['remote','win'] },
+      { sha:'826e9bb', msg:'Sync Map → SVG visualization',         date:'2시간 전',  sources:['remote','win'] },
+    ];
+    const macFork = [
+      { sha:'mac0001', msg:'wip: mac 로컬 작업 (아직 미푸시)', date:'9시간 전', sources:['mac'] },
+    ];
+
+    // layout
+    const W = 1080, H = 360;
+    const padL = 170, padR = 200;
+    const inner = W - padL - padR;
+    const xs = trunk.map((_, i) => padL + (inner * (i / Math.max(1, trunk.length - 1))));
+    const macForkX = padL + inner * 0.75;
+
+    const lanes = [
+      { key: 'remote', y: 70,  color: 'var(--c-remote)', name: 'GitHub', sub: 'origin/main · 7 commits', icon: '📦', cls: 'remote', clsBg: 'lane-bg-remote' },
+      { key: 'mac',    y: 175, color: 'var(--c-mac)',    name: "chan@MacBook", sub: 'feature/onboarding · ↑1 ↓3', icon: '🍎', cls: 'mac', clsBg: 'lane-bg-mac' },
+      { key: 'win',    y: 280, color: 'var(--c-win)',    name: 'DESKTOP-Q0S7LSQ', sub: 'main · = 원격', icon: '🪟', cls: 'win', clsBg: 'lane-bg-win' },
+    ];
+
+    let svg = `<svg class="river" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`;
+
+    // Lane backgrounds + labels (sticky on left)
+    for (const l of lanes) {
+      svg += `<rect x="${padL - 30}" y="${l.y - 38}" width="${inner + 60}" height="76" rx="14" class="${l.clsBg}"/>`;
+      svg += `<text x="22" y="${l.y - 6}" class="lane-label" fill="${l.color}">${l.icon} ${l.name}</text>`;
+      svg += `<text x="22" y="${l.y + 14}" class="lane-sub" fill="${l.color}" opacity="0.7">${l.sub}</text>`;
+    }
+
+    // Shared spine (where all 3 share a commit) — vertical dashed connectors
+    for (let i = 0; i < trunk.length; i++) {
+      const c = trunk[i];
+      if (c.sources.length === 3) {
+        svg += `<line x1="${xs[i]}" y1="${lanes[0].y}" x2="${xs[i]}" y2="${lanes[2].y}" class="share-spine"/>`;
+      }
+    }
+
+    // LCA band (pulsing)
+    const lcaI = trunk.findIndex(c => c.lca);
+    if (lcaI >= 0) {
+      const lcaX = xs[lcaI];
+      svg += `<rect x="${lcaX - 18}" y="20" width="36" height="${H - 40}" rx="8" class="lca-band lca-pulse"/>`;
+      svg += `<line x1="${lcaX}" y1="20" x2="${lcaX}" y2="${H - 20}" class="lca-line"/>`;
+      svg += `<text x="${lcaX}" y="14" text-anchor="middle" class="lca-label">⊥ 공통 조상 · ${ESC(trunk[lcaI].sha)}</text>`;
+    }
+
+    // Horizontal lane lines through present dots
+    for (const l of lanes) {
+      const present = trunk.filter(c => c.sources.includes(l.key));
+      if (present.length < 2 && l.key !== 'mac') continue;
+      const x1 = padL, x2 = xs[xs.length - 1];
+      svg += `<line x1="${x1 - 6}" y1="${l.y}" x2="${x2 + 6}" y2="${l.y}" stroke="${l.color}" stroke-width="2.5" opacity="0.30"/>`;
+    }
+
+    // Trunk dots
+    for (let i = 0; i < trunk.length; i++) {
+      const c = trunk[i];
+      for (const l of lanes) {
+        if (!c.sources.includes(l.key)) continue;
+        const isTip = (i === trunk.length - 1) && c.sources.includes(l.key) && (l.key !== 'mac' || c.sources.length === 1);
+        const r = c.lca ? 9 : (isTip ? 9 : 7);
+        const stroke = c.lca ? `stroke="var(--c-warn)" stroke-width="2.5"` : '';
+        svg += `<circle cx="${xs[i]}" cy="${l.y}" r="${r}" fill="${l.color}" ${stroke}><title>${ESC(c.sha)} · ${ESC(c.msg)} · ${ESC(c.date)}</title></circle>`;
+        if (c.lca) {
+          svg += `<circle cx="${xs[i]}" cy="${l.y}" r="${r + 4}" class="lca-ring lca-pulse"/>`;
+        }
+      }
+    }
+
+    // Mac fork commit: drawn as a node above the Mac lane connected from LCA → fork tip
+    // Curve from (lcaX, mac.y) → (macForkX, mac.y - 36)
+    if (lcaI >= 0) {
+      const lcaX = xs[lcaI];
+      const macY = lanes[1].y;
+      const forkY = macY - 50;
+      svg += `<path d="M ${lcaX} ${macY} C ${(lcaX+macForkX)/2} ${macY - 4}, ${macForkX - 30} ${forkY + 4}, ${macForkX} ${forkY}" class="fork-curve" stroke="var(--c-mac)"/>`;
+      // arrow into fork tip
+      svg += `<circle cx="${macForkX}" cy="${forkY}" r="9" fill="var(--c-mac)" stroke="#fff" stroke-width="3"/>`;
+      svg += `<title>${ESC(macFork[0].sha)} · ${ESC(macFork[0].msg)} · ${ESC(macFork[0].date)}</title>`;
+      svg += `<text x="${macForkX}" y="${forkY - 14}" text-anchor="middle" font-size="11" fill="var(--c-mac)" font-weight="700">${ESC(macFork[0].sha)}</text>`;
+      svg += `<text x="${macForkX}" y="${forkY + 26}" text-anchor="middle" font-size="10.5" fill="var(--text-3)">미푸시 · ↑1</text>`;
+    }
+
+    // Tip pointer pills at end of each lane
+    const lastX = xs[xs.length - 1];
+    const tipPills = [
+      { lane: lanes[0], x: lastX + 14, label: '📦 origin/main · ' + trunk[trunk.length-1].sha },
+      { lane: lanes[1], x: macForkX + 14, label: '🍎 HEAD · mac0001' },
+      { lane: lanes[2], x: lastX + 14, label: '🪟 HEAD · ' + trunk[trunk.length-1].sha },
+    ];
+    for (const t of tipPills) {
+      const y = t.lane === lanes[1] ? lanes[1].y - 50 : t.lane.y;
+      const w = 178;
+      svg += `<g>`;
+      svg += `<rect x="${t.x}" y="${y - 13}" width="${w}" height="26" rx="6" fill="${t.lane.color}"/>`;
+      svg += `<text x="${t.x + 10}" y="${y + 5}" fill="#fff" font-weight="800" font-size="12">${ESC(t.label)}</text>`;
+      svg += `</g>`;
+    }
+
+    // WIP anchor at top-right (per research §6 — GitKraken pattern)
+    const wipX = lastX - 18, wipY = 26;
+    svg += `<g>`;
+    svg += `<rect x="${wipX - 80}" y="${wipY - 14}" width="190" height="28" rx="8" class="wip-anchor"/>`;
+    svg += `<text x="${wipX - 70}" y="${wipY + 4}" class="wip-label">📝 WIP · Mac dirty 2 · stash 1</text>`;
+    svg += `</g>`;
+
+    svg += `</svg>`;
+
+    // Legend strip
+    const legend = `
+      <div style="display:flex; align-items:center; gap:18px; padding: 4px 14px 0; font-size:11.5px; color:var(--text-3); flex-wrap:wrap;">
+        <span><span class="dot remote"></span> 원격</span>
+        <span><span class="dot mac"></span> Mac 로컬</span>
+        <span><span class="dot win"></span> Win 로컬</span>
+        <span style="display:inline-flex; align-items:center; gap:6px;"><svg width="22" height="6"><line x1="0" y1="3" x2="22" y2="3" stroke="#9d9da8" stroke-width="2" stroke-dasharray="2 3"/></svg> 3대가 모두 가진 커밋</span>
+        <span style="display:inline-flex; align-items:center; gap:6px;"><svg width="22" height="6"><line x1="0" y1="3" x2="22" y2="3" stroke="var(--c-warn)" stroke-width="2" stroke-dasharray="5 4"/></svg> 공통 조상 (펄스)</span>
+        <span>🌿 분기 = Mac이 LCA에서 가지를 친 곳</span>
+        <span style="margin-left:auto">💡 점에 마우스 올리면 상세, 클릭하면 SHA 복사</span>
+      </div>`;
+    return svg + legend;
+  }
+
+  // Compact commit list below the river
+  function commitList(r) {
+    const fake = [
+      { sha:'mac0001', who:'mac', msg:'wip: mac 로컬 작업 (아직 미푸시)', author:'chan', when:'9시간 전', tips:['🍎 HEAD'], src:'mac', ancestor:false },
+      { sha:'826e9bb', who:'remote', msg:'Sync Map → SVG visualization', author:'papa-channy', when:'2시간 전', tips:['📦 origin/main','🪟 HEAD'], src:'remote+win', ancestor:false },
+      { sha:'c0ea1ba', who:'remote', msg:"Merge 'main' of origin", author:'papa-channy', when:'16시간 전', tips:[], src:'remote+win', ancestor:false },
+      { sha:'b9acd22', who:'remote', msg:'share-manager(win): debounce small files', author:'papa-channy', when:'16시간 전', tips:[], src:'remote+win', ancestor:false },
+      { sha:'f1b62e3', who:'lca', msg:"Merge 'main' of origin", author:'papa-channy', when:'16시간 전', tips:[], src:'all', ancestor:true },
+      { sha:'6ff9045', who:'shared', msg:'release v0.2.4 — clipboard cache', author:'papa-channy', when:'16시간 전', tips:[], src:'all', ancestor:false },
+      { sha:'66e3506', who:'shared', msg:'Merge remote-tracking branch', author:'papa-channy', when:'17시간 전', tips:[], src:'all', ancestor:false },
+      { sha:'71bd782', who:'shared', msg:'Git dashboard Stage 3 — remote API', author:'papa-channy', when:'17시간 전', tips:[], src:'all', ancestor:false },
+    ];
+    return fake.map(f => `
+      <div style="display:grid; grid-template-columns:80px 80px 1fr auto auto; gap:10px; align-items:center; padding:7px 14px; border-radius:6px; cursor:pointer;" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">
+        <div>
+          ${f.src === 'all' ? `<span class="dot remote"></span> <span class="dot mac"></span> <span class="dot win"></span>` :
+            f.src === 'remote+win' ? `<span class="dot remote"></span> <span class="dot win"></span> <span class="dot" style="background:transparent;border:1px dashed var(--text-4)"></span>` :
+            `<span class="dot" style="background:transparent;border:1px dashed var(--text-4)"></span> <span class="dot mac"></span> <span class="dot" style="background:transparent;border:1px dashed var(--text-4)"></span>`}
+        </div>
+        <div class="mono" style="color:var(--text-2); font-size:12px">${ESC(f.sha)}</div>
+        <div style="font-size:13px">${ESC(f.msg)}</div>
+        <div style="display:flex; gap:4px;">${f.tips.map(t=>`<span class="chip ${t.includes('Mac')||t.includes('🍎')?'mac':t.includes('Win')||t.includes('🪟')?'win':'remote'}" style="font-size:10.5px">${ESC(t)}</span>`).join('')} ${f.ancestor?`<span class="chip warn" style="font-size:10.5px">⊥ 공통 조상</span>`:''}</div>
+        <div style="font-size:11.5px; color:var(--text-3); white-space:nowrap;">${ESC(f.author)} · ${ESC(f.when)}</div>
+      </div>
+    `).join('');
+  }
+</script>
+</body>
+</html>

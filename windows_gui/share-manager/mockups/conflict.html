@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>충돌 레이더 — Dirty 비교</title>
+<link rel="stylesheet" href="design-system.css" />
+<style>
+  .radar-shell {
+    display: grid;
+    grid-template-columns: 1fr 360px 1fr;
+    gap: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    position: relative;
+  }
+  .side {
+    padding: 18px 18px 22px;
+    min-height: 480px;
+  }
+  .side.mac { background: linear-gradient(180deg, rgba(37,99,235,0.04), transparent 60%); border-right: 1px solid var(--border); }
+  .side.win { background: linear-gradient(180deg, rgba(15,118,110,0.04), transparent 60%); border-left: 1px solid var(--border); }
+  .side h3 { margin: 0 0 4px; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+  .side.mac h3 { color: var(--c-mac); }
+  .side.win h3 { color: var(--c-win); }
+  .side h3 .ic { width: 22px; height: 22px; }
+  .side-sub { color: var(--text-3); font-size: 12px; margin-bottom: 12px; }
+
+  .file-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    background: var(--surface);
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: border-color .12s, transform .12s;
+  }
+  .file-item:hover { border-color: var(--text-4); transform: translateX(2px); }
+  .file-item.overlap { border-color: var(--c-danger); background: linear-gradient(90deg, rgba(225,29,72,0.05), rgba(225,29,72,0.00)); }
+  .side.win .file-item.overlap { background: linear-gradient(-90deg, rgba(225,29,72,0.05), rgba(225,29,72,0.00)); }
+  .file-name { font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+  .file-meta { color: var(--text-3); font-size: 11px; }
+  .file-stat { margin-left: auto; display: flex; gap: 4px; }
+  .stat-add { color: var(--c-sync); font-weight: 700; font-size: 11px; }
+  .stat-del { color: var(--c-danger); font-weight: 700; font-size: 11px; }
+  .overlap-badge { padding: 1px 6px; background: var(--c-danger); color: #fff; font-size: 10px; font-weight: 800; border-radius: 4px; }
+
+  .center {
+    padding: 18px 14px;
+    background: var(--surface-2);
+    display: flex; flex-direction: column;
+    align-items: stretch; gap: 12px;
+  }
+  .center-title { text-align: center; font-size: 13px; font-weight: 700; color: var(--text-2); }
+  .center-sub { text-align: center; font-size: 11.5px; color: var(--text-3); margin-bottom: 6px; }
+
+  .conflict-pair {
+    background: var(--surface);
+    border: 1px solid var(--c-danger);
+    border-radius: var(--r);
+    padding: 10px 12px;
+    box-shadow: 0 0 0 4px rgba(225,29,72,0.06);
+    position: relative;
+  }
+  .conflict-pair.warn { border-color: var(--c-warn); box-shadow: 0 0 0 4px rgba(245,158,11,0.06); }
+  .conflict-pair-title { font-family: var(--font-mono); font-weight: 700; font-size: 12px; }
+  .conflict-pair-sub { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+  .conflict-pair-pulse { position: absolute; top: 50%; transform: translateY(-50%); animation: ripple 1.8s infinite; }
+  .conflict-pair-pulse.left  { left: -8px; }
+  .conflict-pair-pulse.right { right: -8px; }
+  .pulse-dot { width: 10px; height: 10px; background: var(--c-danger); border-radius: 50%; }
+
+  /* Radar line overlay between sides */
+  .radar-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+
+  /* Mini diff preview */
+  .mini-diff { font-family: var(--font-mono); font-size: 11px; background: #0F1115; color: #E4E4EA; border-radius: 6px; padding: 8px 10px; margin-top: 8px; line-height: 1.5; }
+  .mini-diff .add { color: #6EE7B7; }
+  .mini-diff .del { color: #FCA5A5; }
+
+  .quick-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 0 0; }
+</style>
+</head>
+<body>
+<script src="shared.js"></script>
+<script>
+  const body = bootPage('conflict', '충돌 레이더 — Dirty 비교',
+    'Mac과 Win에서 동시에 수정 중인 파일을 빨간 연결선으로 알려줘요. 머지하기 전에 정리해야 할 후보들. (이건 가짜 데이터로 시각만 본 거예요)');
+
+  const overlap = ['src/lib.rs', 'Cargo.toml', 'README.md'];
+  const macDirty = [
+    { name: 'src/lib.rs',          add: 27, del: 4,  staged: false, overlap: true,  reason: '수정됨' },
+    { name: 'Cargo.toml',          add: 1,  del: 0,  staged: false, overlap: true,  reason: '버전 범프' },
+    { name: 'README.md',           add: 4,  del: 1,  staged: false, overlap: true,  reason: '문서 추가' },
+    { name: 'src/notes/today.md',  add: 18, del: 2,  staged: false, overlap: false, reason: '신규' },
+    { name: 'scratch.txt',         add: 8,  del: 0,  staged: false, overlap: false, reason: '추적되지 않음' },
+  ];
+  const winDirty = [
+    { name: 'src/lib.rs',          add: 12, del: 3,  staged: true,  overlap: true,  reason: '리팩터' },
+    { name: 'Cargo.toml',          add: 2,  del: 2,  staged: false, overlap: true,  reason: '의존성 추가' },
+    { name: 'README.md',           add: 9,  del: 0,  staged: false, overlap: true,  reason: 'TOC 추가' },
+    { name: 'src/build.rs',        add: 24, del: 5,  staged: false, overlap: false, reason: '빌드 스크립트' },
+    { name: '.gitignore',          add: 2,  del: 0,  staged: true,  overlap: false, reason: 'IDE 파일' },
+  ];
+
+  body.innerHTML = `
+    <section class="card card-padded" style="margin-bottom:14px;">
+      <div style="display:flex; align-items:center; gap:18px; flex-wrap:wrap;">
+        <div>
+          <h3 style="margin:0; font-size:14px;">papa-channy/seed-cli · main</h3>
+          <div style="color:var(--text-3); font-size:12px; margin-top:2px;">Mac/Win 양쪽 모두 미커밋 상태 — 같은 파일 ${overlap.length}개가 양쪽에서 동시에 수정 중이에요.</div>
+        </div>
+        <div class="filter-bar" style="margin-left:auto;">
+          <span class="filter-chip on">🚨 충돌 위험 (${overlap.length})</span>
+          <span class="filter-chip">⚠ Mac 단독</span>
+          <span class="filter-chip">⚠ Win 단독</span>
+          <span class="filter-chip muted">스테이지됨</span>
+          <span class="filter-chip muted">Untracked</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="radar-shell" id="radar-shell">
+      <svg class="radar-svg" id="radar-svg"></svg>
+
+      <div class="side mac">
+        <h3><span class="ic" style="color:var(--c-mac)">${ICONS.apple}</span> Mac 로컬</h3>
+        <div class="side-sub">chan@MacBook · ${macDirty.length}개 변경 (총 +${macDirty.reduce((s,f)=>s+f.add,0)} −${macDirty.reduce((s,f)=>s+f.del,0)})</div>
+        ${macDirty.map((f, i) => fileItem(f, 'mac', i)).join('')}
+      </div>
+
+      <div class="center">
+        <div class="center-title">🚨 동시 수정 중</div>
+        <div class="center-sub">머지 시 충돌이 거의 확실한 파일</div>
+        ${overlap.map((f) => `
+          <div class="conflict-pair">
+            <div class="conflict-pair-pulse left"><div class="pulse-dot"></div></div>
+            <div class="conflict-pair-pulse right"><div class="pulse-dot"></div></div>
+            <div class="conflict-pair-title">${ESC(f)}</div>
+            <div class="conflict-pair-sub">Mac · Win 양쪽에서 편집 중</div>
+            <div class="quick-actions">
+              <button class="gh-btn" style="font-size:11px; padding:4px 9px;">3-way 비교</button>
+              <button class="gh-btn primary" style="font-size:11px; padding:4px 9px;">해결 시작</button>
+            </div>
+          </div>
+        `).join('')}
+        <div style="margin-top:auto; padding-top:10px; border-top:1px dashed var(--border); font-size:11px; color:var(--text-3); text-align:center;">
+          빨간 연결선 = 동일 파일이 양쪽에 동시 수정<br>
+          ⚠ <b>커밋 또는 stash로 정리한 뒤에 push/pull 권장</b>
+        </div>
+      </div>
+
+      <div class="side win">
+        <h3><span class="ic" style="color:var(--c-win)">${ICONS.windows}</span> Win 로컬</h3>
+        <div class="side-sub">DESKTOP-Q0S7LSQ · ${winDirty.length}개 변경 (총 +${winDirty.reduce((s,f)=>s+f.add,0)} −${winDirty.reduce((s,f)=>s+f.del,0)})</div>
+        ${winDirty.map((f, i) => fileItem(f, 'win', i)).join('')}
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:14px;">
+      <div class="card-head">
+        <span class="card-title">📜 충돌 위험 파일 미리보기 — <code>src/lib.rs</code></span>
+        <span class="chip danger" style="margin-left:auto">3 hunks 잠재 충돌</span>
+      </div>
+      <div style="padding: 14px 18px;">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+          <div>
+            <div style="font-size:12px; color:var(--c-mac); font-weight:700; margin-bottom:4px;">🍎 Mac 버전</div>
+            <div class="mini-diff">
+<span class="del">- pub fn parse(s: &str) -> Result&lt;Cmd&gt; {</span>
+<span class="add">+ pub fn parse(input: &str) -> anyhow::Result&lt;Cmd&gt; {</span>
+<span class="add">+     let s = input.trim();</span>
+      if s.is_empty() {
+          return Err(anyhow!("empty"));
+      }
+<span class="add">+     if s.starts_with('#') { return Ok(Cmd::Comment); }</span>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12px; color:var(--c-win); font-weight:700; margin-bottom:4px;">🪟 Win 버전</div>
+            <div class="mini-diff">
+<span class="del">- pub fn parse(s: &str) -> Result&lt;Cmd&gt; {</span>
+<span class="add">+ pub fn parse(s: &str) -> Result&lt;Cmd, ParseError&gt; {</span>
+      if s.is_empty() {
+<span class="del">-         return Err(anyhow!("empty"));</span>
+<span class="add">+         return Err(ParseError::Empty);</span>
+      }
+<span class="add">+     log::debug!("parsing: {}", s);</span>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:14px; display:flex; gap:8px; align-items:center; padding:10px 12px; background:rgba(225,29,72,0.06); border-radius:var(--r); border:1px solid rgba(225,29,72,0.2);">
+          <span style="color:var(--c-danger); font-weight:700;">🚨 양쪽 모두 <code>parse</code> 함수 시그니처를 수정 중</span>
+          <span style="margin-left:auto;">
+            <button class="gh-btn primary" onclick="location.href='resolver.html'">→ 3-way Resolver 열기</button>
+          </span>
+        </div>
+      </div>
+    </section>
+  `;
+
+  function fileItem(f, side, i) {
+    return `
+      <div class="file-item${f.overlap ? ' overlap' : ''}" data-side="${side}" data-name="${ESC(f.name)}" data-idx="${i}">
+        ${f.staged ? '<span class="dot sync" title="스테이지됨"></span>' : '<span class="dot warn" title="미스테이지"></span>'}
+        <div>
+          <div class="file-name">${ESC(f.name)}</div>
+          <div class="file-meta">${ESC(f.reason)}</div>
+        </div>
+        <div class="file-stat">
+          <span class="stat-add">+${f.add}</span>
+          <span class="stat-del">−${f.del}</span>
+          ${f.overlap ? '<span class="overlap-badge">충돌</span>' : ''}
+        </div>
+      </div>`;
+  }
+
+  // Draw red radar lines connecting overlap files Mac→center→Win
+  function drawRadar() {
+    const shell = document.getElementById('radar-shell');
+    const svg = document.getElementById('radar-svg');
+    const r = shell.getBoundingClientRect();
+    svg.setAttribute('viewBox', `0 0 ${r.width} ${r.height}`);
+    const macItems = shell.querySelectorAll('.side.mac .file-item.overlap');
+    const winItems = shell.querySelectorAll('.side.win .file-item.overlap');
+    const pairs = shell.querySelectorAll('.conflict-pair');
+    let out = '';
+    macItems.forEach((m, i) => {
+      const mr = m.getBoundingClientRect();
+      const pr = pairs[i]?.getBoundingClientRect();
+      if (!pr) return;
+      const x1 = mr.right - r.left, y1 = mr.top - r.top + mr.height/2;
+      const x2 = pr.left - r.left, y2 = pr.top - r.top + pr.height/2;
+      const mx = (x1 + x2) / 2;
+      out += `<path d="M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}" stroke="var(--c-danger)" stroke-width="1.5" fill="none" stroke-dasharray="4 3" opacity="0.6"/>`;
+    });
+    winItems.forEach((w, i) => {
+      const wr = w.getBoundingClientRect();
+      const pr = pairs[i]?.getBoundingClientRect();
+      if (!pr) return;
+      const x1 = pr.right - r.left, y1 = pr.top - r.top + pr.height/2;
+      const x2 = wr.left - r.left, y2 = wr.top - r.top + wr.height/2;
+      const mx = (x1 + x2) / 2;
+      out += `<path d="M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}" stroke="var(--c-danger)" stroke-width="1.5" fill="none" stroke-dasharray="4 3" opacity="0.6"/>`;
+    });
+    svg.innerHTML = out;
+  }
+  setTimeout(drawRadar, 30);
+  window.addEventListener('resize', drawRadar);
+</script>
+</body>
+</html>

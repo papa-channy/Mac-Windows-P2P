@@ -1672,6 +1672,40 @@ pub fn list_git_logs() -> Result<serde_json::Value, String> {
     Ok(serde_json::Value::Object(hosts))
 }
 
+// ─── Layer 3 Inspector helpers (raw diff + config) ────────────
+/// Diff text for a file. side = "working" (vs HEAD), "staged" (vs HEAD), or "remote"
+/// (vs origin/<default-branch> last-fetched).
+#[tauri::command]
+pub fn git_file_diff(repo_path: String, file: String, side: Option<String>) -> Result<String, String> {
+    let repo = Path::new(&repo_path);
+    if !repo.join(".git").exists() && !repo.exists() {
+        return Err("레포 경로가 유효하지 않음".into());
+    }
+    let mode = side.as_deref().unwrap_or("working");
+    let args: Vec<&str> = match mode {
+        "staged" => vec!["diff", "--cached", "--", &file],
+        "remote" => vec!["diff", "@{u}..HEAD", "--", &file],
+        _        => vec!["diff", "HEAD", "--", &file],
+    };
+    Ok(run_git(repo, &args).unwrap_or_default())
+}
+
+#[tauri::command]
+pub fn git_config_read(repo_path: String) -> Result<String, String> {
+    let p = Path::new(&repo_path).join(".git").join("config");
+    if !p.exists() { return Err("config 파일 없음".into()); }
+    std::fs::read_to_string(&p).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn git_list_branches(repo_path: String) -> Result<Vec<String>, String> {
+    let repo = Path::new(&repo_path);
+    let out = run_git(repo, &["branch", "--format=%(refname:short)"]).unwrap_or_default();
+    let mut v: Vec<String> = out.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+    if v.is_empty() { v.push("main".to_string()); }
+    Ok(v)
+}
+
 // ─── Git credentials (PAT in OS keychain) + SSH + API validation ──
 const KEYRING_SERVICE: &str = "mac-window-git";
 const KEYRING_USER: &str = "github-pat";

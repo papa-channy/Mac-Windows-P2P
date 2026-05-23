@@ -126,6 +126,10 @@ const $gitDetailBranch  = document.getElementById('git-detail-branch');
 const $gitDetailMode    = document.getElementById('git-detail-mode');
 const $gitDetailSummary = document.getElementById('git-detail-summary');
 const $gitDetailBody    = document.getElementById('git-detail-body');
+const $gitInspector     = document.getElementById('git-inspector');
+const $gitInspectorTitle= document.getElementById('git-inspector-title');
+const $gitInspectorTabs = document.getElementById('git-inspector-tabs');
+const $gitInspectorBody = document.getElementById('git-inspector-body');
 const $panelItems = document.getElementById('panel-items');
 const $panelTree  = document.getElementById('panel-tree');
 const $tree       = document.getElementById('tree');
@@ -1433,6 +1437,151 @@ function renderGitPanel() {
     $gitList.innerHTML = `<div class="empty" style="padding:40px 24px"><div class="empty-icon">🌿</div><div class="empty-title">아직 스캔 기록이 없어요</div><div class="empty-hint">"지금 스캔"으로 이 머신의 레포를 찾고, Mac에서도 스캔하면 양쪽이 비교돼요.</div></div>`;
     return;
   }
+  return renderGitL1Dashboard();
+}
+
+// ─── Layer 1 — Dashboard (research-driven 3-layer mockup) ──────
+function gitDirtyFileName(line) {
+  // Porcelain line like " M src/foo" or "?? path" or "AM x"
+  const s = (line || '').trim();
+  const i = s.indexOf(' ');
+  return i < 0 ? s : s.slice(i + 1).trim();
+}
+function gitRepoSummary(entry, hosts) {
+  const vals = Object.values(entry.hosts);
+  const rem = entry.ownerRepo ? state.git.remote[entry.ownerRepo] : null;
+  const dirtyFiles = {};
+  for (const v of vals) {
+    for (const df of (v.dirty_files || [])) {
+      const name = gitDirtyFileName(df);
+      if (!name) continue;
+      (dirtyFiles[name] = dirtyFiles[name] || []).push(v.os || '?');
+    }
+  }
+  const overlaps = Object.entries(dirtyFiles).filter(([, h]) => new Set(h).size > 1).map(([f]) => f);
+  const mac = vals.find(v => v.os === 'macos') || null;
+  const win = vals.find(v => v.os === 'windows') || null;
+  const anyDirty = vals.some(v => (v.dirty || 0) || (v.unpushed || 0) || (v.behind || 0));
+  const headsDiffer = new Set(vals.map(v => v.head)).size > 1;
+  let kind = 'synced', label = '✓ 동기화됨';
+  if (overlaps.length)       { kind = 'conflict'; label = '🚨 충돌 임박'; }
+  else if (vals.length < 2)  { kind = 'partial';  label = '단일 호스트'; }
+  else if (headsDiffer)      { kind = 'diverged'; label = '⚠ 발산'; }
+  else if (anyDirty)         { kind = 'dirty';    label = '⚠ 미커밋'; }
+  return { entry, kind, label, mac, win, rem, overlaps, vals };
+}
+
+function renderGitL1Dashboard() {
+  const snaps = state.git.snapshots || [];
+  const hosts = snaps.map(s => ({ host: s.host, os: s.os, scanned_at: s.scanned_at }));
+  const repoMap = new Map();
+  for (const s of snaps) {
+    for (const r of s.repos) {
+      const key = r.owner_repo || ('local:' + (r.path.split(/[\\/]/).pop() || r.path));
+      if (!repoMap.has(key)) {
+        repoMap.set(key, {
+          label: r.owner_repo || (r.path.split(/[\\/]/).pop() || r.path),
+          owner: r.owner_repo ? r.owner_repo.split('/')[0] : null,
+          ownerRepo: r.owner_repo || null,
+          hosts: {},
+        });
+      }
+      repoMap.get(key).hosts[s.host] = Object.assign({ os: s.os }, r);
+    }
+  }
+  const g = state.settings.git || {};
+  let entries = [...repoMap.values()];
+  const total = entries.length;
+  if (g.only_mine && g.owners && g.owners.length) {
+    const set = new Set(g.owners.map(o => o.toLowerCase()));
+    entries = entries.filter(e => e.owner && set.has(e.owner.toLowerCase()));
+  }
+
+  const summaries = entries.map(e => gitRepoSummary(e, hosts));
+  const SEV = { conflict: 100, diverged: 50, dirty: 20, partial: 5, synced: 0 };
+  summaries.sort((a, b) => (SEV[b.kind] - SEV[a.kind]) || a.entry.label.localeCompare(b.entry.label));
+
+  const conflictCount = summaries.filter(s => s.kind === 'conflict').length;
+  const syncedCount   = summaries.filter(s => s.kind === 'synced').length;
+  const divergedCount = summaries.filter(s => s.kind === 'diverged' || s.kind === 'dirty').length;
+  const filterNote = (g.only_mine && g.owners && g.owners.length)
+    ? ` · 내 레포 ${entries.length}/${total}`
+    : ` · ${entries.length}개`;
+  $gitSubtitle.textContent = `Overview → Focus → Debug 3-layer · 동기화 ${syncedCount} · 발산 ${divergedCount} · 충돌 ${conflictCount}${filterNote}`;
+
+  const hero = `
+    <section class="git-hero">
+      <div class="git-hero-card">
+        <div><div class="ghc-label">전체 레포지토리</div><div class="ghc-num">${entries.length}</div></div>
+        <div class="ghc-ic remote">${svgIcon('git-branch')}</div>
+      </div>
+      <div class="git-hero-card synced">
+        <div><div class="ghc-label">안전 (동기화 완료)</div><div class="ghc-num">${syncedCount}</div></div>
+        <div class="ghc-ic" style="color:var(--c-sync); background: rgba(16,185,129,0.10);">✓</div>
+      </div>
+      <div class="git-hero-card ${conflictCount > 0 ? 'danger' : ''}">
+        <div><div class="ghc-label">충돌 위험 (동시 수정)</div><div class="ghc-num">${conflictCount}</div></div>
+        <div class="ghc-ic" style="color:${conflictCount > 0 ? 'var(--c-danger)' : 'var(--text-3)'}; background:${conflictCount > 0 ? 'rgba(225,29,72,0.10)' : 'var(--surface-2)'}">⚠</div>
+      </div>
+    </section>`;
+
+  let cards = '<section class="git-l1-grid">';
+  for (const s of summaries) {
+    cards += renderGitL1Card(s);
+  }
+  cards += '</section>';
+  $gitList.innerHTML = hero + cards;
+  $gitList.querySelectorAll('.git-card[data-or]').forEach(el => {
+    const or = el.getAttribute('data-or');
+    if (or) el.addEventListener('click', () => openGitDetail(or));
+  });
+}
+
+function renderGitL1Card(s) {
+  const e = s.entry;
+  const macDirty = s.mac ? (s.mac.dirty || 0) : null;
+  const winDirty = s.win ? (s.win.dirty || 0) : null;
+  const remSha = s.rem && s.rem.default_sha ? s.rem.default_sha.slice(0, 7) : '?';
+  return `
+    <div class="git-card ${s.kind}" data-or="${escape(e.ownerRepo || '')}">
+      ${s.kind === 'conflict' ? '<div class="git-card-stripe"></div>' : ''}
+      <div class="git-card-head">
+        <div>
+          <h3 class="git-card-name">${escape(e.label)}</h3>
+          <div class="git-card-meta">Last scan: 방금 전</div>
+        </div>
+        <span class="git-card-badge git-card-badge-${s.kind}">${escape(s.label)}</span>
+      </div>
+      <div class="git-card-bridge">
+        ${gitNodeBlock('mac', s.mac, macDirty)}
+        <div class="gn-link"></div>
+        ${gitNodeBlock('remote', { head: remSha }, null)}
+        <div class="gn-link"></div>
+        ${gitNodeBlock('win', s.win, winDirty)}
+        <span class="git-card-chev">›</span>
+      </div>
+      ${s.overlaps.length ? `<div class="git-card-conflict"><span>⚠</span><span><b>${s.overlaps.length}개 파일</b>이 양쪽 머신에서 동시 수정 중입니다.</span></div>` : ''}
+    </div>`;
+}
+
+function gitNodeBlock(key, data, dirty) {
+  const ICONS_INL = { mac: '🍎', remote: '📦', win: '🪟' };
+  const LBL = { mac: 'MAC', remote: 'ORIGIN', win: 'WIN' };
+  const dim = !data;
+  let third = '';
+  if (key === 'remote') third = `<span class="gn-mono">${escape((data && data.head) || '?')}</span>`;
+  else if (dim)         third = `<span class="gn-mute">없음</span>`;
+  else if (dirty > 0)   third = `<span class="gn-dirty">${dirty} Dirty</span>`;
+  else                  third = `<span class="gn-clean">Clean</span>`;
+  return `
+    <div class="gn gn-${key} ${dim ? 'off' : ''}">
+      <div class="gn-icon">${ICONS_INL[key]}</div>
+      <div class="gn-label">${LBL[key]}</div>
+      <div class="gn-third">${third}</div>
+    </div>`;
+}
+
+function _legacy_renderGitPanel(snaps) {
   const hosts = snaps.map(s => ({ host: s.host, os: s.os, scanned_at: s.scanned_at }));
   const repoMap = new Map();
   for (const s of snaps) {
@@ -1573,24 +1722,412 @@ function renderGitPanel() {
 
 // ─── Git repo detail (Sync Map / DAG) ──────────────────────────
 async function openGitDetail(ownerRepo) {
-  state.gitDetail = { ownerRepo, graph: null, branch: null, mode: 'sync' };
-  $gitDetailTitle.textContent = '🌿 ' + ownerRepo;
+  state.gitDetail = { ownerRepo, graph: null, branch: null, mode: 'lanes' };
+  $gitDetailTitle.textContent = ownerRepo;
   $gitDetailBranch.innerHTML = '';
   $gitDetailSummary.innerHTML = '';
-  $gitDetailMode.textContent = '🌳 DAG 보기';
-  $gitDetailBody.innerHTML = '<div class="git-detail-loading">그래프 계산 중… (원격 조회 포함)</div>';
+  if ($gitDetailMode) $gitDetailMode.textContent = 'Raw 데이터 인스펙터';
+  $gitDetailBody.innerHTML = '<div class="git-detail-loading">레포 상태 로드 중…</div>';
   $gitDetail.classList.remove('hidden');
+  // Compute summary directly from snapshots (no API call needed for Layer 2).
+  renderGitL2Lanes(ownerRepo);
+}
+
+// ─── Layer 2 — 3-column swimlanes ──────────────────────────────
+function renderGitL2Lanes(ownerRepo) {
+  const snaps = state.git.snapshots || [];
+  const repoEntries = [];
+  for (const s of snaps) {
+    const r = (s.repos || []).find(r => r.owner_repo === ownerRepo);
+    if (r) repoEntries.push({ host: s.host, os: s.os, scanned_at: s.scanned_at, repo: r });
+  }
+  if (!repoEntries.length) {
+    $gitDetailBody.innerHTML = '<div class="git-detail-loading">이 레포의 스냅샷이 없어요.</div>';
+    return;
+  }
+  const entry = { ownerRepo, label: ownerRepo, owner: ownerRepo.split('/')[0], ownerRepo, hosts: {} };
+  for (const e of repoEntries) entry.hosts[e.host] = Object.assign({ os: e.os }, e.repo);
+  const summary = gitRepoSummary(entry, snaps);
+  const macHost = repoEntries.find(e => e.os === 'macos');
+  const winHost = repoEntries.find(e => e.os === 'windows');
+  const rem = state.git.remote[ownerRepo];
+  const branches = new Set();
+  for (const e of repoEntries) if (e.repo.branch) branches.add(e.repo.branch);
+  if (rem && rem.branches) for (const b of rem.branches) if (b.name) branches.add(b.name);
+  const branchList = [...branches];
+  state.gitDetail.branch = state.gitDetail.branch || (rem?.default_branch && branchList.includes(rem.default_branch) ? rem.default_branch : branchList[0] || 'main');
+  $gitDetailBranch.innerHTML = branchList.map(b => `<option value="${escape(b)}"${b===state.gitDetail.branch?' selected':''}>${escape(b)}</option>`).join('') || `<option>${escape(state.gitDetail.branch)}</option>`;
+
+  // Status summary chip
+  $gitDetailSummary.innerHTML = `
+    <span class="git-l2-status ${summary.kind}">${escape(summary.label)}</span>
+    ${summary.overlaps.length ? `<span class="git-l2-overlap"><b>${summary.overlaps.length}개 파일</b> 동시 수정 중</span>` : ''}
+  `;
+
+  // ahead/behind on connectors (Mac ↔ Origin, Origin ↔ Win)
+  const macAhead  = macHost ? (macHost.repo.ahead || macHost.repo.unpushed || 0) : 0;
+  const macBehind = macHost ? (macHost.repo.behind || 0) : 0;
+  const winAhead  = winHost ? (winHost.repo.ahead || winHost.repo.unpushed || 0) : 0;
+  const winBehind = winHost ? (winHost.repo.behind || 0) : 0;
+
+  $gitDetailBody.innerHTML = `
+    <div class="git-l2-shell">
+      ${summary.overlaps.length ? '<div class="git-l2-pulse"></div>' : ''}
+      ${gitLaneCol(macHost, 'mac', '🍎', 'macOS 로컬', summary.overlaps, macAhead, macBehind)}
+      ${gitLaneOrigin(rem, ownerRepo)}
+      ${gitLaneCol(winHost, 'win', '🪟', 'Windows 로컬', summary.overlaps, winAhead, winBehind)}
+    </div>
+    ${gitConnectorBar(macAhead, macBehind, winAhead, winBehind)}
+  `;
+}
+
+function gitConnectorBar(ma, mb, wa, wb) {
+  return `
+    <div class="git-l2-connbar">
+      <span class="conn-label mac">🍎 Mac</span>
+      <span class="conn-arrow">${ma ? `↑${ma}` : ''}${mb ? ` ↓${mb}` : ''}${(!ma && !mb) ? '= 동기화' : ''}</span>
+      <span class="conn-mid">━━ 원격 ━━</span>
+      <span class="conn-arrow">${wa ? `↑${wa}` : ''}${wb ? ` ↓${wb}` : ''}${(!wa && !wb) ? '= 동기화' : ''}</span>
+      <span class="conn-label win">🪟 Win</span>
+    </div>`;
+}
+
+function gitLaneCol(hostEntry, key, ic, label, overlaps, ahead, behind) {
+  if (!hostEntry) {
+    return `<section class="git-lane ${key}">
+      <header class="lane-head">
+        <span class="lane-icon">${ic}</span>
+        <h3 class="lane-title">${escape(label)}</h3>
+      </header>
+      <div class="lane-body empty">
+        <div class="empty-pad">이 호스트엔 이 레포가 없어요</div>
+      </div>
+    </section>`;
+  }
+  const repo = hostEntry.repo;
+  const dirty = repo.dirty_files || [];
+  const dirtyHtml = dirty.length ? dirty.map(df => {
+    const name = gitDirtyFileName(df);
+    const isConflict = overlaps.includes(name);
+    return `<li class="lane-file${isConflict ? ' conflict' : ''}">
+      <span class="lane-file-ic">${isConflict ? '⚠' : '✎'}</span>
+      <span class="lane-file-name${isConflict ? ' bold' : ''}" title="${escape(df)}">${escape(name)}</span>
+    </li>`;
+  }).join('') : '<li class="lane-empty">변경 없음 (clean)</li>';
+
+  const unpushedCount = repo.unpushed || repo.ahead || 0;
+  const stashCount = repo.stash || 0;
+  return `
+    <section class="git-lane ${key}">
+      <header class="lane-head">
+        <span class="lane-icon">${ic}</span>
+        <div class="lane-meta">
+          <h3 class="lane-title">${escape(label)}</h3>
+          <div class="lane-sub">${escape(hostEntry.host)} · <span class="mono">${escape((repo.head || '').slice(0,7))}</span></div>
+        </div>
+        <div class="lane-tags">
+          ${ahead ? `<span class="git-tag mac-tag">↑${ahead}</span>` : ''}
+          ${behind ? `<span class="git-tag warn-tag">↓${behind}</span>` : ''}
+          ${(repo.dirty||0) ? `<span class="git-tag warn-tag">dirty ${repo.dirty}</span>` : ''}
+        </div>
+      </header>
+      <div class="lane-body">
+        <h4 class="lane-section">Work In Progress (${dirty.length})</h4>
+        <ul class="lane-files">${dirtyHtml}</ul>
+        ${unpushedCount ? `
+          <h4 class="lane-section">미푸시 커밋 (${unpushedCount})</h4>
+          <ul class="lane-files"><li class="lane-info">↑ ${unpushedCount}개 로컬에서 커밋했지만 origin엔 없음</li></ul>` : ''}
+        ${stashCount ? `
+          <h4 class="lane-section">Stash (${stashCount})</h4>
+          <ul class="lane-files"><li class="lane-info">📦 ${stashCount}개 보관됨</li></ul>` : ''}
+      </div>
+    </section>`;
+}
+
+function gitLaneOrigin(rem, ownerRepo) {
+  const tip = rem?.default_sha ? rem.default_sha.slice(0, 7) : '?';
+  const def = rem?.default_branch || 'main';
+  const prs = rem?.open_prs || [];
+  return `
+    <section class="git-lane remote">
+      <header class="lane-head">
+        <span class="lane-icon">📦</span>
+        <div class="lane-meta">
+          <h3 class="lane-title">GitHub Origin</h3>
+          <div class="lane-sub">${escape(def)} · <span class="mono">${escape(tip)}</span></div>
+        </div>
+        ${prs.length ? `<span class="git-tag remote-tag">PR ${prs.length}</span>` : ''}
+      </header>
+      <div class="lane-body lane-origin">
+        <div class="origin-tip">
+          <div class="origin-dot"></div>
+          <div class="origin-card">
+            <div class="origin-sha mono">${escape(tip)}</div>
+            <div class="origin-msg">${escape(rem?.error || `${escape(def)} 최신 커밋`)}</div>
+          </div>
+        </div>
+        ${prs.length ? `<h4 class="lane-section">열린 PR</h4>
+          <ul class="lane-files">
+            ${prs.slice(0, 5).map(p => `<li class="lane-info">#${p.number} ${escape(p.title)}</li>`).join('')}
+          </ul>` : ''}
+      </div>
+    </section>`;
+}
+
+// ─── Layer 3 — Raw Data Inspector (dark) ───────────────────────
+const GIT_INSPECTOR_TABS = [
+  { id: 'diffs',    label: 'Raw Diffs',     icon: '📄' },
+  { id: 'logs',     label: 'Daemon Logs',   icon: '⚡' },
+  { id: 'config',   label: 'Git Config',    icon: '⚙' },
+  { id: 'commits',  label: 'All Commits',   icon: '☰' },
+  { id: 'timeline', label: 'Sync Timeline', icon: '🌳' },
+];
+
+async function openGitInspector(ownerRepo) {
+  state.gitInspector = { ownerRepo, tab: 'diffs' };
+  $gitInspectorTitle.textContent = `${ownerRepo}  /  Inspector`;
+  $gitInspectorTabs.innerHTML = GIT_INSPECTOR_TABS.map(t =>
+    `<button class="gi-tab" data-tab="${t.id}">${t.icon} <span>${escape(t.label)}</span></button>`
+  ).join('');
+  $gitInspectorTabs.querySelectorAll('.gi-tab').forEach(el => {
+    el.addEventListener('click', () => {
+      state.gitInspector.tab = el.getAttribute('data-tab');
+      renderGitInspectorTab();
+    });
+  });
+  $gitInspector.classList.remove('hidden');
+  renderGitInspectorTab();
+}
+
+async function renderGitInspectorTab() {
+  const { ownerRepo, tab } = state.gitInspector;
+  $gitInspectorTabs.querySelectorAll('.gi-tab').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('data-tab') === tab);
+  });
+  $gitInspectorBody.innerHTML = '<div class="gi-loading">로드 중…</div>';
+  try {
+    if (tab === 'diffs')         await renderGIDiffs(ownerRepo);
+    else if (tab === 'logs')     await renderGILogs(ownerRepo);
+    else if (tab === 'config')   await renderGIConfig(ownerRepo);
+    else if (tab === 'commits')  await renderGICommits(ownerRepo);
+    else if (tab === 'timeline') await renderGITimeline(ownerRepo);
+  } catch (e) {
+    $gitInspectorBody.innerHTML = `<div class="gi-loading">실패: ${escape(String(e))}</div>`;
+  }
+}
+
+function gitRepoPathForHost(ownerRepo, os) {
+  const snap = (state.git.snapshots || []).find(s => s.os === os);
+  if (!snap) return null;
+  const r = (snap.repos || []).find(r => r.owner_repo === ownerRepo);
+  return r ? r.path : null;
+}
+
+async function renderGIDiffs(ownerRepo) {
+  // Show working diff for the FIRST host that has this repo (prefer windows host since we're on it).
+  const winPath = gitRepoPathForHost(ownerRepo, 'windows');
+  const macPath = gitRepoPathForHost(ownerRepo, 'macos');
+  const path = winPath || macPath;
+  if (!path) { $gitInspectorBody.innerHTML = '<div class="gi-loading">이 머신엔 이 레포 없음.</div>'; return; }
+  // Find dirty files from this host's snapshot
+  const snap = state.git.snapshots.find(s => s.os === (winPath ? 'windows' : 'macos'));
+  const r = (snap?.repos || []).find(r => r.owner_repo === ownerRepo);
+  const dirty = (r?.dirty_files || []).map(gitDirtyFileName).filter(Boolean).slice(0, 8);
+  if (dirty.length === 0) {
+    $gitInspectorBody.innerHTML = '<div class="gi-empty">변경된 파일이 없습니다 — diff 없음</div>';
+    return;
+  }
+  let out = `<div class="gi-diffs">`;
+  for (const file of dirty) {
+    let diff = '';
+    try { diff = await invoke('git_file_diff', { repoPath: path, file, side: 'working' }); } catch (_) {}
+    out += `
+      <div class="gi-diff-card">
+        <header class="gi-diff-head">📄 <span class="mono">${escape(file)}</span></header>
+        <pre class="gi-diff-pre">${gitColorDiff(diff || '(no diff hunks)')}</pre>
+      </div>`;
+  }
+  out += '</div>';
+  $gitInspectorBody.innerHTML = out;
+}
+function gitColorDiff(text) {
+  return text.split('\n').map(line => {
+    let cls = 'd-ctx';
+    if (line.startsWith('+++') || line.startsWith('---')) cls = 'd-meta';
+    else if (line.startsWith('@@')) cls = 'd-hunk';
+    else if (line.startsWith('+')) cls = 'd-add';
+    else if (line.startsWith('-')) cls = 'd-del';
+    return `<span class="${cls}">${escape(line)}</span>`;
+  }).join('\n');
+}
+
+async function renderGILogs(ownerRepo) {
+  // Pull recent send/recv/error/worklog entries; filter mentions of this repo if possible.
+  let lines = [];
+  const cats = ['recv', 'send', 'error', 'worklog'];
+  for (const c of cats) {
+    try {
+      const entries = await invoke('list_log_entries', { category: c, limit: 50 });
+      for (const e of (entries || [])) {
+        const ts = e.ts || '';
+        const level = e.event && e.event.includes('fail') ? 'ERROR'
+                    : e.event && e.event.includes('ok') ? 'SUCCESS'
+                    : 'INFO';
+        const main = e.summary || e.event || JSON.stringify(e).slice(0, 120);
+        lines.push({ ts, level, cat: c, main });
+      }
+    } catch (_) {}
+  }
+  lines.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+  lines = lines.slice(0, 80);
+  if (lines.length === 0) lines = [{ ts: new Date().toISOString(), level: 'INFO', cat: 'sys', main: '아직 로그가 없습니다.' }];
+  $gitInspectorBody.innerHTML = `
+    <div class="gi-logs">
+      ${lines.map(l => {
+        const lc = l.level === 'ERROR' ? 'l-err' : l.level === 'SUCCESS' ? 'l-ok' : 'l-info';
+        return `<div class="gi-log-line"><span class="l-ts">[${escape(l.ts.slice(11, 19))}]</span> <span class="l-lvl ${lc}">[${escape(l.level)}]</span> <span class="l-cat">[${escape(l.cat.toUpperCase())}]</span> <span>${escape(l.main)}</span></div>`;
+      }).join('')}
+      <div class="gi-log-tail">_ waiting for new logs…</div>
+    </div>`;
+}
+
+async function renderGIConfig(ownerRepo) {
+  const winPath = gitRepoPathForHost(ownerRepo, 'windows');
+  const macPath = gitRepoPathForHost(ownerRepo, 'macos');
+  const path = winPath || macPath;
+  if (!path) { $gitInspectorBody.innerHTML = '<div class="gi-loading">이 머신엔 이 레포 없음.</div>'; return; }
+  let conf = '';
+  try { conf = await invoke('git_config_read', { repoPath: path }); } catch (e) { conf = '(read failed: ' + e + ')'; }
+  $gitInspectorBody.innerHTML = `
+    <div class="gi-config">
+      <div class="gi-config-path">📁 <span class="mono">${escape(path)}/.git/config</span></div>
+      <pre class="gi-config-pre">${escape(conf)}</pre>
+    </div>`;
+}
+
+async function renderGICommits(ownerRepo) {
+  // Build a unified commit table from per-host git-log.json + remote cache
+  let commits = [];
+  try {
+    const docs = await invoke('list_git_logs');
+    for (const [host, doc] of Object.entries(docs || {})) {
+      const repoLogs = doc?.logs?.[ownerRepo];
+      if (!repoLogs) continue;
+      for (const [branch, arr] of Object.entries(repoLogs)) {
+        for (const c of arr) commits.push({ ...c, host, branch });
+      }
+    }
+  } catch (_) {}
+  // dedup by sha (keep first)
+  const seen = new Set(); const dedup = [];
+  for (const c of commits) { if (!seen.has(c.sha)) { seen.add(c.sha); dedup.push(c); } }
+  dedup.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  if (!dedup.length) { $gitInspectorBody.innerHTML = '<div class="gi-empty">아직 커밋 로그가 없습니다 — "지금 스캔"으로 생성하세요</div>'; return; }
+  $gitInspectorBody.innerHTML = `
+    <div class="gi-commits">
+      <table class="gi-table">
+        <thead><tr><th>SHA</th><th>Message</th><th>Branch</th><th>Author</th><th>Date</th></tr></thead>
+        <tbody>
+          ${dedup.slice(0, 200).map(c => `
+            <tr>
+              <td class="d-add mono">${escape(c.sha.slice(0,7))}</td>
+              <td>${escape(c.msg || '')}</td>
+              <td class="d-meta">${escape(c.branch || '')}</td>
+              <td class="d-meta">${escape(c.author || '')}</td>
+              <td class="d-meta">${escape(fmtRelative(c.date))}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function renderGITimeline(ownerRepo) {
+  $gitInspectorBody.innerHTML = '<div class="gi-loading">3-소스 그래프 계산 중…</div>';
   try {
     const graph = await invoke('build_repo_graph', { ownerRepo });
-    state.gitDetail.graph = graph;
     const branches = graph.branches || [];
-    const def = (graph.default_branch && branches.includes(graph.default_branch)) ? graph.default_branch : branches[0];
-    state.gitDetail.branch = def;
-    $gitDetailBranch.innerHTML = branches.map(b => `<option value="${escape(b)}"${b === def ? ' selected' : ''}>${escape(b)}</option>`).join('');
-    renderGitDetailBody();
+    const branch = (graph.default_branch && branches.includes(graph.default_branch)) ? graph.default_branch : branches[0];
+    const pb = (graph.per_branch || {})[branch];
+    if (!pb) { $gitInspectorBody.innerHTML = '<div class="gi-empty">데이터 없음</div>'; return; }
+    // Reuse the SVG sync-river renderer in dark mode
+    $gitInspectorBody.innerHTML = `
+      <div class="gi-timeline">
+        <header class="gi-tl-head"><span class="mono">${escape(ownerRepo)}</span> · ${escape(branch)}</header>
+        <div class="gi-tl-river">${gitTimelineSVG(pb, graph)}</div>
+      </div>`;
   } catch (e) {
-    $gitDetailBody.innerHTML = `<div class="git-detail-loading">실패: ${escape(String(e))}</div>`;
+    $gitInspectorBody.innerHTML = `<div class="gi-loading">실패: ${escape(String(e))}</div>`;
   }
+}
+
+function gitTimelineSVG(pb, graph) {
+  const srcKeys = ['remote', ...(graph.hosts || []).map(h => h.host)];
+  const all = [...(pb.commits || [])].reverse();
+  let start = 0;
+  const ancFromOld = all.findIndex(c => c.ancestor);
+  if (ancFromOld >= 0) start = Math.max(0, ancFromOld - 2);
+  const win = all.slice(start);
+  const n = win.length;
+  if (n === 0) return '<div class="gi-empty">커밋 없음</div>';
+
+  const lanes = srcKeys.map((k, idx) => {
+    const os = (graph.hosts || []).find(h => h.host === k)?.os || '';
+    const cls = k === 'remote' ? 'remote' : os === 'macos' ? 'mac' : 'win';
+    const icon = k === 'remote' ? '📦' : os === 'macos' ? '🍎' : '🪟';
+    return { key: k, idx, label: k === 'remote' ? 'GitHub' : k, cls, icon };
+  });
+  const padL = 150, padR = 180, padT = 36, padB = 28;
+  const laneH = 60, dotR = 7, xStep = 38;
+  const W = padL + padR + Math.max(1, n - 1) * xStep + 80;
+  const H = padT + lanes.length * laneH + padB;
+  const xAt = i => padL + i * xStep;
+  const yAt = li => padT + li * laneH + laneH / 2;
+  const COLOR = { remote: '#A78BFA', mac: '#60A5FA', win: '#2DD4BF' };
+  let svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`;
+  for (const l of lanes) {
+    svg += `<rect x="${padL - 24}" y="${yAt(l.idx) - laneH/2 + 10}" width="${W - padL - padR + 60}" height="${laneH - 20}" fill="rgba(255,255,255,0.04)" rx="8"/>`;
+    svg += `<text x="12" y="${yAt(l.idx) + 5}" fill="${COLOR[l.cls]}" font-size="13" font-weight="700">${l.icon} ${escape(l.label)}</text>`;
+  }
+  for (const l of lanes) {
+    const xs = win.map((c, i) => c.in && c.in[l.key] ? xAt(i) : null).filter(x => x !== null);
+    if (xs.length >= 2) svg += `<line x1="${Math.min(...xs)}" y1="${yAt(l.idx)}" x2="${Math.max(...xs)}" y2="${yAt(l.idx)}" stroke="${COLOR[l.cls]}" stroke-width="2.5" opacity="0.55"/>`;
+  }
+  // share spine
+  for (let i = 0; i < n; i++) {
+    const c = win[i];
+    if (lanes.every(l => c.in && c.in[l.key])) {
+      const ys = lanes.map(l => yAt(l.idx));
+      svg += `<line x1="${xAt(i)}" y1="${Math.min(...ys)}" x2="${xAt(i)}" y2="${Math.max(...ys)}" stroke="#666" stroke-width="2" stroke-dasharray="2 3" opacity="0.5"/>`;
+    }
+  }
+  const ancI = win.findIndex(c => c.ancestor);
+  if (ancI >= 0) {
+    const x = xAt(ancI);
+    svg += `<line x1="${x}" y1="${padT - 14}" x2="${x}" y2="${H - padB + 8}" stroke="#FBBF24" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.85"/>`;
+    svg += `<text x="${x}" y="${padT - 18}" text-anchor="middle" fill="#FBBF24" font-size="11" font-weight="800">⊥ 공통 조상 ${escape(win[ancI].short)}</text>`;
+  }
+  for (let i = 0; i < n; i++) {
+    const c = win[i];
+    for (const l of lanes) {
+      if (!(c.in && c.in[l.key])) continue;
+      const isTip = (c.tips || []).includes(l.key);
+      const r = isTip ? dotR + 2 : (c.ancestor ? dotR + 1 : dotR);
+      const stroke = c.ancestor ? `stroke="#FBBF24" stroke-width="2.5"` : isTip ? `stroke="#fff" stroke-width="2"` : '';
+      svg += `<circle cx="${xAt(i)}" cy="${yAt(l.idx)}" r="${r}" fill="${COLOR[l.cls]}" ${stroke}><title>${escape(c.short || '')} · ${escape(c.msg || '')}</title></circle>`;
+    }
+  }
+  for (const l of lanes) {
+    let rightI = -1;
+    for (let i = n - 1; i >= 0; i--) if (win[i].in && win[i].in[l.key]) { rightI = i; break; }
+    if (rightI < 0) continue;
+    const x = xAt(rightI) + dotR + 10, y = yAt(l.idx);
+    const label = l.key === 'remote' ? `origin/${graph.default_branch || ''}` : (l.key + ' HEAD');
+    const w = Math.max(110, label.length * 8 + 36);
+    svg += `<rect x="${x}" y="${y - 13}" width="${w}" height="26" rx="6" fill="${COLOR[l.cls]}" opacity="0.85"/>`;
+    svg += `<text x="${x + 10}" y="${y + 5}" fill="#0F1115" font-weight="800" font-size="12">${l.icon}  ${escape(label)}</text>`;
+  }
+  svg += `</svg>`;
+  return svg;
 }
 
 function gitDetailHostMeta(host) {
@@ -2269,11 +2806,10 @@ $logRefresh.addEventListener('click', () => renderLogView());
 $gitScan.addEventListener('click', scanGitNow);
 $gitFetchRemote.addEventListener('click', fetchRemoteNow);
 $gitRefresh.addEventListener('click', refreshGit);
-$gitDetailBranch.addEventListener('change', () => { state.gitDetail.branch = $gitDetailBranch.value; renderGitDetailBody(); });
+$gitDetailBranch.addEventListener('change', () => { state.gitDetail.branch = $gitDetailBranch.value; renderGitL2Lanes(state.gitDetail.ownerRepo); });
 $gitDetailMode.addEventListener('click', () => {
-  state.gitDetail.mode = state.gitDetail.mode === 'sync' ? 'dag' : 'sync';
-  $gitDetailMode.textContent = state.gitDetail.mode === 'sync' ? '🌳 DAG 보기' : '📊 Sync Map 보기';
-  renderGitDetailBody();
+  // Layer 3: Raw inspector
+  if (state.gitDetail.ownerRepo) openGitInspector(state.gitDetail.ownerRepo);
 });
 $treeUp.addEventListener('click', navigateTreeUp);
 $treeHome.addEventListener('click', navigateTreeHome);

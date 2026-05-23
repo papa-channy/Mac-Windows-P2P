@@ -1,0 +1,241 @@
+/* ─────────────────────────────────────────────────────────────
+   Mac-Window 3-Way Git Dashboard — Design System (research-driven)
+   References: GitButler swimlanes · GitKraken DAG · VisualJJ conflict-as-node
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── 3-source semantic colors (light theme) ── */
+  --c-remote:        #6E40C9;          /* Purple-700 — GitHub */
+  --c-remote-bg:     rgba(110,64,201,0.08);
+  --c-remote-bd:     rgba(110,64,201,0.20);
+
+  --c-mac:           #2563EB;          /* Cobalt-600 — macOS */
+  --c-mac-bg:        rgba(37,99,235,0.08);
+  --c-mac-bd:        rgba(37,99,235,0.22);
+
+  --c-win:           #0F766E;          /* Teal-700 — Windows */
+  --c-win-bg:        rgba(15,118,110,0.08);
+  --c-win-bd:        rgba(15,118,110,0.22);
+
+  /* ── State semantic colors ── */
+  --c-sync:          #10B981;          /* Emerald — synced/stable */
+  --c-warn:          #F59E0B;          /* Amber — modified/pending */
+  --c-danger:        #E11D48;          /* Crimson — conflict/error */
+  --c-stash:         #64748B;          /* Slate — untracked/stash */
+
+  /* ── Surface / text ── */
+  --bg:              #FBFBFD;
+  --surface:         #FFFFFF;
+  --surface-2:       #F4F4F7;
+  --surface-3:       #ECECF1;
+  --border:          #E4E4EA;
+  --border-strong:   #D0D0D8;
+
+  --text:            #0F1115;
+  --text-2:          #4B4F58;
+  --text-3:          #8A8E97;
+  --text-4:          #B4B7BD;
+
+  /* ── Typography ── */
+  --font-ui:         system-ui, -apple-system, "Segoe UI Variable", "Segoe UI", sans-serif;
+  --font-mono:       "JetBrains Mono", "Fira Code", "SF Mono", Consolas, ui-monospace, monospace;
+
+  /* ── Sizing / radius ── */
+  --r-sm: 5px;
+  --r:    8px;
+  --r-lg: 12px;
+  --r-xl: 18px;
+
+  --shadow-sm: 0 1px 2px rgba(15,17,21,0.04), 0 1px 1px rgba(15,17,21,0.03);
+  --shadow:    0 4px 14px rgba(15,17,21,0.06), 0 2px 4px rgba(15,17,21,0.04);
+  --shadow-lg: 0 18px 48px rgba(15,17,21,0.10), 0 6px 14px rgba(15,17,21,0.06);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
+button { font-family: inherit; }
+
+/* ───────────────────────── Top global header (always pinned) ───────────────────────── */
+.gh {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: saturate(140%) blur(10px);
+  -webkit-backdrop-filter: saturate(140%) blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.gh-row {
+  display: flex; align-items: center; gap: 18px;
+  padding: 10px 22px;
+}
+.gh-brand {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 700; letter-spacing: -0.01em;
+}
+.gh-brand .leaf { width: 22px; height: 22px; }
+.gh-spacer { flex: 1; }
+
+.gh-3node {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+.gh-node {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.gh-node .led {
+  width: 8px; height: 8px; border-radius: 50%;
+  box-shadow: 0 0 0 0 currentColor; animation: led-pulse 2.4s infinite;
+}
+.gh-node.mac    { color: var(--c-mac); }
+.gh-node.win    { color: var(--c-win); }
+.gh-node.remote { color: var(--c-remote); }
+.gh-node.mac .led    { background: var(--c-mac); }
+.gh-node.win .led    { background: var(--c-win); }
+.gh-node.remote .led { background: var(--c-remote); }
+.gh-node.offline { color: var(--c-stash); }
+.gh-node.offline .led { background: var(--c-stash); animation: none; }
+
+.gh-sep { color: var(--text-4); font-size: 13px; padding: 0 4px; }
+.gh-stat { font-size: 12px; color: var(--text-3); }
+
+.gh-actions { display: flex; align-items: center; gap: 8px; }
+.gh-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r);
+  color: var(--text);
+  font-size: 12.5px; font-weight: 600;
+  cursor: pointer;
+}
+.gh-btn:hover { background: var(--surface-2); border-color: var(--text-4); }
+.gh-btn.primary { background: var(--text); color: #fff; border-color: var(--text); }
+.gh-btn.primary:hover { background: var(--text-2); border-color: var(--text-2); }
+
+/* ───────────────────────── Page chrome ───────────────────────── */
+.page {
+  max-width: 1480px; margin: 0 auto;
+  padding: 24px 22px 80px;
+}
+.page-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  margin-bottom: 18px;
+}
+.page-title {
+  font-size: 24px; font-weight: 700; letter-spacing: -0.01em; margin: 0;
+}
+.page-sub { color: var(--text-3); font-size: 13px; margin-top: 4px; }
+
+/* ───────────────────────── Section / Card ───────────────────────── */
+.section { margin-bottom: 28px; }
+.section-title {
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em;
+  color: var(--text-3); text-transform: uppercase;
+  margin: 0 0 10px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+.card-padded { padding: 18px 20px; }
+.card-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+}
+.card-title { font-weight: 700; font-size: 14px; letter-spacing: -0.005em; }
+
+/* ───────────────────────── Chips / badges / pills ───────────────────────── */
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px;
+  font-size: 11.5px; font-weight: 600;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+.chip.remote { background: var(--c-remote-bg); color: var(--c-remote); border-color: var(--c-remote-bd); }
+.chip.mac    { background: var(--c-mac-bg);    color: var(--c-mac);    border-color: var(--c-mac-bd); }
+.chip.win    { background: var(--c-win-bg);    color: var(--c-win);    border-color: var(--c-win-bd); }
+.chip.sync   { background: rgba(16,185,129,0.10); color: #047857; border-color: rgba(16,185,129,0.25); }
+.chip.warn   { background: rgba(245,158,11,0.12); color: #92400e; border-color: rgba(245,158,11,0.28); }
+.chip.danger { background: rgba(225,29,72,0.10); color: #9f1239; border-color: rgba(225,29,72,0.30); }
+.chip.muted  { color: var(--text-3); }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px;
+  font-size: 11px; font-weight: 700;
+  border-radius: 999px;
+  color: #fff;
+}
+.pill.remote { background: var(--c-remote); }
+.pill.mac    { background: var(--c-mac); }
+.pill.win    { background: var(--c-win); }
+.pill.danger { background: var(--c-danger); }
+.pill.sync   { background: var(--c-sync); }
+
+.dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+}
+.dot.remote { background: var(--c-remote); }
+.dot.mac    { background: var(--c-mac); }
+.dot.win    { background: var(--c-win); }
+.dot.sync   { background: var(--c-sync); }
+.dot.danger { background: var(--c-danger); }
+.dot.warn   { background: var(--c-warn); }
+
+/* ───────────────────────── Status row ───────────────────────── */
+.kv { display: grid; grid-template-columns: 120px 1fr; gap: 6px 14px; font-size: 12.5px; }
+.kv .k { color: var(--text-3); }
+.kv .v { color: var(--text); }
+
+/* ───────────────────────── Filter bar ───────────────────────── */
+.filter-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px; font-size: 12px; font-weight: 600;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); color: var(--text-2);
+  cursor: pointer;
+}
+.filter-chip:hover { background: var(--surface-2); }
+.filter-chip.on {
+  background: var(--text); color: #fff; border-color: var(--text);
+}
+.filter-chip.danger.on { background: var(--c-danger); border-color: var(--c-danger); }
+
+/* ───────────────────────── Animations ───────────────────────── */
+@keyframes led-pulse {
+  0%   { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  70%  { box-shadow: 0 0 0 6px transparent; opacity: 0.85; }
+  100% { box-shadow: 0 0 0 0 transparent; opacity: 1; }
+}
+@keyframes ripple {
+  0%   { transform: scale(1);   opacity: 0.55; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+.pulse { animation: pulse-soft 2s ease-in-out infinite; }

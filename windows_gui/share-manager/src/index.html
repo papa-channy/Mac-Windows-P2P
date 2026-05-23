@@ -410,12 +410,29 @@
         <h3 id="git-detail-title">레포 상세</h3>
         <div class="git-detail-controls">
           <select id="git-detail-branch" class="select git-detail-branch"></select>
-          <button id="git-detail-mode" class="ghost-btn">🌳 DAG 보기</button>
+          <button id="git-detail-mode" class="ghost-btn">⚡ Raw 데이터 인스펙터</button>
           <button class="modal-close" data-close="git-detail">✕</button>
         </div>
       </div>
       <div id="git-detail-summary" class="git-detail-summary"></div>
       <div id="git-detail-body" class="git-detail-body"></div>
+    </div>
+  </div>
+
+  <!-- Layer 3: Raw Data Inspector (dark) -->
+  <div id="git-inspector" class="modal hidden">
+    <div class="modal-backdrop" data-close="git-inspector"></div>
+    <div class="modal-window git-inspector-window">
+      <header class="gi-head">
+        <span class="gi-back" data-close="git-inspector">← 뒤로</span>
+        <span class="gi-title" id="git-inspector-title">Inspector</span>
+        <span style="margin-left:auto"></span>
+        <button class="modal-close" data-close="git-inspector">✕</button>
+      </header>
+      <div class="gi-shell">
+        <aside class="gi-tabs" id="git-inspector-tabs"></aside>
+        <main class="gi-body" id="git-inspector-body"></main>
+      </div>
     </div>
   </div>
 
