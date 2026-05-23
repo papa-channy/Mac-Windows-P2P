@@ -147,6 +147,62 @@ export const api = {
     invoke<void>("open_privacy_settings", { pane }),
   hasFullDiskAccess: () => invoke<boolean>("has_full_disk_access"),
 
+  // --- T2 shared clipboard (Windows §13 v2 mirror) ---
+  readSharedClipboard: () => invoke<unknown>("read_shared_clipboard"),
+  writeSharedClipboard: (content: string) =>
+    invoke<unknown>("write_shared_clipboard", { content }),
+  listClipboardHistory: (limit?: number) =>
+    invoke<unknown[]>("list_clipboard_history", { limit }),
+  listCompressedImages: () =>
+    invoke<{ ref: string; size_bytes: number; ts: string }[]>("list_compressed_images"),
+  compressedImagePath: (imageRef: string) =>
+    invoke<string>("compressed_image_path", { imageRef }),
+
+  // --- T3 auto-verify pending transfers ---
+  autoVerifyPending: () => invoke<number>("auto_verify_pending"),
+
+  // --- T7 worklog journal ---
+  appendWorklog: (date: string, body: string) =>
+    invoke<void>("append_worklog", { date, body }),
+
+  // --- T1.1 git skeleton (stubs in Wave A; real bodies in Wave B) ---
+  git: {
+    scanRepos: () => invoke<string[]>("scan_git_repos"),
+    scanAndPublish: () => invoke<number>("scan_and_publish_git"),
+    publishStatus: (repoPath: string) =>
+      invoke<void>("publish_git_status", { repoPath }),
+    listStatus: () => invoke<unknown[]>("list_git_status"),
+    listLogs: () => invoke<unknown[]>("list_git_logs"),
+    fetchRemote: (owner: string, repo: string) =>
+      invoke<unknown>("github_fetch_remote", { owner, repo }),
+    readRemoteCache: (owner: string, repo: string) =>
+      invoke<unknown>("read_remote_cache", { owner, repo }),
+    buildRepoGraph: () => invoke<unknown>("build_repo_graph"),
+    fileDiff: (repoPath: string, filePath: string, rev?: string) =>
+      invoke<string>("git_file_diff", { repoPath, filePath, rev }),
+    configRead: (repoPath: string) =>
+      invoke<string>("git_config_read", { repoPath }),
+    listBranches: (repoPath: string) =>
+      invoke<unknown[]>("git_list_branches", { repoPath }),
+    setToken: (host: string, token: string) =>
+      invoke<void>("git_set_token", { host, token }),
+    hasToken: (host: string) =>
+      invoke<{ has_token: boolean; host: string | null }>("git_has_token", { host }),
+    clearToken: (host: string) =>
+      invoke<void>("git_clear_token", { host }),
+    testToken: (host: string) =>
+      invoke<unknown>("git_test_token", { host }),
+    sshStatus: () =>
+      invoke<{ key_path: string; exists: boolean; pub_exists: boolean; agent_loaded: boolean }>(
+        "git_ssh_status",
+      ),
+    generateSshKey: (comment: string) =>
+      invoke<{ key_path: string; exists: boolean; pub_exists: boolean; agent_loaded: boolean }>(
+        "git_generate_ssh_key",
+        { comment },
+      ),
+  },
+
   // --- icon theme install (folder or git URL) ---
   installIconTheme: (folder: string) =>
     invoke<{ id: string; name: string; root_path: string; theme_json_path: string; icon_count: number }>(

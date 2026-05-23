@@ -39,6 +39,32 @@ fn images_dir() -> PathBuf {
     clipboard_dir().join("images")
 }
 
+/// Share-side "shared clipboard" (point-in-time, single entry +
+/// rolling 50-deep history). Companion to the per-host streaming
+/// jsonl files in clipboard_dir(). Mirrors Windows §13 v2.
+///
+/// Layout:
+///   <clipboard_dir>/current.json
+///   <clipboard_dir>/history/<ts>.json   (newest first, keep 50)
+fn shared_clipboard_current_path() -> PathBuf {
+    clipboard_dir().join("current.json")
+}
+
+fn shared_clipboard_history_dir() -> PathBuf {
+    clipboard_dir().join("history")
+}
+
+/// Compressed-image gallery (separate from streaming PNG cache). Lives
+/// under share/00_System/80_Logs/compressed-images/<ref>.jpg so the Log
+/// Hub (T4) can ship it alongside other log artifacts. Windows-side
+/// dir is identical so cross-host listing works without a sync step.
+fn compressed_images_dir() -> PathBuf {
+    crate::share::share_root()
+        .join("00_System")
+        .join("80_Logs")
+        .join("compressed-images")
+}
+
 /// Local cache under ~/Library/Application Support so the own-host
 /// clipboard history is never lost when the share is unmounted.
 fn local_cache_dir() -> PathBuf {
@@ -450,6 +476,133 @@ pub fn sync_to_share() -> std::io::Result<usize> {
         eprintln!("[clipboard] synced {pushed} offline entries to share");
     }
     Ok(pushed)
+}
+
+// ─── Shared clipboard (current.json + history/) ────────────────────
+// Companion to the streaming jsonl model. Used by the Sticky-Note style
+// "공유 텍스트" panel — single point-in-time text that either host can
+// overwrite. Reads also succeed offline if the file is in the read cache
+// (notes-style readonly mirror — Wave B item; for now just share-only).
+
+pub fn read_shared_clipboard() -> Result<serde_json::Value, String> {
+    let p = shared_clipboard_current_path();
+    if !p.exists() {
+        return Ok(serde_json::json!({
+            "content": "",
+            "kind": "text",
+            "created_at": null,
+            "from": null,
+            "empty": true,
+        }));
+    }
+    let raw = std::fs::read_to_string(&p).map_err(|e| e.to_string())?;
+    let mut v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+    if let Some(obj) = v.as_object_mut() {
+        obj.insert("empty".into(), serde_json::Value::Bool(false));
+    }
+    Ok(v)
+}
+
+pub fn write_shared_clipboard(content: String) -> Result<serde_json::Value, String> {
+    if !crate::mount::is_share_mounted() {
+        return Err("셰어 미마운트 — 공유 클립보드는 셰어 연결 후 가능합니다.".into());
+    }
+    let now_str = chrono::Local::now().to_rfc3339();
+    let payload = serde_json::json!({
+        "content": content,
+        "kind": "text",
+        "created_at": now_str,
+        "from": { "host": hostname(), "os": "macos" },
+    });
+
+    let dir = clipboard_dir();
+    let _ = create_dir_all(&dir);
+    let pretty = serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("current.json"), &pretty).map_err(|e| e.to_string())?;
+
+    // Append rolling history (newest filename sorts last, keep 50).
+    let hist = shared_clipboard_history_dir();
+    let _ = create_dir_all(&hist);
+    let ts = chrono::Local::now().format("%Y%m%dT%H%M%S%.3f").to_string();
+    let _ = std::fs::write(hist.join(format!("{ts}.json")), &pretty);
+    prune_shared_clipboard_history(50);
+    Ok(payload)
+}
+
+fn prune_shared_clipboard_history(keep: usize) {
+    let h = shared_clipboard_history_dir();
+    if let Ok(rd) = std::fs::read_dir(&h) {
+        let mut files: Vec<_> = rd.flatten().collect();
+        files.sort_by_key(|e| e.file_name());
+        files.reverse();
+        for old in files.into_iter().skip(keep) {
+            let _ = std::fs::remove_file(old.path());
+        }
+    }
+}
+
+pub fn list_clipboard_history(limit: usize) -> Result<Vec<serde_json::Value>, String> {
+    let h = shared_clipboard_history_dir();
+    if !h.exists() {
+        return Ok(vec![]);
+    }
+    let mut files: Vec<_> = std::fs::read_dir(&h).map_err(|e| e.to_string())?.flatten().collect();
+    files.sort_by_key(|e| e.file_name());
+    files.reverse();
+    let mut out = Vec::new();
+    for entry in files.into_iter().take(limit) {
+        if let Ok(raw) = std::fs::read_to_string(entry.path()) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+                out.push(v);
+            }
+        }
+    }
+    Ok(out)
+}
+
+// ─── Compressed-image gallery (Windows-authored, Mac read-only Wave A) ──
+// Mac doesn't yet emit JPG into this dir (Wave B / T5). For now we just
+// expose listing + path resolution so the gallery view can render
+// whatever the Windows host has produced.
+
+pub fn list_compressed_images() -> Result<Vec<serde_json::Value>, String> {
+    let dir = compressed_images_dir();
+    if !dir.exists() {
+        return Ok(vec![]);
+    }
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
+        let p = e.path();
+        if p.extension().and_then(|s| s.to_str()) != Some("jpg") {
+            continue;
+        }
+        let meta = e.metadata().ok();
+        let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+        let mtime = meta
+            .and_then(|m| m.modified().ok())
+            .map(|t| chrono::DateTime::<chrono::Local>::from(t).to_rfc3339())
+            .unwrap_or_default();
+        out.push(serde_json::json!({
+            "ref": p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string(),
+            "size_bytes": size,
+            "ts": mtime,
+        }));
+    }
+    out.sort_by(|a, b| {
+        b.get("ts").and_then(|v| v.as_str()).unwrap_or("")
+            .cmp(a.get("ts").and_then(|v| v.as_str()).unwrap_or(""))
+    });
+    Ok(out)
+}
+
+pub fn compressed_image_path(image_ref: &str) -> Result<String, String> {
+    if image_ref.contains('/') || image_ref.contains('\\') || image_ref.contains("..") {
+        return Err(format!("invalid ref: {image_ref}"));
+    }
+    Ok(compressed_images_dir()
+        .join(image_ref)
+        .to_string_lossy()
+        .into_owned())
 }
 
 pub fn clear_own_history() -> Result<(), String> {

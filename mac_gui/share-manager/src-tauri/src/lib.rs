@@ -2,6 +2,7 @@ mod announcement;
 mod clipboard;
 mod commands;
 mod desktop_alias;
+mod git;
 mod mount;
 mod notes;
 mod policy;
@@ -96,6 +97,34 @@ pub fn run() {
             commands::current_app_version,
             commands::open_privacy_settings,
             commands::has_full_disk_access,
+            // T2 shared clipboard + compressed gallery
+            commands::read_shared_clipboard,
+            commands::write_shared_clipboard,
+            commands::list_clipboard_history,
+            commands::list_compressed_images,
+            commands::compressed_image_path,
+            // T3 auto-verify pending transfers
+            commands::auto_verify_pending,
+            // T7 quality framework worklog
+            commands::append_worklog,
+            // T1.1 git skeleton (17 commands)
+            git::scan_git_repos,
+            git::scan_and_publish_git,
+            git::publish_git_status,
+            git::list_git_status,
+            git::list_git_logs,
+            git::github_fetch_remote,
+            git::read_remote_cache,
+            git::build_repo_graph,
+            git::git_file_diff,
+            git::git_config_read,
+            git::git_list_branches,
+            git::git_set_token,
+            git::git_has_token,
+            git::git_clear_token,
+            git::git_test_token,
+            git::git_ssh_status,
+            git::git_generate_ssh_key,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

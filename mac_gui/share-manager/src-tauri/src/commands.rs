@@ -764,6 +764,144 @@ pub fn copy_image_to_os_clipboard(app: tauri::AppHandle, image_ref: String) -> R
     crate::clipboard::copy_image_to_os_clipboard(&app, &image_ref)
 }
 
+// ─── Shared clipboard (Windows §13 v2 mirror) ─────────────────
+//
+// These four wrap the helpers added in clipboard.rs. Frontend calls
+// `read_shared_clipboard` to render the sticky-note panel,
+// `write_shared_clipboard(content)` when the user edits it, and
+// `list_clipboard_history(limit)` to populate the history flyout.
+
+#[tauri::command]
+pub fn read_shared_clipboard() -> Result<serde_json::Value, String> {
+    crate::clipboard::read_shared_clipboard()
+}
+
+#[tauri::command]
+pub fn write_shared_clipboard(content: String) -> Result<serde_json::Value, String> {
+    crate::clipboard::write_shared_clipboard(content)
+}
+
+#[tauri::command]
+pub fn list_clipboard_history(limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
+    crate::clipboard::list_clipboard_history(limit.unwrap_or(20))
+}
+
+#[tauri::command]
+pub fn list_compressed_images() -> Result<Vec<serde_json::Value>, String> {
+    crate::clipboard::list_compressed_images()
+}
+
+#[tauri::command]
+pub fn compressed_image_path(image_ref: String) -> Result<String, String> {
+    crate::clipboard::compressed_image_path(&image_ref)
+}
+
+// ─── Auto-verify pending transfers (T3) ────────────────────────
+//
+// Walks all manifests in the windows_to_mac direction (incoming files)
+// and runs `verify_transfer` on each that hasn't been verified yet.
+// Returns the count newly checked. Side effects:
+//   - writes a tiny cache file <share>/00_System/80_Logs/verify/<id>.json
+//     so subsequent ItemsView render can paint a ✓/✗ badge without
+//     recomputing
+//   - appends one log line per result (Wave B's Log Hub consumes these)
+
+fn verify_cache_dir() -> PathBuf {
+    crate::share::share_root()
+        .join("00_System")
+        .join("80_Logs")
+        .join("verify")
+}
+
+#[tauri::command]
+pub fn auto_verify_pending() -> Result<u32, String> {
+    if !crate::mount::is_share_mounted() {
+        return Ok(0);
+    }
+    let mdir = crate::share::manifests_dir(Direction::WindowsToMac);
+    if !mdir.exists() {
+        return Ok(0);
+    }
+    let cache = verify_cache_dir();
+    let _ = std::fs::create_dir_all(&cache);
+
+    let mut done = 0u32;
+    if let Ok(rd) = std::fs::read_dir(&mdir) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|s| s.to_str()) != Some("json") {
+                continue;
+            }
+            let tid = match p.file_stem().and_then(|s| s.to_str()) {
+                Some(s) => s.to_string(),
+                None => continue,
+            };
+            // Skip if we already verified this transfer.
+            if cache.join(format!("{tid}.json")).exists() {
+                continue;
+            }
+            if let Ok(r) = verify_transfer(tid.clone()) {
+                let summary = serde_json::json!({
+                    "transfer_id": r.transfer_id,
+                    "ok": r.ok,
+                    "checked": r.checked,
+                    "mismatches": r.mismatches,
+                    "missing": r.missing,
+                    "ts": chrono::Local::now().to_rfc3339(),
+                });
+                let _ = std::fs::write(
+                    cache.join(format!("{tid}.json")),
+                    serde_json::to_string(&summary).unwrap_or_default(),
+                );
+                done += 1;
+            }
+        }
+    }
+    Ok(done)
+}
+
+// ─── Worklog append (T7) ───────────────────────────────────────
+//
+// Writes a markdown bullet (or arbitrary multi-line body) to
+// `mac_gui/share-manager/mockups/quality/WORKLOG/<date>.md`, creating
+// the file if needed. Frontend uses this from any panel to journal
+// what just happened.
+#[tauri::command]
+pub fn append_worklog(date: String, body: String) -> Result<(), String> {
+    // Safety: date is part of a filename — must be plain YYYY-MM-DD.
+    if !date.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(format!("invalid date: {date}"));
+    }
+    // Resolve repo-relative path from the running executable. In dev mode
+    // (cargo tauri dev) and release we both land somewhere under the
+    // project tree; walk up until we find `mac_gui/`.
+    let mut cur = std::env::current_exe().map_err(|e| e.to_string())?;
+    let target_rel = std::path::Path::new("mac_gui/share-manager/mockups/quality/WORKLOG");
+    let target = loop {
+        cur = match cur.parent() {
+            Some(p) => p.to_path_buf(),
+            None => return Err("could not locate mac_gui/ in any parent dir".into()),
+        };
+        let candidate = cur.join(target_rel);
+        if candidate.exists() {
+            break candidate;
+        }
+        if cur.parent().is_none() {
+            return Err("could not locate WORKLOG dir".into());
+        }
+    };
+    let path = target.join(format!("{date}.md"));
+    let mut existing = std::fs::read_to_string(&path).unwrap_or_default();
+    if !existing.ends_with('\n') {
+        existing.push('\n');
+    }
+    existing.push_str(&body);
+    if !body.ends_with('\n') {
+        existing.push('\n');
+    }
+    std::fs::write(&path, existing).map_err(|e| e.to_string())
+}
+
 // ─── Transfer integrity verification ───────────────────────────
 //
 // Re-walk a transfer's manifest, recompute SHA-256 of every payload file
