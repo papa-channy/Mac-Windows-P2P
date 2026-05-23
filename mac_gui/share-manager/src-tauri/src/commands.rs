@@ -1117,3 +1117,218 @@ pub fn open_privacy_settings(pane: Option<String>) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+// ─── T6 HTML dependency pre-flight ────────────────────────────────
+//
+// Mirror of windows_gui/.../commands.rs::inspect_html_assets. Scans a
+// single .html file for *local relative* asset references that would
+// not travel with a single-file send. Absolute URLs, data URIs, mailto:,
+// javascript:, and anchors are filtered out so the caller only sees
+// references that need to ship alongside.
+//
+// Used as a send pre-flight: the picker offers to send the .html's
+// parent folder instead when any flagged asset is missing or has-inline-
+// style is false but there are external references.
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HtmlAsset {
+    pub reference: String,
+    pub kind: String, // css | script | img | other
+    pub exists: bool, // sibling file present next to the html
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HtmlInspect {
+    pub is_html: bool,
+    pub has_inline_style: bool,
+    pub parent_dir: String,
+    pub assets: Vec<HtmlAsset>,
+}
+
+fn html_extract_refs(html: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (pat, is_url) in [("href=", false), ("src=", false), ("url(", true)] {
+        for (idx, _) in html.match_indices(pat) {
+            let after = &html[idx + pat.len()..];
+            let val: Option<String> = if is_url {
+                let a = after.trim_start();
+                let first = a.chars().next();
+                if first == Some('"') || first == Some('\'') {
+                    let qc = first.unwrap();
+                    a[1..].find(qc).map(|e| a[1..1 + e].to_string())
+                } else {
+                    a.find(')').map(|e| a[..e].trim().to_string())
+                }
+            } else {
+                let first = after.chars().next();
+                if first == Some('"') || first == Some('\'') {
+                    let qc = first.unwrap();
+                    after[1..].find(qc).map(|e| after[1..1 + e].to_string())
+                } else {
+                    Some(
+                        after
+                            .split(|c: char| c.is_whitespace() || c == '>')
+                            .next()
+                            .unwrap_or("")
+                            .to_string(),
+                    )
+                }
+            };
+            if let Some(v) = val {
+                if !v.is_empty() {
+                    out.push(v);
+                }
+            }
+        }
+    }
+    out
+}
+
+fn html_classify_asset(s: &str) -> &'static str {
+    let l = s.to_ascii_lowercase();
+    if l.ends_with(".css") {
+        "css"
+    } else if l.ends_with(".js") || l.ends_with(".mjs") {
+        "script"
+    } else if [
+        ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico",
+    ]
+    .iter()
+    .any(|e| l.ends_with(e))
+    {
+        "img"
+    } else {
+        "other"
+    }
+}
+
+#[tauri::command]
+pub fn inspect_html_assets(path: String) -> Result<HtmlInspect, String> {
+    let p = Path::new(&path);
+    let is_html = p
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|e| e.eq_ignore_ascii_case("html") || e.eq_ignore_ascii_case("htm"))
+        .unwrap_or(false);
+    if !is_html || !p.is_file() {
+        return Ok(HtmlInspect {
+            is_html: false,
+            has_inline_style: false,
+            parent_dir: String::new(),
+            assets: vec![],
+        });
+    }
+    let content = std::fs::read_to_string(p).map_err(|e| e.to_string())?;
+    let has_inline_style = content.to_ascii_lowercase().contains("<style");
+    let parent = p.parent().unwrap_or_else(|| Path::new("."));
+
+    let mut assets = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for raw in html_extract_refs(&content) {
+        let r = raw.trim().to_string();
+        if r.is_empty() || r.starts_with('#') {
+            continue;
+        }
+        let lower = r.to_ascii_lowercase();
+        if lower.starts_with("http://")
+            || lower.starts_with("https://")
+            || lower.starts_with("//")
+            || lower.starts_with("data:")
+            || lower.starts_with("mailto:")
+            || lower.starts_with("javascript:")
+            || lower.starts_with("tel:")
+        {
+            continue;
+        }
+        if !seen.insert(r.clone()) {
+            continue;
+        }
+        let clean = r.split(['?', '#']).next().unwrap_or(&r);
+        let rel = clean.replace('/', std::path::MAIN_SEPARATOR_STR);
+        let exists = parent.join(&rel).exists() || parent.join(clean).exists();
+        let kind = html_classify_asset(clean).to_string();
+        assets.push(HtmlAsset {
+            reference: r,
+            kind,
+            exists,
+        });
+    }
+    Ok(HtmlInspect {
+        is_html: true,
+        has_inline_style,
+        parent_dir: parent.to_string_lossy().into_owned(),
+        assets,
+    })
+}
+
+#[cfg(test)]
+mod html_inspect_tests {
+    use super::*;
+    use std::io::Write as _;
+
+    #[test]
+    fn non_html_extension_returns_is_html_false() {
+        let td = tempfile::tempdir().unwrap();
+        let p = td.path().join("readme.txt");
+        std::fs::write(&p, "<html></html>").unwrap();
+        let r = inspect_html_assets(p.to_string_lossy().into_owned()).unwrap();
+        assert!(!r.is_html);
+        assert!(r.assets.is_empty());
+    }
+
+    #[test]
+    fn detects_inline_style_and_local_assets() {
+        let td = tempfile::tempdir().unwrap();
+        let html = td.path().join("page.html");
+        let mut f = std::fs::File::create(&html).unwrap();
+        f.write_all(
+            br#"<html><head><style>body{}</style>
+<link rel="stylesheet" href="theme.css">
+<script src="app.js"></script></head>
+<body><img src="hero.png"><a href="https://example.com">x</a></body></html>"#,
+        )
+        .unwrap();
+        // Create only one sibling so we can prove `exists` distinguishes.
+        std::fs::write(td.path().join("theme.css"), b"").unwrap();
+        let r = inspect_html_assets(html.to_string_lossy().into_owned()).unwrap();
+        assert!(r.is_html);
+        assert!(r.has_inline_style);
+        let refs: Vec<&str> = r.assets.iter().map(|a| a.reference.as_str()).collect();
+        assert!(refs.contains(&"theme.css"));
+        assert!(refs.contains(&"app.js"));
+        assert!(refs.contains(&"hero.png"));
+        // Absolute URL filtered out.
+        assert!(!refs.contains(&"https://example.com"));
+        let css = r.assets.iter().find(|a| a.reference == "theme.css").unwrap();
+        assert_eq!(css.kind, "css");
+        assert!(css.exists);
+        let js = r.assets.iter().find(|a| a.reference == "app.js").unwrap();
+        assert_eq!(js.kind, "script");
+        assert!(!js.exists);
+        let img = r.assets.iter().find(|a| a.reference == "hero.png").unwrap();
+        assert_eq!(img.kind, "img");
+        assert!(!img.exists);
+    }
+
+    #[test]
+    fn dedupes_repeated_refs_and_strips_query() {
+        let td = tempfile::tempdir().unwrap();
+        let html = td.path().join("page.htm");
+        std::fs::write(
+            &html,
+            br#"<link href="a.css?v=1"><link href="a.css?v=2"><link href="a.css">"#,
+        )
+        .unwrap();
+        std::fs::write(td.path().join("a.css"), b"").unwrap();
+        let r = inspect_html_assets(html.to_string_lossy().into_owned()).unwrap();
+        // 3 distinct text forms ("a.css?v=1", "a.css?v=2", "a.css") survive
+        // the seen-set (we dedupe on the raw reference, not the cleaned
+        // path) — and all three should resolve to existing because the
+        // query-strip happens in the existence probe.
+        assert_eq!(r.assets.len(), 3);
+        for a in &r.assets {
+            assert_eq!(a.kind, "css");
+            assert!(a.exists, "{} should resolve", a.reference);
+        }
+    }
+}

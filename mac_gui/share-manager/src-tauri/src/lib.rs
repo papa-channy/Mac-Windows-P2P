@@ -3,6 +3,7 @@ mod clipboard;
 mod commands;
 mod desktop_alias;
 mod git;
+mod log_hub;
 mod mount;
 mod notes;
 mod policy;
@@ -107,6 +108,11 @@ pub fn run() {
             commands::auto_verify_pending,
             // T7 quality framework worklog
             commands::append_worklog,
+            // T4 Log Hub
+            log_hub::list_log_entries,
+            log_hub::append_log_worklog,
+            // T6 HTML asset inspector (send pre-flight)
+            commands::inspect_html_assets,
             // T1.1 git skeleton (17 commands)
             git::scan_git_repos,
             git::scan_and_publish_git,

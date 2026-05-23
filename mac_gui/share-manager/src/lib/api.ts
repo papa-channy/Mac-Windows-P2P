@@ -165,6 +165,18 @@ export const api = {
   appendWorklog: (date: string, body: string) =>
     invoke<void>("append_worklog", { date, body }),
 
+  // --- T4 Log Hub (jsonl streams under <share>/00_System/80_Logs) ---
+  listLogEntries: (category: LogCategoryId, limit?: number) =>
+    invoke<LogEntry[]>("list_log_entries", { category, limit }),
+  /** Distinct from appendWorklog (Markdown daily file) — this writes one
+   * jsonl row that the LogsView renders. */
+  appendLogWorklog: (summary: string, detail?: string) =>
+    invoke<void>("append_log_worklog", { summary, detail }),
+
+  // --- T6 HTML asset inspector (send pre-flight) ---
+  inspectHtmlAssets: (path: string) =>
+    invoke<HtmlInspect>("inspect_html_assets", { path }),
+
   // --- T1.1 git skeleton (stubs in Wave A; real bodies in Wave B) ---
   git: {
     scanRepos: () => invoke<string[]>("scan_git_repos"),
@@ -245,4 +257,46 @@ export interface ReleaseEntry {
   title: string;
   highlights: string[];
   notes: string;
+}
+
+/** Category IDs that have a JSONL stream under 80_Logs. The 5th sidebar
+ * item ("compressed") is rendered from `listCompressedImages` instead. */
+export type LogCategoryId = "send" | "recv" | "error" | "worklog";
+
+/** One JSONL row from the log stream. Fields are loose because each
+ * category emits a different shape; LogsView branches on `event` /
+ * `summary`. `ts`/`host`/`os` are always present (injected by the
+ * backend appender). */
+export interface LogEntry {
+  ts: string;
+  host: string;
+  os: string;
+  /** send/recv/error rows */
+  event?: string;
+  /** worklog rows */
+  summary?: string;
+  detail?: string;
+  /** common */
+  transfer_id?: string;
+  category?: string;
+  checked?: number;
+  mismatches?: number;
+  missing?: number;
+  error?: string;
+  stderr?: string;
+  direction?: string;
+  [extra: string]: unknown;
+}
+
+/** HTML inspector pre-flight result — mirror of commands.rs::HtmlInspect. */
+export interface HtmlAsset {
+  reference: string;
+  kind: "css" | "script" | "img" | "other";
+  exists: boolean;
+}
+export interface HtmlInspect {
+  is_html: boolean;
+  has_inline_style: boolean;
+  parent_dir: string;
+  assets: HtmlAsset[];
 }

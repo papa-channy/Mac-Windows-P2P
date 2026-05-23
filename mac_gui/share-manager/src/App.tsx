@@ -14,33 +14,17 @@ import { AnnouncementModal } from "./components/AnnouncementModal";
 import { UpdaterBanner } from "./components/UpdaterBanner";
 import { DropOverlay } from "./components/DropOverlay";
 import { CategoryPickerModal } from "./components/CategoryPickerModal";
+import { HtmlInspectorModal } from "./components/HtmlInspectorModal";
 import { PermissionsOnboarding } from "./components/PermissionsOnboarding";
 import { ItemsView } from "./views/ItemsView";
 import { TreeView } from "./views/TreeView";
 import { NotesView } from "./views/NotesView";
 import { ClipboardView } from "./views/ClipboardView";
+import { LogsView } from "./views/LogsView";
 import { SettingsView } from "./views/SettingsView";
 
 const LAST_SEEN_KEY = "share-manager.last_seen_version";
 const PERMS_ONBOARDED_KEY = "share-manager.permissions_onboarded";
-
-// Placeholder until T4 (Log Hub backend + view) lands in Wave B. Renders
-// a static "coming soon" panel so the sidebar Log Hub items navigate
-// somewhere instead of throwing.
-function LogHubPlaceholder({ logCategory }: { logCategory?: string }) {
-  return (
-    <section className="view-empty">
-      <h2>Log Hub</h2>
-      <p>
-        Selected: <code>{logCategory ?? "(none)"}</code>
-      </p>
-      <p style={{ opacity: 0.7 }}>
-        Backend &amp; view land in Wave B (T4). This placeholder exists so
-        the sidebar routes resolve before the real implementation ships.
-      </p>
-    </section>
-  );
-}
 
 export function App() {
   return (
@@ -192,7 +176,7 @@ function AppInner() {
         )}
         {activePanel === "notes" && <NotesView />}
         {activePanel === "clipboard" && <ClipboardView />}
-        {activePanel === "logs" && <LogHubPlaceholder logCategory={selection.logCategory} />}
+        {activePanel === "logs" && <LogsView logCategory={selection.logCategory} />}
         {activePanel === "settings" && <SettingsView />}
       </main>
 
@@ -201,7 +185,12 @@ function AppInner() {
         isOpen={sendFlow.pickerPaths.length > 0}
         paths={sendFlow.pickerPaths}
         onClose={sendFlow.closePicker}
-        onSent={refreshTransfers}
+        onSubmit={sendFlow.submitPicker}
+      />
+      <HtmlInspectorModal
+        isOpen={sendFlow.htmlGate !== null}
+        flagged={sendFlow.htmlGate?.flagged ?? []}
+        onChoice={sendFlow.resolveHtmlGate}
       />
 
       {announcement && (

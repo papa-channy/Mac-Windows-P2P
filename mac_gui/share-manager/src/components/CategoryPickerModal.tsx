@@ -6,9 +6,7 @@
 
 import { useState } from "react";
 import { Modal } from "./Modal";
-import { api } from "../lib/api";
 import { CATEGORIES, DEFAULT_CATEGORY } from "../lib/categories";
-import { useToast } from "../lib/toast";
 import { basename } from "../lib/format";
 import { IconImg } from "./IconImg";
 
@@ -16,16 +14,16 @@ interface Props {
   isOpen: boolean;
   paths: string[];
   onClose: () => void;
-  onSent: () => void;
+  /** Hand the chosen category off to useSendFlow.sendBatch — keeps the
+   * HTML pre-flight gate + error-aggregation + toast in one place. */
+  onSubmit: (category: string) => Promise<void>;
 }
 
-export function CategoryPickerModal({ isOpen, paths, onClose, onSent }: Props) {
+export function CategoryPickerModal({ isOpen, paths, onClose, onSubmit }: Props) {
   const [category, setCategory] = useState<string>(DEFAULT_CATEGORY);
   const [sending, setSending] = useState(false);
-  const toast = useToast();
 
   if (paths.length === 0 && isOpen) {
-    // shouldn't happen but be defensive
     onClose();
     return null;
   }
@@ -34,25 +32,13 @@ export function CategoryPickerModal({ isOpen, paths, onClose, onSent }: Props) {
 
   const submit = async () => {
     setSending(true);
-    let ok = 0;
-    const errors: string[] = [];
-    for (const p of paths) {
-      try {
-        await api.sendPath(p, category);
-        ok++;
-      } catch (e) {
-        errors.push(`${p}: ${e}`);
-      }
+    try {
+      await onSubmit(category);
+    } finally {
+      setSending(false);
+      setCategory(DEFAULT_CATEGORY);
+      onClose();
     }
-    setSending(false);
-    setCategory(DEFAULT_CATEGORY);
-    onClose();
-    if (ok > 0) toast(`Windows로 ${ok}개 항목 전송 완료`, "success");
-    if (errors.length > 0) {
-      toast(`전송 실패 ${errors.length}건: ${errors[0]}`, "error");
-      console.error(errors);
-    }
-    onSent();
   };
 
   return (
