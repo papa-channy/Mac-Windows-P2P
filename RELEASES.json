@@ -1,5 +1,21 @@
 [
   {
+    "version": "0.3.0",
+    "date": "2026-05-24",
+    "title": "Git 대시보드 · Log Hub · 공유 클립보드 sticky · HTML 인스펙터",
+    "highlights": [
+      "🌿 Git 사이드바 — Windows-수준 3-layer 대시보드 (L1 RepoCard 그리드 + 3-node bridge / L2 swimlane 모달 / L3 라이트 Inspector 5 탭). 양 OS 가 같은 `<share>/00_System/90_Git/<host>.git-status.json` 에 게시해서 한 화면에서 비교 — 충돌 임박 / 발산 / 미커밋 / 동기화 자동 분류",
+      "📑 Log Hub — `<share>/00_System/80_Logs/<cat>.jsonl` 스트림 5종 (Sent / Received / Errors / Compressed images / Worklog) 통합 view. 양 호스트가 같은 jsonl 에 append 해서 cross-OS 시간순 timeline 표시",
+      "📋 ClipboardView sticky panel — `current.json` 단일 메시지 r/w, 1.5초 내 양쪽 반영. 누른 사람이 덮어쓰는 sticky-note 채널 (스트리밍 jsonl timeline 과 별개). 50-entry history 보관",
+      "⚠ HTML asset 사전점검 — `.html` 단일 파일 전송 시 sibling `style.css` / `<script src>` 자동 탐지 → 누락 없이 폴더째 보내거나 그대로 보내거나 취소",
+      "🔑 GitHub PAT + SSH 키 Settings — macOS Keychain 전용 (service=`mac-window-git`, account=`github-pat`). 셰어/settings.json 에 절대 미저장. ed25519 SSH 키 자동 생성 + 공개키 클립보드 복사",
+      "🔄 Sync Timeline narrative (ADR-0003/0004) — Status Summary verdict (8 케이스 verdict-action 룰), 3-lane SVG 그래프 (lane bands + LCA amber marker + tip pills brand color), 클릭 시 Selected Commit 상세",
+      "사이드바 영어화 — In / Out / Archive + Log Hub 그룹 (Windows 와 동일 정보 구조)",
+      "Cargo tests 51 통과, tsc clean, npm build 269 kB JS / 47 kB CSS / 85 modules"
+    ],
+    "notes": "Mac 측이 Windows v0.3 git 대시보드와 feature parity 도달. 자동 업데이트로 받으면 사이드바에 새 '🌿 Git' 항목, Log Hub 5개 sub-item, ClipboardView 상단 sticky 패널 등장. PAT 와 SSH 키 모두 OS Keychain 전용. 통합 테스트는 mockups/quality/INTEGRATION_TEST.md 의 12 시나리오 참조."
+  },
+  {
     "version": "0.2.4",
     "date": "2026-05-23",
     "title": "오프라인 캐시 + share-changed 자동 새로고침",
