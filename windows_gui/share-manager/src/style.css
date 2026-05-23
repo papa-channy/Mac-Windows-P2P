@@ -1769,6 +1769,150 @@ button { font-family: inherit; }
 .gi-title-label { color: #9CA3AF !important; }
 .gi-x { color: #9CA3AF !important; }
 .gi-x:hover { background: #22232A !important; color: #FFFFFF !important; border-color: #2A2B33 !important; }
+
+/* ═══════════════════════════════════════════════════════════════
+   POLISH PASS v3 — fix header overflow, increase breathing room
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Layer 2: header overflow (controls clipped) ── */
+.git-detail-window {
+  width: min(1280px, 96vw) !important;
+  max-height: 92vh;
+}
+.git-detail-window .modal-header {
+  display: grid !important;
+  grid-template-columns: 1fr auto !important;
+  align-items: center;
+  gap: 16px !important;
+  padding: 18px 24px !important;
+}
+.git-detail-window .modal-header h3 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  margin: 0;
+}
+.git-detail-window .git-detail-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px !important;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+/* Limit branch select so it never crowds out the Inspector + close buttons */
+.git-detail-window #git-detail-branch {
+  max-width: 220px;
+  min-width: 120px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  padding: 7px 28px 7px 12px !important;
+  font-size: 12.5px;
+}
+.git-detail-window .git-inspector-btn {
+  padding: 7px 14px !important;
+  font-size: 12.5px !important;
+}
+.git-detail-window .modal-close {
+  width: 32px; height: 32px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+/* ── Layer 2: breathing room ── */
+.git-detail-summary {
+  padding: 14px 24px 6px !important;
+  gap: 12px !important;
+}
+.git-l2-shell {
+  padding: 18px 24px 22px !important;
+  gap: 18px !important;
+}
+.lane-head { padding: 18px 20px !important; gap: 12px !important; }
+.lane-body { padding: 22px 20px 26px !important; }
+.lane-section { margin: 20px 0 10px !important; }
+.lane-section:first-of-type { margin-top: 0 !important; }
+.lane-files { gap: 9px !important; }
+.lane-file { padding: 11px 13px !important; }
+.lane-info { padding: 11px 14px !important; }
+.lane-empty { padding: 18px 14px !important; }
+
+/* Origin lane vertical breathing */
+.lane-origin { padding: 56px 22px 28px !important; }
+.origin-tip { gap: 26px !important; }
+.origin-card { padding: 18px 20px !important; }
+
+/* Connector bar — more height */
+.git-l2-connbar {
+  margin: 22px 24px 24px !important;
+  padding: 18px 26px !important;
+  gap: 22px !important;
+  font-size: 13px !important;
+}
+
+/* ── Layer 3: breathing room ── */
+.git-inspector-window .gi-head { padding: 16px 24px !important; }
+.gi-tabs { padding: 20px 12px !important; gap: 4px !important; }
+.gi-tab { padding: 11px 14px !important; gap: 11px !important; }
+.gi-tabs-head { padding: 6px 14px 14px !important; }
+.gi-body { padding: 28px 32px !important; }
+
+.gi-diffs { gap: 22px !important; }
+.gi-diff-card { border-radius: 10px; }
+.gi-diff-head {
+  padding: 12px 18px !important;
+  font-size: 12.5px !important;
+}
+.gi-diff-pre {
+  padding: 18px 24px !important;
+  line-height: 1.65 !important;
+  font-size: 12.5px !important;
+}
+.gi-diff-pre .d-add {
+  margin-left: -24px !important; padding-left: 24px !important;
+  padding-top: 1px; padding-bottom: 1px;
+}
+.gi-diff-pre .d-del {
+  margin-left: -24px !important; padding-left: 24px !important;
+  padding-top: 1px; padding-bottom: 1px;
+}
+.gi-diff-pre .d-hunk {
+  margin: 10px -24px 6px !important;
+  padding: 4px 24px !important;
+}
+.gi-diff-pre .d-ctx, .gi-diff-pre .d-meta {
+  padding-top: 1px; padding-bottom: 1px;
+}
+
+.gi-logs { gap: 1px !important; }
+.gi-log-line { padding: 8px 14px !important; gap: 14px !important; }
+
+.gi-config-path { padding: 12px 16px !important; margin-bottom: 18px !important; }
+.gi-config-pre { padding: 18px 22px !important; line-height: 1.85 !important; }
+
+.gi-table thead th { padding: 12px 16px !important; }
+.gi-table tbody td { padding: 11px 16px !important; }
+
+.gi-timeline { gap: 16px !important; }
+.gi-tl-head { padding: 4px 4px !important; }
+.gi-tl-river { padding: 18px !important; }
+
+/* Inspector title font polish */
+.gi-title-repo { font-family: "JetBrains Mono", "SF Mono", Consolas, ui-monospace, monospace; }
+
+/* ── Layer 1: card breathing (minor) ── */
+.git-l1-grid { gap: 18px !important; }
+.git-card { padding: 22px 24px 20px !important; }
+.git-card-head { margin-bottom: 16px !important; }
+.git-card-bridge { padding: 16px 18px !important; }
+.git-card-conflict { margin-top: 16px !important; padding: 11px 16px !important; }
+
+.git-hero { gap: 16px !important; margin-bottom: 22px !important; }
+.git-hero-card { padding: 22px 26px !important; }
 .theme-opt-meta { font-size: 11px; color: var(--text-sec); }
 .theme-opt-remove {
   background: transparent;
