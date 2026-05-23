@@ -5,16 +5,18 @@
 // Clicking a card is a placeholder for now — the L2 detail modal lands
 // in T1.5 (next Wave C step). Until then we just log + toast.
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useGitStore } from "../lib/gitStore";
-import { useToast } from "../lib/toast";
 import { GitToolbar } from "../components/git/GitToolbar";
 import { RepoCard, classifyCard, type RepoCardSummary } from "../components/git/RepoCard";
+import { GitDetailModal } from "../components/git/GitDetailModal";
+import { GitInspectorModal } from "../components/git/GitInspectorModal";
 import type { RepoStatus } from "../lib/api";
 
 export function GitView() {
   const store = useGitStore();
-  const toast = useToast();
+  const [detail, setDetail] = useState<string | null>(null);
+  const [inspector, setInspector] = useState<string | null>(null);
 
   const summaries = useMemo(() => collectSummaries(store), [store.snapshots, store.remoteCache]);
   const classified = useMemo(
@@ -38,15 +40,17 @@ export function GitView() {
   const conflicts = classified.filter((c) => c.kind === "conflict").length;
 
   const handleCardClick = (ownerRepo: string | null) => {
-    if (!ownerRepo) {
-      toast("이 레포는 origin URL 이 없어서 상세 화면을 열 수 없어요", "info");
-      return;
-    }
-    // L2 detail modal lands in T1.5.
-    toast(
-      `${ownerRepo} 의 Sync Timeline 은 다음 Wave C 단계에서 열려요`,
-      "info",
-    );
+    if (!ownerRepo) return;
+    setDetail(ownerRepo);
+  };
+  const openInspector = (ownerRepo: string) => {
+    setDetail(null);
+    setInspector(ownerRepo);
+  };
+  const backFromInspector = () => {
+    if (!inspector) return;
+    setDetail(inspector);
+    setInspector(null);
   };
 
   return (
@@ -81,6 +85,19 @@ export function GitView() {
           </div>
         </>
       )}
+
+      <GitDetailModal
+        isOpen={detail !== null}
+        ownerRepo={detail}
+        onClose={() => setDetail(null)}
+        onOpenInspector={openInspector}
+      />
+      <GitInspectorModal
+        isOpen={inspector !== null}
+        ownerRepo={inspector}
+        onClose={() => setInspector(null)}
+        onBack={backFromInspector}
+      />
     </section>
   );
 }
