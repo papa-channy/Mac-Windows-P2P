@@ -1808,6 +1808,7 @@ function renderGitL2Lanes(ownerRepo) {
   const branchList = [...branches];
   state.gitDetail.branch = state.gitDetail.branch || (rem?.default_branch && branchList.includes(rem.default_branch) ? rem.default_branch : branchList[0] || 'main');
   $gitDetailBranch.innerHTML = branchList.map(b => `<option value="${escape(b)}"${b===state.gitDetail.branch?' selected':''}>${escape(b)}</option>`).join('') || `<option>${escape(state.gitDetail.branch)}</option>`;
+  $gitDetailBranch.title = state.gitDetail.branch || '';   // ADR-0002: tooltip for truncated long branch names
 
   // ahead/behind on connectors (Mac ↔ Origin, Origin ↔ Win)
   const macAhead  = macHost ? (macHost.repo.ahead || macHost.repo.unpushed || 0) : 0;
@@ -2126,6 +2127,7 @@ async function renderGITimeline(ownerRepo) {
 }
 
 function gitTimelineSVG(pb, graph) {
+  // ADR-0003: Light theme · 200px label area · full-width usage · no truncation.
   const srcKeys = ['remote', ...(graph.hosts || []).map(h => h.host)];
   const all = [...(pb.commits || [])].reverse();
   let start = 0;
@@ -2138,61 +2140,151 @@ function gitTimelineSVG(pb, graph) {
   const lanes = srcKeys.map((k, idx) => {
     const os = (graph.hosts || []).find(h => h.host === k)?.os || '';
     const cls = k === 'remote' ? 'remote' : os === 'macos' ? 'mac' : 'win';
-    const icon = k === 'remote' ? '📦' : os === 'macos' ? '🍎' : '🪟';
-    return { key: k, idx, label: k === 'remote' ? 'GitHub' : k, cls, icon };
+    return { key: k, idx, label: k === 'remote' ? 'GitHub' : k, cls, os };
   });
-  const padL = 150, padR = 180, padT = 36, padB = 28;
-  const laneH = 60, dotR = 7, xStep = 38;
+
+  // ── Layout: light, generous spacing
+  const padL = 220;     // 200px label + 20 padding (ADR-0003 fix)
+  const padR = 240;     // room for tip pills
+  const padT = 56;      // room for LCA label above first lane
+  const padB = 32;
+  const laneH = 86;     // each lane breathes (was 60)
+  const dotR = 9;
+  const xStep = 52;     // commit spacing (was 38)
   const W = padL + padR + Math.max(1, n - 1) * xStep + 80;
   const H = padT + lanes.length * laneH + padB;
   const xAt = i => padL + i * xStep;
   const yAt = li => padT + li * laneH + laneH / 2;
-  const COLOR = { remote: '#A78BFA', mac: '#60A5FA', win: '#2DD4BF' };
-  let svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`;
+
+  // Light palette
+  const COLOR = { remote: '#6E40C9', mac: '#2563EB', win: '#0F766E' };
+  const LANE_BG = {
+    remote: 'rgba(110,64,201,0.07)',
+    mac:    'rgba(37,99,235,0.07)',
+    win:    'rgba(15,118,110,0.07)',
+  };
+  const ICON_SVG = {
+    apple:   '<path d="M16.06 13.06c-.03-2.66 2.17-3.93 2.27-3.99-1.23-1.8-3.16-2.05-3.84-2.08-1.64-.17-3.19.97-4.02.97-.83 0-2.11-.94-3.46-.92-1.78.03-3.41 1.03-4.33 2.62-1.84 3.2-.47 7.94 1.33 10.54.88 1.27 1.93 2.7 3.31 2.65 1.33-.05 1.83-.86 3.44-.86 1.6 0 2.05.86 3.46.83 1.43-.02 2.34-1.29 3.22-2.57 1.01-1.47 1.43-2.91 1.46-2.98-.03-.01-2.8-1.07-2.84-4.23zM13.93 5.4c.72-.88 1.21-2.09 1.07-3.31-1.04.05-2.32.7-3.07 1.56-.67.76-1.26 2-1.1 3.17 1.17.09 2.37-.59 3.1-1.42z"/>',
+    windows: '<path d="M3 5.48 10.5 4.4v7.7H3V5.48zm0 13.04v-6.34h7.5v7.42L3 18.52zm8.5-7.42V4.2L21 2.8v9.3h-9.5zm0 1.08H21V21.2l-9.5-1.4v-7.62z"/>',
+    github:  '<path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.55 0-.27-.01-1-.02-1.96-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.27-1.68-1.27-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.24 3.34.95.1-.74.4-1.24.72-1.53-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.95 10.95 0 0 1 5.74 0c2.19-1.49 3.15-1.18 3.15-1.18.62 1.59.23 2.76.11 3.05.73.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.4-5.25 5.69.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.66.8.55C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z"/>',
+  };
+  const laneIcon = (l) => l.cls === 'remote' ? 'github' : l.cls === 'mac' ? 'apple' : 'windows';
+
+  let svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg" style="display:block">`;
+
+  // Lane bands
   for (const l of lanes) {
-    svg += `<rect x="${padL - 24}" y="${yAt(l.idx) - laneH/2 + 10}" width="${W - padL - padR + 60}" height="${laneH - 20}" fill="rgba(255,255,255,0.04)" rx="8"/>`;
-    svg += `<text x="12" y="${yAt(l.idx) + 5}" fill="${COLOR[l.cls]}" font-size="13" font-weight="700">${l.icon} ${escape(l.label)}</text>`;
+    const y = yAt(l.idx);
+    svg += `<rect class="lane-band" x="${padL - 14}" y="${y - laneH/2 + 14}" width="${W - padL - padR + 28}" height="${laneH - 28}" rx="14" fill="${LANE_BG[l.cls]}"/>`;
   }
+
+  // Label area divider (subtle)
+  svg += `<line x1="${padL - 14}" y1="${padT - 10}" x2="${padL - 14}" y2="${H - padB + 6}" stroke="#E4E4EA" stroke-width="1"/>`;
+
+  // Lane labels — 200px area, brand icon + name (mono, can be long)
+  for (const l of lanes) {
+    const y = yAt(l.idx);
+    // Icon tile (28×28 brand box)
+    svg += `<g transform="translate(16, ${y - 14})">`;
+    svg += `<rect width="28" height="28" rx="8" fill="#FFFFFF" stroke="#E4E4EA" stroke-width="1"/>`;
+    svg += `<g transform="translate(5,5) scale(0.79)" fill="${COLOR[l.cls]}">${ICON_SVG[laneIcon(l)]}</g>`;
+    svg += `</g>`;
+    // Label text (mono, truncated naturally at 165px)
+    svg += `<text x="52" y="${y + 5}" fill="${COLOR[l.cls]}" font-size="13.5" font-weight="700" font-family="JetBrains Mono, SF Mono, Consolas, monospace">${escape(l.label)}</text>`;
+  }
+
+  // Lane connection lines (through present dots only)
   for (const l of lanes) {
     const xs = win.map((c, i) => c.in && c.in[l.key] ? xAt(i) : null).filter(x => x !== null);
-    if (xs.length >= 2) svg += `<line x1="${Math.min(...xs)}" y1="${yAt(l.idx)}" x2="${Math.max(...xs)}" y2="${yAt(l.idx)}" stroke="${COLOR[l.cls]}" stroke-width="2.5" opacity="0.55"/>`;
-  }
-  // share spine
-  for (let i = 0; i < n; i++) {
-    const c = win[i];
-    if (lanes.every(l => c.in && c.in[l.key])) {
-      const ys = lanes.map(l => yAt(l.idx));
-      svg += `<line x1="${xAt(i)}" y1="${Math.min(...ys)}" x2="${xAt(i)}" y2="${Math.max(...ys)}" stroke="#666" stroke-width="2" stroke-dasharray="2 3" opacity="0.5"/>`;
+    if (xs.length >= 2) {
+      svg += `<line x1="${Math.min(...xs)}" y1="${yAt(l.idx)}" x2="${Math.max(...xs)}" y2="${yAt(l.idx)}" stroke="${COLOR[l.cls]}" stroke-width="2.5" opacity="0.4"/>`;
     }
   }
+
+  // Shared spine (vertical dotted) where all sources agree
+  for (let i = 0; i < n; i++) {
+    const c = win[i];
+    if (lanes.length >= 2 && lanes.every(l => c.in && c.in[l.key])) {
+      const ys = lanes.map(l => yAt(l.idx));
+      svg += `<line x1="${xAt(i)}" y1="${Math.min(...ys)}" x2="${xAt(i)}" y2="${Math.max(...ys)}" stroke="#B4B7BD" stroke-width="1.5" stroke-dasharray="2 4" opacity="0.7"/>`;
+    }
+  }
+
+  // LCA marker
   const ancI = win.findIndex(c => c.ancestor);
   if (ancI >= 0) {
     const x = xAt(ancI);
-    svg += `<line x1="${x}" y1="${padT - 14}" x2="${x}" y2="${H - padB + 8}" stroke="#FBBF24" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.85"/>`;
-    svg += `<text x="${x}" y="${padT - 18}" text-anchor="middle" fill="#FBBF24" font-size="11" font-weight="800">⊥ 공통 조상 ${escape(win[ancI].short)}</text>`;
+    svg += `<line x1="${x}" y1="${padT - 18}" x2="${x}" y2="${H - padB + 8}" stroke="#D4A72C" stroke-width="2" stroke-dasharray="5 4" opacity="0.85"/>`;
+    svg += `<rect x="${x - 86}" y="${padT - 38}" width="172" height="22" rx="6" fill="rgba(245,158,11,0.13)" stroke="rgba(212,167,44,0.4)" stroke-width="1"/>`;
+    svg += `<text x="${x}" y="${padT - 22}" text-anchor="middle" fill="#9a6700" font-size="11.5" font-weight="800" font-family="JetBrains Mono, SF Mono, Consolas, monospace">⊥ 공통 조상 · ${escape(win[ancI].short)}</text>`;
   }
+
+  // Commit dots
   for (let i = 0; i < n; i++) {
     const c = win[i];
     for (const l of lanes) {
       if (!(c.in && c.in[l.key])) continue;
       const isTip = (c.tips || []).includes(l.key);
-      const r = isTip ? dotR + 2 : (c.ancestor ? dotR + 1 : dotR);
-      const stroke = c.ancestor ? `stroke="#FBBF24" stroke-width="2.5"` : isTip ? `stroke="#fff" stroke-width="2"` : '';
-      svg += `<circle cx="${xAt(i)}" cy="${yAt(l.idx)}" r="${r}" fill="${COLOR[l.cls]}" ${stroke}><title>${escape(c.short || '')} · ${escape(c.msg || '')}</title></circle>`;
+      const r = c.ancestor ? dotR + 3 : (isTip ? dotR + 1 : dotR);
+      const x = xAt(i), y = yAt(l.idx);
+      // outer ring for tip
+      if (isTip) svg += `<circle cx="${x}" cy="${y}" r="${r + 4}" fill="${COLOR[l.cls]}" opacity="0.18"/>`;
+      // ancestor amber ring
+      if (c.ancestor) svg += `<circle cx="${x}" cy="${y}" r="${r + 3}" fill="none" stroke="#D4A72C" stroke-width="2"/>`;
+      // main dot
+      svg += `<circle cx="${x}" cy="${y}" r="${r}" fill="${COLOR[l.cls]}" stroke="#FFFFFF" stroke-width="2.5">`;
+      svg += `<title>${escape(c.short || '')} · ${escape(c.msg || '')} · ${escape(c.author || '')} · ${escape(fmtRelative(c.date))}</title>`;
+      svg += `</circle>`;
     }
   }
+
+  // Tip pills
   for (const l of lanes) {
     let rightI = -1;
     for (let i = n - 1; i >= 0; i--) if (win[i].in && win[i].in[l.key]) { rightI = i; break; }
     if (rightI < 0) continue;
-    const x = xAt(rightI) + dotR + 10, y = yAt(l.idx);
-    const label = l.key === 'remote' ? `origin/${graph.default_branch || ''}` : (l.key + ' HEAD');
-    const w = Math.max(110, label.length * 8 + 36);
-    svg += `<rect x="${x}" y="${y - 13}" width="${w}" height="26" rx="6" fill="${COLOR[l.cls]}" opacity="0.85"/>`;
-    svg += `<text x="${x + 10}" y="${y + 5}" fill="#0F1115" font-weight="800" font-size="12">${l.icon}  ${escape(label)}</text>`;
+    const x = xAt(rightI) + dotR + 16;
+    const y = yAt(l.idx);
+    const refName = l.key === 'remote'
+      ? `origin/${graph.default_branch || 'main'}`
+      : `${l.key} HEAD`;
+    const sha = win[rightI].short || '';
+    const pillLabel = sha ? `${refName} · ${sha}` : refName;
+    const w = Math.max(140, pillLabel.length * 8 + 36);
+    // pill with brand icon
+    svg += `<g transform="translate(${x}, ${y - 15})">`;
+    svg += `<rect width="${w}" height="30" rx="8" fill="${COLOR[l.cls]}"/>`;
+    svg += `<g transform="translate(8, 6) scale(0.72)" fill="#FFFFFF">${ICON_SVG[laneIcon(l)]}</g>`;
+    svg += `<text x="32" y="20" fill="#FFFFFF" font-weight="800" font-size="12" font-family="JetBrains Mono, SF Mono, Consolas, monospace">${escape(pillLabel)}</text>`;
+    svg += `</g>`;
   }
+
   svg += `</svg>`;
-  return svg;
+
+  // Legend below the graph
+  const legend = `
+    <div style="display:flex; align-items:center; gap:18px; padding:14px 8px 4px; font-size:11.5px; color: var(--text-sec); flex-wrap:wrap;">
+      <span style="display:inline-flex; align-items:center; gap:6px;">
+        <span style="width:10px; height:10px; border-radius:50%; background:#6E40C9;"></span> 원격 커밋
+      </span>
+      <span style="display:inline-flex; align-items:center; gap:6px;">
+        <span style="width:10px; height:10px; border-radius:50%; background:#2563EB;"></span> Mac 로컬 커밋
+      </span>
+      <span style="display:inline-flex; align-items:center; gap:6px;">
+        <span style="width:10px; height:10px; border-radius:50%; background:#0F766E;"></span> Win 로컬 커밋
+      </span>
+      <span style="display:inline-flex; align-items:center; gap:6px;">
+        <svg width="22" height="6"><line x1="0" y1="3" x2="22" y2="3" stroke="#B4B7BD" stroke-width="2" stroke-dasharray="2 4"/></svg>
+        모든 호스트 공유
+      </span>
+      <span style="display:inline-flex; align-items:center; gap:6px;">
+        <svg width="22" height="6"><line x1="0" y1="3" x2="22" y2="3" stroke="#D4A72C" stroke-width="2" stroke-dasharray="5 4"/></svg>
+        공통 조상 (LCA)
+      </span>
+      <span style="margin-left:auto; color: var(--text-dim);">점에 마우스 올리면 상세 정보</span>
+    </div>`;
+
+  return svg + legend;
 }
 
 function gitDetailHostMeta(host) {

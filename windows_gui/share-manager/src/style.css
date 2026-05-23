@@ -1913,6 +1913,365 @@ button { font-family: inherit; }
 
 .git-hero { gap: 16px !important; margin-bottom: 22px !important; }
 .git-hero-card { padding: 22px 26px !important; }
+
+/* ═══════════════════════════════════════════════════════════════
+   ADR-0001 — Inspector 라이트 테마 통일 (앱 전체 라이트와 일관)
+   ADR-0002 — Layer 2 모달 헤더 오버플로 영구 해결 (grid)
+   ADR-0003 — Sync Timeline 재설계
+   2026-05-24
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── ADR-0002: Layer 2 모달 헤더 (grid + strict ellipsis) ─── */
+.git-detail-window {
+  width: min(1280px, 96vw) !important;
+  overflow: hidden !important;
+}
+.git-detail-window .modal-header {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto auto auto !important;
+  gap: 12px !important;
+  align-items: center !important;
+  padding: 18px 24px !important;
+  overflow: hidden !important;
+}
+.git-detail-window .modal-header h3 {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  margin: 0 !important;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  font-family: "JetBrains Mono", "SF Mono", Consolas, ui-monospace, monospace;
+}
+.git-detail-window .git-detail-controls {
+  display: contents !important;        /* let grid columns 2/3/4 fill from children */
+}
+.git-detail-window #git-detail-branch {
+  max-width: 200px !important;
+  min-width: 120px !important;
+  text-overflow: ellipsis !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  padding: 7px 28px 7px 12px !important;
+  font-size: 12.5px !important;
+}
+.git-detail-window .git-inspector-btn {
+  white-space: nowrap !important;
+  padding: 7px 14px !important;
+  font-size: 12.5px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+.git-detail-window .modal-close {
+  width: 32px !important; height: 32px !important;
+  display: inline-flex !important;
+  align-items: center !important; justify-content: center !important;
+  border-radius: 8px !important;
+}
+
+/* ─── ADR-0001: Inspector 라이트 테마 전환 ─── */
+
+.git-inspector-window {
+  background: var(--surface) !important;
+  color: var(--text-pri) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 18px 48px rgba(15,17,21,0.10), 0 6px 14px rgba(15,17,21,0.06);
+}
+
+.git-inspector-window .gi-head {
+  background: var(--surface-low) !important;
+  border-bottom: 1px solid var(--border) !important;
+  padding: 16px 24px !important;
+}
+.gi-back {
+  background: var(--surface) !important;
+  border: 1px solid var(--border-strong, #D0D0D8) !important;
+  color: var(--text-pri) !important;
+  padding: 7px 13px !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  font-size: 12.5px !important;
+}
+.gi-back:hover {
+  background: var(--surface-2) !important;
+  border-color: var(--text-dim) !important;
+}
+.gi-back svg { color: var(--text-sec); }
+.gi-title-ic svg { color: var(--accent, #0A84FF); }
+.gi-title-repo { color: var(--text-pri) !important; font-weight: 700 !important; }
+.gi-title-sep  { color: var(--text-dim) !important; }
+.gi-title-label{ color: var(--text-sec) !important; font-weight: 500 !important; }
+.gi-x {
+  width: 32px !important; height: 32px !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: var(--text-sec) !important;
+  border-radius: 8px !important;
+}
+.gi-x:hover {
+  background: var(--surface-2) !important;
+  color: var(--text-pri) !important;
+  border-color: var(--border) !important;
+}
+
+.gi-tabs {
+  background: var(--surface-low) !important;
+  border-right: 1px solid var(--border) !important;
+  padding: 22px 14px !important;
+  gap: 4px !important;
+}
+.gi-tabs-head {
+  font-size: 10.5px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.09em !important;
+  color: var(--text-dim) !important;
+  padding: 6px 14px 14px !important;
+}
+.gi-tab {
+  background: transparent !important;
+  color: var(--text-sec) !important;
+  padding: 11px 14px !important;
+  border-radius: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 11px !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+  border: 0;
+}
+.gi-tab:hover {
+  background: var(--surface-2) !important;
+  color: var(--text-pri) !important;
+}
+.gi-tab.active {
+  background: rgba(10,132,255,0.10) !important;
+  color: var(--accent, #0A84FF) !important;
+  box-shadow: inset 2px 0 0 var(--accent, #0A84FF) !important;
+}
+.gi-tab-ic svg { width: 15px; height: 15px; }
+
+.gi-body {
+  background: var(--surface) !important;
+  color: var(--text-pri) !important;
+  padding: 28px 32px !important;
+}
+
+/* --- Raw Diffs tab (light, GitHub-style) --- */
+.gi-diffs { gap: 22px !important; }
+.gi-diff-card {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 1px 2px rgba(15,17,21,0.04);
+  overflow: hidden;
+}
+.gi-diff-head {
+  background: var(--surface-low) !important;
+  color: var(--text-pri) !important;
+  border-bottom: 1px solid var(--border) !important;
+  padding: 12px 18px !important;
+  font-size: 12.5px !important;
+  font-weight: 700;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+.gi-diff-head svg { color: var(--text-sec); width: 14px; height: 14px; }
+.gi-diff-head .mono { color: var(--text-pri); }
+.gi-diff-pre {
+  background: #F6F8FA !important;
+  color: #1F2328 !important;
+  padding: 16px 24px !important;
+  line-height: 1.65 !important;
+  font-size: 12.5px !important;
+  font-family: "JetBrains Mono", "Fira Code", "SF Mono", Consolas, ui-monospace, monospace !important;
+  margin: 0; overflow-x: auto; white-space: pre;
+}
+.gi-diff-pre .d-ctx  { color: #1F2328 !important; display: block; padding: 1px 0; background: transparent !important; }
+.gi-diff-pre .d-meta { color: #57606A !important; display: block; padding: 1px 0; background: transparent !important; }
+.gi-diff-pre .d-hunk {
+  color: #0969DA !important;
+  background: rgba(9,105,218,0.08) !important;
+  display: block !important;
+  padding: 4px 24px !important;
+  margin: 10px -24px 6px !important;
+  font-weight: 700;
+}
+.gi-diff-pre .d-add {
+  color: #1F883D !important;
+  background: rgba(31,136,61,0.12) !important;
+  display: block !important;
+  margin: 0 -24px !important;
+  padding: 1px 24px !important;
+}
+.gi-diff-pre .d-del {
+  color: #CF222E !important;
+  background: rgba(207,34,46,0.10) !important;
+  display: block !important;
+  margin: 0 -24px !important;
+  padding: 1px 24px !important;
+}
+
+/* --- Daemon Logs tab (light) --- */
+.gi-logs {
+  background: var(--surface) !important;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  display: flex !important;
+  flex-direction: column;
+  gap: 0;
+  font-family: "JetBrains Mono", "SF Mono", Consolas, ui-monospace, monospace;
+}
+.gi-log-line {
+  display: grid !important;
+  grid-template-columns: 90px 90px 90px 1fr !important;
+  gap: 14px !important;
+  padding: 9px 14px !important;
+  color: var(--text-pri) !important;
+  border-radius: 6px;
+  font-size: 12.5px;
+  align-items: center;
+}
+.gi-log-line:hover { background: var(--surface-2) !important; }
+.l-ts { color: var(--text-dim) !important; font-size: 11px; }
+.l-lvl {
+  font-size: 10.5px !important; font-weight: 800 !important;
+  letter-spacing: 0.04em; padding: 3px 9px !important;
+  border-radius: 5px; text-align: center;
+  border: 1px solid;
+}
+.l-lvl.l-err  { background: rgba(225,29,72,0.10)  !important; color: #9f1239 !important; border-color: rgba(225,29,72,0.30); }
+.l-lvl.l-ok   { background: rgba(16,185,129,0.10) !important; color: #047857 !important; border-color: rgba(16,185,129,0.30); }
+.l-lvl.l-info { background: rgba(10,132,255,0.10) !important; color: #0a5fb8 !important; border-color: rgba(10,132,255,0.30); }
+.l-cat {
+  font-size: 10.5px !important; font-weight: 800 !important;
+  letter-spacing: 0.04em; padding: 3px 9px !important;
+  border-radius: 5px; text-align: center;
+  background: rgba(130,80,223,0.10) !important; color: #6E40C9 !important;
+  border: 1px solid rgba(130,80,223,0.28);
+}
+.l-msg { color: var(--text-pri) !important; }
+.gi-log-tail {
+  color: var(--text-dim) !important;
+  padding: 18px 14px !important;
+  font-size: 12px;
+  animation: pulse-soft 2.4s ease-in-out infinite;
+}
+
+/* --- Git Config tab (light) --- */
+.gi-config { background: var(--surface) !important; }
+.gi-config-path {
+  background: var(--surface-low) !important;
+  color: var(--text-pri) !important;
+  padding: 12px 16px !important;
+  border-radius: 8px;
+  margin-bottom: 18px !important;
+  border: 1px solid var(--border);
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-size: 12.5px;
+}
+.gi-config-path svg { color: var(--accent, #0A84FF); width: 16px; height: 16px; }
+.gi-config-path .mono { color: var(--text-pri); }
+.gi-config-pre {
+  background: #F6F8FA !important;
+  color: #1F2328 !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px;
+  padding: 18px 22px !important;
+  line-height: 1.85 !important;
+  font-family: "JetBrains Mono", "SF Mono", Consolas, ui-monospace, monospace !important;
+  font-size: 12.5px;
+  white-space: pre-wrap !important;
+  word-break: break-word;
+  margin: 0;
+}
+
+/* --- All Commits tab (light) --- */
+.gi-commits { background: var(--surface) !important; }
+.gi-table {
+  width: 100%;
+  border-collapse: separate; border-spacing: 0;
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px;
+  overflow: hidden;
+  table-layout: auto;
+}
+.gi-table thead th {
+  background: var(--surface-low) !important;
+  color: var(--text-sec) !important;
+  border-bottom: 1px solid var(--border) !important;
+  text-align: left;
+  padding: 12px 16px !important;
+  font-size: 10.5px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.gi-table tbody td {
+  padding: 11px 16px !important;
+  border-bottom: 1px solid var(--surface-2) !important;
+  color: var(--text-pri) !important;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.gi-table tbody td:nth-child(2) {
+  white-space: normal;
+  max-width: 480px;
+}
+.gi-table tbody tr:hover { background: var(--surface-2) !important; }
+.gi-table tbody td:first-child {
+  font-family: "JetBrains Mono", "SF Mono", Consolas, ui-monospace, monospace;
+  color: var(--accent, #0A84FF) !important;
+  font-weight: 600;
+}
+.gi-table tbody td.d-meta { color: var(--text-sec) !important; }
+
+/* --- Sync Timeline tab (light, ADR-0003) --- */
+.gi-timeline { gap: 18px !important; }
+.gi-tl-head {
+  color: var(--text-pri) !important;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 0 2px;
+  letter-spacing: -0.005em;
+}
+.gi-tl-head .mono { color: var(--text-pri); }
+.gi-tl-river {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px;
+  padding: 24px !important;
+  overflow-x: auto;
+}
+/* Slim, visible scrollbar */
+.gi-tl-river::-webkit-scrollbar { height: 10px; }
+.gi-tl-river::-webkit-scrollbar-track { background: var(--surface-low); border-radius: 5px; }
+.gi-tl-river::-webkit-scrollbar-thumb { background: var(--text-dim); border-radius: 5px; }
+
+.gi-tl-river svg .lane-band {
+  fill-opacity: 0.06;
+}
+.gi-tl-river svg text { font-family: "JetBrains Mono", "SF Mono", Consolas, ui-monospace, monospace; }
+
+/* Loading / empty states match light */
+.gi-loading, .gi-empty {
+  color: var(--text-sec) !important;
+  background: transparent !important;
+  padding: 60px 24px !important;
+  text-align: center;
+}
+
+/* --- Tabs label fix (the long Korean string used to wrap badly) --- */
+.gi-tab span { white-space: nowrap; }
 .theme-opt-meta { font-size: 11px; color: var(--text-sec); }
 .theme-opt-remove {
   background: transparent;
