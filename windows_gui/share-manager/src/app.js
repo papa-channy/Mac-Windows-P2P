@@ -60,6 +60,28 @@ const ICONS = {
   'image': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>',
   'file-clock': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 22h2a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v3"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><circle cx="8" cy="16" r="6"/><path d="M9.5 17.5 8 16.25V14"/></svg>',
   'git-branch': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>',
+  'monitor':       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>',
+  'hard-drive':    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></svg>',
+  'github':        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.55 0-.27-.01-1-.02-1.96-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.27-1.68-1.27-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.24 3.34.95.1-.74.4-1.24.72-1.53-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.95 10.95 0 0 1 5.74 0c2.19-1.49 3.15-1.18 3.15-1.18.62 1.59.23 2.76.11 3.05.73.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.4-5.25 5.69.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.66.8.55C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z"/></svg>',
+  'shield-alert':  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>',
+  'check-circle-2':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+  'file-diff':     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v3"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 10h6"/><path d="M12 13v-3"/><path d="M9 17h6"/></svg>',
+  'terminal':      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>',
+  'list-tree':     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12h-8"/><path d="M21 6H8"/><path d="M21 18h-8"/><path d="M3 6v4c0 1.1.9 2 2 2h3"/><path d="M3 10v6c0 1.1.9 2 2 2h3"/></svg>',
+  'activity':      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+  'file-code':     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 12.5 8 15l2 2.5"/><path d="m14 12.5 2 2.5-2 2.5"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2z"/></svg>',
+  'file-warning':  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M5 17v-2"/><path d="M5 21v.01"/></svg>',
+  'git-commit':    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><line x1="3" x2="9" y1="12" y2="12"/><line x1="15" x2="21" y1="12" y2="12"/></svg>',
+  'git-merge':     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>',
+  'arrow-up-right':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>',
+  'arrow-up':      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>',
+  'arrow-down':    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>',
+  'arrow-left':    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>',
+  'clock':         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+  'circle-dot':    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>',
+  'zap':           '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+  'package':       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>',
+  'gitfork':       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>',
 };
 
 function svgIcon(name) {
@@ -1463,13 +1485,21 @@ function gitRepoSummary(entry, hosts) {
   const win = vals.find(v => v.os === 'windows') || null;
   const anyDirty = vals.some(v => (v.dirty || 0) || (v.unpushed || 0) || (v.behind || 0));
   const headsDiffer = new Set(vals.map(v => v.head)).size > 1;
-  let kind = 'synced', label = '✓ 동기화됨';
-  if (overlaps.length)       { kind = 'conflict'; label = '🚨 충돌 임박'; }
+  let kind = 'synced', label = '동기화됨';
+  if (overlaps.length)       { kind = 'conflict'; label = '충돌 임박'; }
   else if (vals.length < 2)  { kind = 'partial';  label = '단일 호스트'; }
-  else if (headsDiffer)      { kind = 'diverged'; label = '⚠ 발산'; }
-  else if (anyDirty)         { kind = 'dirty';    label = '⚠ 미커밋'; }
+  else if (headsDiffer)      { kind = 'diverged'; label = '발산'; }
+  else if (anyDirty)         { kind = 'dirty';    label = '미커밋'; }
   return { entry, kind, label, mac, win, rem, overlaps, vals };
 }
+
+const GIT_STATUS_ICON = {
+  synced:   'check-circle-2',
+  diverged: 'alert-triangle',
+  dirty:    'alert-triangle',
+  conflict: 'shield-alert',
+  partial:  'circle-dot',
+};
 
 function renderGitL1Dashboard() {
   const snaps = state.git.snapshots || [];
@@ -1512,16 +1542,28 @@ function renderGitL1Dashboard() {
   const hero = `
     <section class="git-hero">
       <div class="git-hero-card">
-        <div><div class="ghc-label">전체 레포지토리</div><div class="ghc-num">${entries.length}</div></div>
-        <div class="ghc-ic remote">${svgIcon('git-branch')}</div>
+        <div class="ghc-body">
+          <div class="ghc-label">전체 레포지토리</div>
+          <div class="ghc-num">${entries.length}</div>
+          <div class="ghc-sub">3-Node로 동기 모니터링 중</div>
+        </div>
+        <div class="ghc-ic neutral">${svgIcon('git-branch')}</div>
       </div>
       <div class="git-hero-card synced">
-        <div><div class="ghc-label">안전 (동기화 완료)</div><div class="ghc-num">${syncedCount}</div></div>
-        <div class="ghc-ic" style="color:var(--c-sync); background: rgba(16,185,129,0.10);">✓</div>
+        <div class="ghc-body">
+          <div class="ghc-label">안전 · 동기화 완료</div>
+          <div class="ghc-num">${syncedCount}</div>
+          <div class="ghc-sub">${entries.length ? Math.round(syncedCount/entries.length*100) : 0}% in sync</div>
+        </div>
+        <div class="ghc-ic sync">${svgIcon('check-circle-2')}</div>
       </div>
-      <div class="git-hero-card ${conflictCount > 0 ? 'danger' : ''}">
-        <div><div class="ghc-label">충돌 위험 (동시 수정)</div><div class="ghc-num">${conflictCount}</div></div>
-        <div class="ghc-ic" style="color:${conflictCount > 0 ? 'var(--c-danger)' : 'var(--text-3)'}; background:${conflictCount > 0 ? 'rgba(225,29,72,0.10)' : 'var(--surface-2)'}">⚠</div>
+      <div class="git-hero-card ${conflictCount > 0 ? 'danger' : 'safe'}">
+        <div class="ghc-body">
+          <div class="ghc-label">충돌 위험 · 동시 수정</div>
+          <div class="ghc-num">${conflictCount}</div>
+          <div class="ghc-sub">${conflictCount ? '머지 전 정리 필요' : '경보 없음'}</div>
+        </div>
+        <div class="ghc-ic ${conflictCount > 0 ? 'danger' : 'neutral'}">${svgIcon('shield-alert')}</div>
       </div>
     </section>`;
 
@@ -1541,16 +1583,18 @@ function renderGitL1Card(s) {
   const e = s.entry;
   const macDirty = s.mac ? (s.mac.dirty || 0) : null;
   const winDirty = s.win ? (s.win.dirty || 0) : null;
-  const remSha = s.rem && s.rem.default_sha ? s.rem.default_sha.slice(0, 7) : '?';
+  const remSha = s.rem && s.rem.default_sha ? s.rem.default_sha.slice(0, 7) : '—';
   return `
-    <div class="git-card ${s.kind}" data-or="${escape(e.ownerRepo || '')}">
+    <div class="git-card git-card-${s.kind}" data-or="${escape(e.ownerRepo || '')}">
       ${s.kind === 'conflict' ? '<div class="git-card-stripe"></div>' : ''}
       <div class="git-card-head">
-        <div>
+        <div class="git-card-title-wrap">
           <h3 class="git-card-name">${escape(e.label)}</h3>
-          <div class="git-card-meta">Last scan: 방금 전</div>
+          <div class="git-card-meta">${svgIcon('clock')}<span>방금 전 스캔</span></div>
         </div>
-        <span class="git-card-badge git-card-badge-${s.kind}">${escape(s.label)}</span>
+        <span class="git-card-badge git-card-badge-${s.kind}">
+          ${svgIcon(GIT_STATUS_ICON[s.kind])}<span>${escape(s.label)}</span>
+        </span>
       </div>
       <div class="git-card-bridge">
         ${gitNodeBlock('mac', s.mac, macDirty)}
@@ -1558,24 +1602,28 @@ function renderGitL1Card(s) {
         ${gitNodeBlock('remote', { head: remSha }, null)}
         <div class="gn-link"></div>
         ${gitNodeBlock('win', s.win, winDirty)}
-        <span class="git-card-chev">›</span>
+        <span class="git-card-chev">${svgIcon('chevron-right')}</span>
       </div>
-      ${s.overlaps.length ? `<div class="git-card-conflict"><span>⚠</span><span><b>${s.overlaps.length}개 파일</b>이 양쪽 머신에서 동시 수정 중입니다.</span></div>` : ''}
+      ${s.overlaps.length ? `
+        <div class="git-card-conflict">
+          ${svgIcon('shield-alert')}
+          <span><b>${s.overlaps.length}개 파일</b>이 양쪽 머신에서 동시 수정 중입니다.</span>
+        </div>` : ''}
     </div>`;
 }
 
 function gitNodeBlock(key, data, dirty) {
-  const ICONS_INL = { mac: '🍎', remote: '📦', win: '🪟' };
+  const ICON_NAME = { mac: 'monitor', remote: 'github', win: 'hard-drive' };
   const LBL = { mac: 'MAC', remote: 'ORIGIN', win: 'WIN' };
   const dim = !data;
   let third = '';
-  if (key === 'remote') third = `<span class="gn-mono">${escape((data && data.head) || '?')}</span>`;
+  if (key === 'remote') third = `<span class="gn-mono">${escape((data && data.head) || '—')}</span>`;
   else if (dim)         third = `<span class="gn-mute">없음</span>`;
-  else if (dirty > 0)   third = `<span class="gn-dirty">${dirty} Dirty</span>`;
-  else                  third = `<span class="gn-clean">Clean</span>`;
+  else if (dirty > 0)   third = `<span class="gn-dirty">${dirty} dirty</span>`;
+  else                  third = `<span class="gn-clean">${svgIcon('check-circle-2')}<span>Clean</span></span>`;
   return `
     <div class="gn gn-${key} ${dim ? 'off' : ''}">
-      <div class="gn-icon">${ICONS_INL[key]}</div>
+      <div class="gn-icon">${svgIcon(ICON_NAME[key])}<span class="gn-led"></span></div>
       <div class="gn-label">${LBL[key]}</div>
       <div class="gn-third">${third}</div>
     </div>`;
@@ -1726,7 +1774,7 @@ async function openGitDetail(ownerRepo) {
   $gitDetailTitle.textContent = ownerRepo;
   $gitDetailBranch.innerHTML = '';
   $gitDetailSummary.innerHTML = '';
-  if ($gitDetailMode) $gitDetailMode.textContent = 'Raw 데이터 인스펙터';
+  if ($gitDetailMode) $gitDetailMode.innerHTML = `${svgIcon('terminal')}<span>Raw 데이터 인스펙터</span>`;
   $gitDetailBody.innerHTML = '<div class="git-detail-loading">레포 상태 로드 중…</div>';
   $gitDetail.classList.remove('hidden');
   // Compute summary directly from snapshots (no API call needed for Layer 2).
@@ -1758,49 +1806,58 @@ function renderGitL2Lanes(ownerRepo) {
   state.gitDetail.branch = state.gitDetail.branch || (rem?.default_branch && branchList.includes(rem.default_branch) ? rem.default_branch : branchList[0] || 'main');
   $gitDetailBranch.innerHTML = branchList.map(b => `<option value="${escape(b)}"${b===state.gitDetail.branch?' selected':''}>${escape(b)}</option>`).join('') || `<option>${escape(state.gitDetail.branch)}</option>`;
 
-  // Status summary chip
-  $gitDetailSummary.innerHTML = `
-    <span class="git-l2-status ${summary.kind}">${escape(summary.label)}</span>
-    ${summary.overlaps.length ? `<span class="git-l2-overlap"><b>${summary.overlaps.length}개 파일</b> 동시 수정 중</span>` : ''}
-  `;
-
   // ahead/behind on connectors (Mac ↔ Origin, Origin ↔ Win)
   const macAhead  = macHost ? (macHost.repo.ahead || macHost.repo.unpushed || 0) : 0;
   const macBehind = macHost ? (macHost.repo.behind || 0) : 0;
   const winAhead  = winHost ? (winHost.repo.ahead || winHost.repo.unpushed || 0) : 0;
   const winBehind = winHost ? (winHost.repo.behind || 0) : 0;
 
+  // status summary chip (refined: SVG icon + clean wording)
+  $gitDetailSummary.innerHTML = `
+    <span class="git-l2-status ${summary.kind}">${svgIcon(GIT_STATUS_ICON[summary.kind])}<span>${escape(summary.label)}</span></span>
+    ${summary.overlaps.length ? `<span class="git-l2-overlap">${svgIcon('file-warning')}<span><b>${summary.overlaps.length}개 파일</b> 동시 수정 중</span></span>` : ''}
+  `;
+
   $gitDetailBody.innerHTML = `
     <div class="git-l2-shell">
       ${summary.overlaps.length ? '<div class="git-l2-pulse"></div>' : ''}
-      ${gitLaneCol(macHost, 'mac', '🍎', 'macOS 로컬', summary.overlaps, macAhead, macBehind)}
+      ${gitLaneCol(macHost, 'mac', 'monitor', 'macOS 로컬', summary.overlaps, macAhead, macBehind)}
       ${gitLaneOrigin(rem, ownerRepo)}
-      ${gitLaneCol(winHost, 'win', '🪟', 'Windows 로컬', summary.overlaps, winAhead, winBehind)}
+      ${gitLaneCol(winHost, 'win', 'hard-drive', 'Windows 로컬', summary.overlaps, winAhead, winBehind)}
     </div>
     ${gitConnectorBar(macAhead, macBehind, winAhead, winBehind)}
   `;
 }
 
 function gitConnectorBar(ma, mb, wa, wb) {
+  const macSummary = (!ma && !mb)
+    ? `<span class="conn-eq">${svgIcon('check-circle-2')}<span>동기화</span></span>`
+    : `${ma ? `<span class="conn-up">${svgIcon('arrow-up')}${ma}</span>` : ''}${mb ? `<span class="conn-down">${svgIcon('arrow-down')}${mb}</span>` : ''}`;
+  const winSummary = (!wa && !wb)
+    ? `<span class="conn-eq">${svgIcon('check-circle-2')}<span>동기화</span></span>`
+    : `${wa ? `<span class="conn-up">${svgIcon('arrow-up')}${wa}</span>` : ''}${wb ? `<span class="conn-down">${svgIcon('arrow-down')}${wb}</span>` : ''}`;
   return `
     <div class="git-l2-connbar">
-      <span class="conn-label mac">🍎 Mac</span>
-      <span class="conn-arrow">${ma ? `↑${ma}` : ''}${mb ? ` ↓${mb}` : ''}${(!ma && !mb) ? '= 동기화' : ''}</span>
-      <span class="conn-mid">━━ 원격 ━━</span>
-      <span class="conn-arrow">${wa ? `↑${wa}` : ''}${wb ? ` ↓${wb}` : ''}${(!wa && !wb) ? '= 동기화' : ''}</span>
-      <span class="conn-label win">🪟 Win</span>
+      <span class="conn-label mac">${svgIcon('monitor')}<span>Mac</span></span>
+      <span class="conn-arrows mac">${macSummary}</span>
+      <span class="conn-mid">${svgIcon('github')}<span>Origin</span></span>
+      <span class="conn-arrows win">${winSummary}</span>
+      <span class="conn-label win">${svgIcon('hard-drive')}<span>Win</span></span>
     </div>`;
 }
 
-function gitLaneCol(hostEntry, key, ic, label, overlaps, ahead, behind) {
+function gitLaneCol(hostEntry, key, iconName, label, overlaps, ahead, behind) {
   if (!hostEntry) {
-    return `<section class="git-lane ${key}">
+    return `<section class="git-lane ${key} off">
       <header class="lane-head">
-        <span class="lane-icon">${ic}</span>
-        <h3 class="lane-title">${escape(label)}</h3>
+        <span class="lane-icon">${svgIcon(iconName)}</span>
+        <div class="lane-meta">
+          <h3 class="lane-title">${escape(label)}</h3>
+          <div class="lane-sub">연결되지 않음</div>
+        </div>
       </header>
       <div class="lane-body empty">
-        <div class="empty-pad">이 호스트엔 이 레포가 없어요</div>
+        <div class="empty-pad">${svgIcon('circle-dot')}<div>이 호스트엔 이 레포가 없어요</div></div>
       </div>
     </section>`;
   }
@@ -1810,84 +1867,89 @@ function gitLaneCol(hostEntry, key, ic, label, overlaps, ahead, behind) {
     const name = gitDirtyFileName(df);
     const isConflict = overlaps.includes(name);
     return `<li class="lane-file${isConflict ? ' conflict' : ''}">
-      <span class="lane-file-ic">${isConflict ? '⚠' : '✎'}</span>
+      <span class="lane-file-ic">${svgIcon(isConflict ? 'file-warning' : 'file-code')}</span>
       <span class="lane-file-name${isConflict ? ' bold' : ''}" title="${escape(df)}">${escape(name)}</span>
+      ${isConflict ? `<span class="lane-file-tag">CONFLICT</span>` : ''}
     </li>`;
-  }).join('') : '<li class="lane-empty">변경 없음 (clean)</li>';
+  }).join('') : `<li class="lane-empty">${svgIcon('check-circle-2')}<span>변경 없음</span></li>`;
 
   const unpushedCount = repo.unpushed || repo.ahead || 0;
   const stashCount = repo.stash || 0;
   return `
     <section class="git-lane ${key}">
       <header class="lane-head">
-        <span class="lane-icon">${ic}</span>
+        <span class="lane-icon">${svgIcon(iconName)}</span>
         <div class="lane-meta">
           <h3 class="lane-title">${escape(label)}</h3>
-          <div class="lane-sub">${escape(hostEntry.host)} · <span class="mono">${escape((repo.head || '').slice(0,7))}</span></div>
+          <div class="lane-sub"><span class="lane-host">${escape(hostEntry.host)}</span><span class="lane-sep">·</span><span class="mono">${escape((repo.head || '').slice(0,7))}</span></div>
         </div>
         <div class="lane-tags">
-          ${ahead ? `<span class="git-tag mac-tag">↑${ahead}</span>` : ''}
-          ${behind ? `<span class="git-tag warn-tag">↓${behind}</span>` : ''}
-          ${(repo.dirty||0) ? `<span class="git-tag warn-tag">dirty ${repo.dirty}</span>` : ''}
+          ${ahead ? `<span class="git-tag ${key}-tag">${svgIcon('arrow-up')}${ahead}</span>` : ''}
+          ${behind ? `<span class="git-tag warn-tag">${svgIcon('arrow-down')}${behind}</span>` : ''}
         </div>
       </header>
       <div class="lane-body">
-        <h4 class="lane-section">Work In Progress (${dirty.length})</h4>
+        <h4 class="lane-section">${svgIcon('file-diff')}<span>Work In Progress</span><span class="lane-count">${dirty.length}</span></h4>
         <ul class="lane-files">${dirtyHtml}</ul>
         ${unpushedCount ? `
-          <h4 class="lane-section">미푸시 커밋 (${unpushedCount})</h4>
-          <ul class="lane-files"><li class="lane-info">↑ ${unpushedCount}개 로컬에서 커밋했지만 origin엔 없음</li></ul>` : ''}
+          <h4 class="lane-section">${svgIcon('git-commit')}<span>미푸시 커밋</span><span class="lane-count">${unpushedCount}</span></h4>
+          <ul class="lane-files"><li class="lane-info">${svgIcon('arrow-up')}<span>${unpushedCount}개 로컬에서 커밋했지만 origin엔 없음</span></li></ul>` : ''}
         ${stashCount ? `
-          <h4 class="lane-section">Stash (${stashCount})</h4>
-          <ul class="lane-files"><li class="lane-info">📦 ${stashCount}개 보관됨</li></ul>` : ''}
+          <h4 class="lane-section">${svgIcon('package')}<span>Stash</span><span class="lane-count">${stashCount}</span></h4>
+          <ul class="lane-files"><li class="lane-info">${svgIcon('package')}<span>${stashCount}개 보관됨</span></li></ul>` : ''}
       </div>
     </section>`;
 }
 
 function gitLaneOrigin(rem, ownerRepo) {
-  const tip = rem?.default_sha ? rem.default_sha.slice(0, 7) : '?';
+  const tip = rem?.default_sha ? rem.default_sha.slice(0, 7) : '—';
   const def = rem?.default_branch || 'main';
   const prs = rem?.open_prs || [];
+  const prRows = prs.slice(0, 5).map(p => `
+    <li class="lane-info lane-pr">
+      <span class="lane-pr-num">#${p.number}</span>
+      <span class="lane-pr-title">${escape(p.title)}</span>
+      <span class="lane-pr-branch mono">${escape(p.head)} → ${escape(p.base)}</span>
+    </li>`).join('');
   return `
     <section class="git-lane remote">
       <header class="lane-head">
-        <span class="lane-icon">📦</span>
+        <span class="lane-icon">${svgIcon('github')}</span>
         <div class="lane-meta">
           <h3 class="lane-title">GitHub Origin</h3>
-          <div class="lane-sub">${escape(def)} · <span class="mono">${escape(tip)}</span></div>
+          <div class="lane-sub"><span class="lane-host">${escape(def)}</span><span class="lane-sep">·</span><span class="mono">${escape(tip)}</span></div>
         </div>
-        ${prs.length ? `<span class="git-tag remote-tag">PR ${prs.length}</span>` : ''}
+        ${prs.length ? `<span class="git-tag remote-tag">${svgIcon('gitfork')}PR ${prs.length}</span>` : ''}
       </header>
       <div class="lane-body lane-origin">
         <div class="origin-tip">
           <div class="origin-dot"></div>
           <div class="origin-card">
             <div class="origin-sha mono">${escape(tip)}</div>
-            <div class="origin-msg">${escape(rem?.error || `${escape(def)} 최신 커밋`)}</div>
+            <div class="origin-msg">${escape(rem?.error || (def + ' 최신 커밋'))}</div>
           </div>
         </div>
-        ${prs.length ? `<h4 class="lane-section">열린 PR</h4>
-          <ul class="lane-files">
-            ${prs.slice(0, 5).map(p => `<li class="lane-info">#${p.number} ${escape(p.title)}</li>`).join('')}
-          </ul>` : ''}
+        ${prs.length ? `
+          <h4 class="lane-section">${svgIcon('gitfork')}<span>열린 PR</span><span class="lane-count">${prs.length}</span></h4>
+          <ul class="lane-files">${prRows}</ul>` : ''}
       </div>
     </section>`;
 }
 
 // ─── Layer 3 — Raw Data Inspector (dark) ───────────────────────
 const GIT_INSPECTOR_TABS = [
-  { id: 'diffs',    label: 'Raw Diffs',     icon: '📄' },
-  { id: 'logs',     label: 'Daemon Logs',   icon: '⚡' },
-  { id: 'config',   label: 'Git Config',    icon: '⚙' },
-  { id: 'commits',  label: 'All Commits',   icon: '☰' },
-  { id: 'timeline', label: 'Sync Timeline', icon: '🌳' },
+  { id: 'diffs',    label: 'Raw Diffs',     icon: 'file-diff' },
+  { id: 'logs',     label: 'Daemon Logs',   icon: 'activity' },
+  { id: 'config',   label: 'Git Config',    icon: 'settings' },
+  { id: 'commits',  label: 'All Commits',   icon: 'list-tree' },
+  { id: 'timeline', label: 'Sync Timeline', icon: 'git-branch' },
 ];
 
 async function openGitInspector(ownerRepo) {
   state.gitInspector = { ownerRepo, tab: 'diffs' };
-  $gitInspectorTitle.textContent = `${ownerRepo}  /  Inspector`;
-  $gitInspectorTabs.innerHTML = GIT_INSPECTOR_TABS.map(t =>
-    `<button class="gi-tab" data-tab="${t.id}">${t.icon} <span>${escape(t.label)}</span></button>`
+  $gitInspectorTitle.innerHTML = `<span class="gi-title-ic">${svgIcon('terminal')}</span><span class="gi-title-repo mono">${escape(ownerRepo)}</span><span class="gi-title-sep">/</span><span class="gi-title-label">Inspector</span>`;
+  $gitInspectorTabs.innerHTML = `<div class="gi-tabs-head">DATA CATEGORIES</div>` + GIT_INSPECTOR_TABS.map(t =>
+    `<button class="gi-tab" data-tab="${t.id}"><span class="gi-tab-ic">${svgIcon(t.icon)}</span><span>${escape(t.label)}</span></button>`
   ).join('');
   $gitInspectorTabs.querySelectorAll('.gi-tab').forEach(el => {
     el.addEventListener('click', () => {

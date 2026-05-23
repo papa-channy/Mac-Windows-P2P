@@ -1198,6 +1198,296 @@ button { font-family: inherit; }
 .gi-timeline { display: flex; flex-direction: column; gap: 12px; }
 .gi-tl-head { font-size: 13px; font-weight: 700; color: #E4E4EA; padding: 4px 0; }
 .gi-tl-river { overflow-x: auto; background: #15151A; border: 1px solid #2A2A33; border-radius: 8px; padding: 12px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   POLISH PASS — Lucide SVG sizing, typography, spacing refinements
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Mono font — JetBrains Mono if available, fallback chain */
+.mono, .gn-mono, .git-card-name, .lane-pr-branch, .gi-config-pre, .gi-diff-pre,
+.gi-table .mono { font-family: "JetBrains Mono", "Fira Code", "SF Mono", Consolas, ui-monospace, monospace; }
+
+/* Generic SVG icon defaults inside the Git UI */
+.git-card .ic > svg,
+.git-card-meta svg,
+.git-card-badge svg,
+.git-card-conflict svg,
+.git-card-chev svg,
+.git-l2-status svg,
+.git-l2-overlap svg,
+.lane-head svg,
+.lane-section svg,
+.lane-file svg,
+.lane-info svg,
+.lane-empty svg,
+.lane-pr svg,
+.git-tag svg,
+.conn-label svg,
+.conn-mid svg,
+.conn-up svg, .conn-down svg, .conn-eq svg {
+  width: 14px; height: 14px; display: inline-block; flex-shrink: 0;
+}
+
+/* ── Hero cards ── */
+.git-hero { gap: 14px; }
+.git-hero-card {
+  padding: 18px 22px;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(15,17,21,0.04), 0 0 0 1px var(--border);
+  border: 0;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.git-hero-card:hover { transform: translateY(-1px); }
+.git-hero-card .ghc-body { display: flex; flex-direction: column; gap: 2px; }
+.git-hero-card .ghc-label { font-size: 12px; color: var(--text-sec); font-weight: 600; letter-spacing: -0.005em; }
+.git-hero-card .ghc-num { font-size: 34px; font-weight: 800; letter-spacing: -0.025em; line-height: 1.05; color: var(--text-pri); margin-top: 2px; }
+.git-hero-card .ghc-sub { font-size: 11.5px; color: var(--text-dim); margin-top: 3px; }
+.git-hero-card .ghc-ic {
+  width: 48px; height: 48px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+}
+.git-hero-card .ghc-ic svg { width: 22px; height: 22px; }
+.git-hero-card .ghc-ic.neutral { background: var(--surface-2); color: var(--text-dim); }
+.git-hero-card .ghc-ic.sync    { background: rgba(16,185,129,0.12);  color: #059669; }
+.git-hero-card .ghc-ic.danger  { background: rgba(225,29,72,0.12);   color: var(--gc-danger); }
+.git-hero-card.danger {
+  background: linear-gradient(180deg, rgba(225,29,72,0.04), transparent 60%);
+  box-shadow: 0 1px 2px rgba(15,17,21,0.04), 0 0 0 1px rgba(225,29,72,0.30);
+}
+.git-hero-card.danger .ghc-num { color: #9f1239; }
+.git-hero-card.synced {
+  box-shadow: 0 1px 2px rgba(15,17,21,0.04), 0 0 0 1px var(--border);
+}
+.git-hero-card.safe .ghc-num { color: #047857; }
+
+/* ── Repo cards ── */
+.git-l1-grid { gap: 16px; }
+.git-card {
+  border-radius: 16px; padding: 20px 22px 18px;
+  box-shadow: 0 1px 2px rgba(15,17,21,0.04);
+  border: 1px solid var(--border);
+}
+.git-card:hover { border-color: rgba(37,99,235,0.30); }
+.git-card-stripe { width: 3px; }
+.git-card-head { margin-bottom: 14px; }
+.git-card-title-wrap { min-width: 0; flex: 1; }
+.git-card-name { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-card-meta { font-size: 11.5px; color: var(--text-dim); margin-top: 4px; display: inline-flex; align-items: center; gap: 5px; }
+.git-card-meta svg { color: var(--text-dim); width: 12px; height: 12px; }
+.git-card-badge {
+  font-size: 12px; font-weight: 700; padding: 5px 11px;
+  display: inline-flex; align-items: center; gap: 5px;
+  white-space: nowrap; border-radius: 999px; border: 1px solid;
+}
+.git-card-badge svg { width: 13px; height: 13px; }
+.git-card-bridge {
+  background: var(--surface-low);
+  border: 1px solid var(--surface-hi);
+  border-radius: 12px;
+  padding: 14px 16px;
+  gap: 8px;
+}
+.gn { gap: 6px; min-width: 88px; }
+.gn-icon {
+  width: 38px; height: 38px;
+  background: var(--surface); border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(15,17,21,0.04);
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-pri);
+}
+.gn-icon svg { width: 18px; height: 18px; }
+.gn-led {
+  position: absolute; bottom: -1px; right: -1px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--gc-sync); border: 2px solid var(--surface);
+  box-shadow: 0 0 8px rgba(16,185,129,0.45);
+}
+.gn.off .gn-icon { color: var(--text-dim); background: var(--surface-low); }
+.gn.off .gn-led { background: var(--text-dim); box-shadow: none; }
+.gn.gn-mac .gn-icon    { color: var(--gc-mac); }
+.gn.gn-win .gn-icon    { color: var(--gc-win); }
+.gn.gn-remote .gn-icon { color: var(--gc-remote); }
+.gn-label { font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em; color: var(--text-dim); }
+.gn-third { font-size: 11px; font-weight: 600; line-height: 1.2; min-height: 16px; display: flex; align-items: center; gap: 3px; }
+.gn-mono  { font-family: "JetBrains Mono", "SF Mono", Consolas, ui-monospace, monospace; color: var(--text-sec); font-size: 11px; }
+.gn-clean { color: #059669; display: inline-flex; align-items: center; gap: 3px; }
+.gn-clean svg { width: 12px; height: 12px; }
+.gn-mute  { color: var(--text-dim); }
+.gn-dirty { color: var(--gc-warn); font-weight: 700; background: rgba(245,158,11,0.13); padding: 2px 8px; border-radius: 999px; font-size: 10.5px; }
+.gn-link  { height: 0; border-top: 2px dashed var(--border-strong, #D9D9DD); align-self: center; min-width: 18px; flex: 1; }
+.git-card-chev { display: inline-flex; align-items: center; color: var(--text-dim); margin-left: 2px; }
+.git-card-chev svg { width: 18px; height: 18px; }
+.git-card:hover .git-card-chev { color: var(--gc-mac); transform: translateX(2px); transition: transform 0.15s, color 0.15s; }
+.git-card-conflict {
+  margin-top: 14px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  font-size: 12px; color: #9f1239;
+  background: rgba(225,29,72,0.07);
+  border: 1px solid rgba(225,29,72,0.22);
+  display: inline-flex; align-items: center; gap: 8px; width: 100%;
+}
+.git-card-conflict svg { color: var(--gc-danger); width: 16px; height: 16px; }
+
+/* ── Layer 2 — refined ── */
+.git-detail-window .modal-header { padding: 16px 22px; border-bottom: 1px solid var(--border); }
+.git-detail-window .modal-header h3 { font-family: "JetBrains Mono", "SF Mono", Consolas, ui-monospace, monospace; font-weight: 700; letter-spacing: -0.005em; font-size: 15px; }
+.git-detail-controls { gap: 10px; display: flex; align-items: center; }
+.git-detail-controls #git-detail-mode { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+.git-detail-controls #git-detail-mode svg { width: 14px; height: 14px; }
+.git-detail-summary { padding: 12px 22px 4px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.git-l2-status { padding: 5px 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
+.git-l2-status svg { width: 14px; height: 14px; }
+.git-l2-overlap { font-size: 12px; color: #9f1239; margin-left: 0; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; background: rgba(225,29,72,0.06); border: 1px solid rgba(225,29,72,0.18); border-radius: 999px; font-weight: 600; }
+
+.git-l2-shell { padding: 14px 22px 18px; }
+.git-lane { border-radius: 16px; }
+.git-lane.off { opacity: 0.7; }
+.lane-head { padding: 14px 16px; gap: 12px; border-bottom: 1px solid var(--border); }
+.lane-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--surface); display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); }
+.lane-icon svg { width: 18px; height: 18px; }
+.git-lane.mac .lane-icon { color: var(--gc-mac); border-color: rgba(37,99,235,0.20); }
+.git-lane.win .lane-icon { color: var(--gc-win); border-color: rgba(15,118,110,0.20); }
+.git-lane.remote .lane-icon { color: var(--gc-remote); border-color: rgba(110,64,201,0.20); }
+.lane-title { letter-spacing: -0.005em; }
+.lane-sub { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); }
+.lane-host { color: var(--text-sec); font-weight: 600; }
+.lane-sep { opacity: 0.5; }
+.lane-tags { gap: 5px; }
+.git-tag {
+  font-size: 10.5px; font-weight: 700;
+  padding: 3px 8px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.git-tag svg { width: 11px; height: 11px; }
+
+.lane-body { padding: 16px 16px 18px; }
+.lane-section {
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-dim); margin: 14px 0 8px;
+  display: inline-flex; align-items: center; gap: 7px;
+}
+.lane-section:first-of-type { margin-top: 0; }
+.lane-section svg { width: 13px; height: 13px; }
+.lane-count { color: var(--text-pri); background: var(--surface-2); padding: 1px 7px; border-radius: 999px; font-size: 10.5px; }
+.lane-files { gap: 7px; }
+.lane-file {
+  padding: 9px 12px;
+  display: flex; align-items: center; gap: 9px;
+  border-radius: 9px;
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.lane-file:hover { background: var(--surface-low); }
+.lane-file.conflict {
+  background: rgba(225,29,72,0.05);
+  border-color: rgba(225,29,72,0.30);
+  box-shadow: 0 0 0 1px rgba(225,29,72,0.06);
+}
+.lane-file-ic { display: inline-flex; color: var(--gc-warn); }
+.lane-file.conflict .lane-file-ic { color: var(--gc-danger); }
+.lane-file-name { font-family: "JetBrains Mono", "SF Mono", Consolas, ui-monospace, monospace; font-size: 11.5px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-pri); }
+.lane-file-name.bold { font-weight: 700; color: #9f1239; }
+.lane-file-tag {
+  font-size: 9.5px; font-weight: 800; padding: 1px 7px; border-radius: 4px;
+  background: var(--gc-danger); color: #fff; letter-spacing: 0.04em;
+}
+.lane-empty {
+  font-size: 12px; color: var(--text-dim); padding: 14px;
+  display: inline-flex; align-items: center; gap: 7px; justify-content: center; width: 100%;
+  background: var(--surface-low); border-radius: 9px;
+}
+.lane-empty svg { color: #10B981; width: 14px; height: 14px; }
+.lane-info {
+  font-size: 11.5px; color: var(--text-sec); padding: 8px 12px;
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--surface-low); border-radius: 9px; width: 100%;
+}
+.lane-pr { gap: 8px; padding: 9px 12px; align-items: center; flex-wrap: wrap; }
+.lane-pr-num { font-weight: 800; color: var(--gc-remote); }
+.lane-pr-title { color: var(--text-pri); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lane-pr-branch { font-size: 10.5px; color: var(--text-dim); }
+
+/* Origin tip card */
+.lane-origin { padding: 28px 16px 18px; }
+.origin-tip { max-width: 280px; gap: 16px; }
+.origin-dot { width: 12px; height: 12px; background: var(--gc-remote); box-shadow: 0 0 0 4px rgba(110,64,201,0.14), 0 0 16px rgba(110,64,201,0.30); }
+.origin-card { padding: 14px 16px; border-radius: 12px; box-shadow: 0 1px 2px rgba(15,17,21,0.04); }
+.origin-sha { font-size: 11.5px; }
+.origin-msg { font-weight: 700; font-size: 13px; letter-spacing: -0.005em; }
+
+/* Connector bar */
+.git-l2-connbar {
+  margin: 16px 22px 18px; padding: 13px 22px;
+  gap: 18px; font-size: 12.5px;
+  border-radius: 12px; background: var(--surface-low); border: 1px solid var(--border);
+}
+.conn-label, .conn-mid {
+  display: inline-flex; align-items: center; gap: 6px; font-weight: 700;
+}
+.conn-label svg { width: 16px; height: 16px; }
+.conn-arrows { display: inline-flex; gap: 6px; flex: 1; justify-content: center; }
+.conn-up, .conn-down, .conn-eq {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700;
+}
+.conn-up   { background: rgba(37,99,235,0.10); color: var(--gc-mac); }
+.conn-down { background: rgba(245,158,11,0.12); color: #92400e; }
+.conn-eq   { background: rgba(16,185,129,0.10); color: #047857; }
+.conn-up svg, .conn-down svg, .conn-eq svg { width: 11px; height: 11px; }
+.conn-mid svg { width: 14px; height: 14px; color: var(--gc-remote); }
+.conn-mid { color: var(--gc-remote); }
+
+/* ── Layer 3 — refined ── */
+.gi-head { padding: 14px 18px; gap: 14px; }
+.gi-back {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 11px; background: #22222A; border: 1px solid #2A2A33;
+  color: #D4D4D8; border-radius: 8px; font: inherit; font-size: 12px; font-weight: 600;
+  cursor: pointer;
+}
+.gi-back:hover { background: #2A2A33; color: #fff; }
+.gi-title { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.gi-title-ic { color: #93C5FD; display: inline-flex; align-items: center; }
+.gi-title-ic svg { width: 16px; height: 16px; }
+.gi-title-repo { color: #E4E4EA; font-weight: 700; }
+.gi-title-sep { color: #6B7280; }
+.gi-title-label { color: #9CA3AF; font-weight: 500; }
+.gi-x { width: 28px; height: 28px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; color: #9CA3AF; cursor: pointer; }
+.gi-x:hover { background: #22222A; border-color: #2A2A33; color: #fff; }
+
+.gi-tabs { padding: 14px 10px; gap: 2px; }
+.gi-tabs-head { font-size: 10.5px; font-weight: 800; letter-spacing: 0.09em; color: #6B7280; padding: 6px 12px 10px; }
+.gi-tab { padding: 9px 12px; font-size: 12.5px; display: flex; align-items: center; gap: 9px; }
+.gi-tab-ic { display: inline-flex; align-items: center; color: inherit; }
+.gi-tab-ic svg { width: 15px; height: 15px; }
+.gi-tab.active { background: rgba(56,189,248,0.14); color: #7DD3FC; box-shadow: inset 2px 0 0 #7DD3FC; }
+.gi-tab:hover { background: #22222A; color: #E4E4EA; }
+.gi-tab.active:hover { background: rgba(56,189,248,0.18); color: #BAE6FD; }
+
+.gi-body { padding: 20px 24px; font-size: 13px; }
+.gi-diff-card { border-radius: 10px; }
+.gi-diff-head { padding: 9px 14px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 7px; width: 100%; box-sizing: border-box; }
+.gi-diff-head .file-name { font-family: "JetBrains Mono", "SF Mono", Consolas, ui-monospace, monospace; color: #BAE6FD; }
+.gi-diff-pre { font-size: 12px; }
+.gi-config-pre { font-size: 12.5px; }
+.gi-table { font-size: 12.5px; }
+.gi-table thead th { font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; padding: 10px 12px; font-weight: 800; }
+.gi-table tbody td { padding: 8px 12px; }
+.gi-table tbody td:first-child { font-family: "JetBrains Mono", "SF Mono", Consolas, ui-monospace, monospace; }
+.gi-empty { padding: 60px 20px; font-style: italic; }
+
+/* Log tab refinements */
+.gi-log-line { padding: 4px 8px; border-radius: 5px; font-size: 12px; gap: 10px; }
+.gi-log-line:hover { background: #22222A; }
+.l-ts { font-size: 11px; }
+.l-lvl { font-size: 10.5px; padding: 1px 7px; border-radius: 4px; }
+.l-lvl.l-err  { background: rgba(252,165,165,0.13); }
+.l-lvl.l-ok   { background: rgba(110,231,183,0.13); }
+.l-lvl.l-info { background: rgba(147,197,253,0.13); }
+.l-cat { font-size: 10.5px; padding: 1px 7px; border-radius: 4px; background: rgba(192,132,252,0.13); }
 .theme-opt-meta { font-size: 11px; color: var(--text-sec); }
 .theme-opt-remove {
   background: transparent;

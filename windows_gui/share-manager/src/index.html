@@ -424,10 +424,15 @@
     <div class="modal-backdrop" data-close="git-inspector"></div>
     <div class="modal-window git-inspector-window">
       <header class="gi-head">
-        <span class="gi-back" data-close="git-inspector">← 뒤로</span>
+        <button class="gi-back" data-close="git-inspector" title="Layer 2로 돌아가기">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          <span>Detail</span>
+        </button>
         <span class="gi-title" id="git-inspector-title">Inspector</span>
         <span style="margin-left:auto"></span>
-        <button class="modal-close" data-close="git-inspector">✕</button>
+        <button class="modal-close gi-x" data-close="git-inspector">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
       </header>
       <div class="gi-shell">
         <aside class="gi-tabs" id="git-inspector-tabs"></aside>
