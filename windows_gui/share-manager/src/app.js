@@ -2108,6 +2108,7 @@ async function renderGICommits(ownerRepo) {
 }
 
 async function renderGITimeline(ownerRepo) {
+  // ADR-0004: 3-panel narrative — Status Summary + Graph + Selected Commit
   $gitInspectorBody.innerHTML = '<div class="gi-loading">3-소스 그래프 계산 중…</div>';
   try {
     const graph = await invoke('build_repo_graph', { ownerRepo });
@@ -2115,15 +2116,203 @@ async function renderGITimeline(ownerRepo) {
     const branch = (graph.default_branch && branches.includes(graph.default_branch)) ? graph.default_branch : branches[0];
     const pb = (graph.per_branch || {})[branch];
     if (!pb) { $gitInspectorBody.innerHTML = '<div class="gi-empty">데이터 없음</div>'; return; }
-    // Reuse the SVG sync-river renderer in dark mode
+
+    const narrative = computeGitNarrative(graph, pb, branch);
+    const initialCommit = (pb.commits || []).find(c => c.ancestor) || (pb.commits || [])[0];
+
     $gitInspectorBody.innerHTML = `
       <div class="gi-timeline">
-        <header class="gi-tl-head"><span class="mono">${escape(ownerRepo)}</span> · ${escape(branch)}</header>
-        <div class="gi-tl-river">${gitTimelineSVG(pb, graph)}</div>
+        ${renderTimelineStatus(narrative, graph, pb, branch)}
+        ${renderTimelineGraph(gitTimelineSVG(pb, graph), ownerRepo, branch)}
+        ${renderTimelineDetail(initialCommit, graph)}
       </div>`;
+
+    // Wire dot clicks → update Panel 3
+    $gitInspectorBody.querySelectorAll('.gtl-river svg circle[data-sha]').forEach(el => {
+      el.style.cursor = 'pointer';
+      el.addEventListener('click', () => {
+        const sha = el.getAttribute('data-sha');
+        const c = (pb.commits || []).find(x => x.sha === sha);
+        if (c) updateTimelineDetail(c, graph);
+      });
+    });
   } catch (e) {
     $gitInspectorBody.innerHTML = `<div class="gi-loading">실패: ${escape(String(e))}</div>`;
   }
+}
+
+function computeGitNarrative(graph, pb, branch) {
+  const hosts = graph.hosts || [];
+  const summary = pb.summary || {};
+  const macHost = hosts.find(h => h.os === 'macos');
+  const winHost = hosts.find(h => h.os === 'windows');
+  const macSum = macHost ? summary[macHost.host] : null;
+  const winSum = winHost ? summary[winHost.host] : null;
+
+  const macA = macSum?.ahead || 0, macB = macSum?.behind || 0;
+  const winA = winSum?.ahead || 0, winB = winSum?.behind || 0;
+  const hasRemote = macSum?.has_remote || winSum?.has_remote || pb.pointers?.remote;
+  const macMeta = macHost ? gitDetailHostMeta(macHost.host) : null;
+  const winMeta = winHost ? gitDetailHostMeta(winHost.host) : null;
+  const macDirty = macMeta?.dirty || 0;
+  const winDirty = winMeta?.dirty || 0;
+  const dirtyOverlap = macDirty && winDirty; // approximate; per-file overlap is in dashboard
+
+  let verdict, kind, action;
+  if (!macHost && !winHost) {
+    verdict = '호스트 데이터가 없습니다'; kind = 'partial';
+    action = '"지금 스캔" 으로 로컬 git 상태를 게시하세요';
+  } else if (!hasRemote) {
+    verdict = '원격 상태 미확인'; kind = 'partial';
+    action = '대시보드의 "원격 동기화" 버튼으로 GitHub API 조회';
+  } else if (dirtyOverlap) {
+    verdict = `충돌 임박 · 양쪽에서 같은 파일 수정 중`; kind = 'danger';
+    action = '대시보드의 "충돌 레이더" 또는 Resolver 로 파일 단위 결정';
+  } else if (macA && winA) {
+    verdict = `양쪽 발산 · Mac ↑${macA} / Win ↑${winA}`; kind = 'danger';
+    action = '양쪽 미푸시 — 통합 결정 후 한쪽씩 push';
+  } else if (macA) {
+    verdict = `Mac이 origin보다 ${macA}커밋 앞섬`; kind = 'warn';
+    action = winHost
+      ? `Mac에서 git push 후 Win에서 git pull`
+      : `Mac에서 git push (Win 스캔 데이터 없음)`;
+  } else if (winA) {
+    verdict = `Win이 origin보다 ${winA}커밋 앞섬`; kind = 'warn';
+    action = macHost
+      ? `Win에서 git push 후 Mac에서 git pull`
+      : `Win에서 git push (Mac 스캔 데이터 없음)`;
+  } else if (macB || winB) {
+    const pulls = [];
+    if (macB) pulls.push(`Mac (↓${macB})`);
+    if (winB) pulls.push(`Win (↓${winB})`);
+    verdict = `뒤처짐 · ${pulls.join(', ')}`; kind = 'warn';
+    action = pulls.length === 2 ? '양쪽 모두 git pull 권장' : `${pulls[0].split(' ')[0]}에서 git pull`;
+  } else if (macDirty || winDirty) {
+    verdict = `동기화됨 · 미커밋 변경 ${macDirty + winDirty}개`; kind = 'warn';
+    action = '로컬 변경사항을 커밋 후 push 권장';
+  } else {
+    verdict = '모든 호스트가 origin과 일치'; kind = 'synced';
+    action = '추가 작업 필요 없음 — 모두 동기화됨';
+  }
+
+  return { verdict, kind, action, macHost, winHost, macSum, winSum, macMeta, winMeta };
+}
+
+function renderTimelineStatus(n, graph, pb, branch) {
+  const kindIcon = { synced: 'check-circle-2', warn: 'alert-triangle', danger: 'shield-alert', partial: 'circle-dot' };
+  const lcaSha = pb.common_ancestor ? pb.common_ancestor.slice(0, 7) : '범위 밖';
+  return `
+    <section class="gtl-status gtl-status-${n.kind}">
+      <header class="gtl-status-head">
+        <span class="gtl-status-icon">${svgIcon(kindIcon[n.kind])}</span>
+        <div>
+          <h3 class="gtl-status-title">${escape(n.verdict)}</h3>
+          <div class="gtl-status-sub">${escape(branch)} 브랜치 · 공통 조상 <span class="mono">${escape(lcaSha)}</span></div>
+        </div>
+      </header>
+      <div class="gtl-status-rows">
+        ${gtlHostRow('remote', 'github', 'GitHub origin', pb.pointers?.remote, null, null)}
+        ${n.macHost ? gtlHostRow('mac', 'apple', n.macHost.host, pb.pointers?.[n.macHost.host], n.macSum, n.macMeta) : gtlHostRowOff('mac', 'macOS')}
+        ${n.winHost ? gtlHostRow('win', 'windows', n.winHost.host, pb.pointers?.[n.winHost.host], n.winSum, n.winMeta) : gtlHostRowOff('win', 'Windows')}
+      </div>
+      ${n.action ? `
+        <div class="gtl-action">
+          ${svgIcon('zap')}<span class="gtl-action-text">${escape(n.action)}</span>
+        </div>` : ''}
+    </section>`;
+}
+
+function gtlHostRow(cls, iconKey, host, sha, sum, meta) {
+  const chips = [];
+  if (sum) {
+    if (sum.ahead)  chips.push(`<span class="gtl-chip ahead">${svgIcon('arrow-up')}${sum.ahead}</span>`);
+    if (sum.behind) chips.push(`<span class="gtl-chip behind">${svgIcon('arrow-down')}${sum.behind}</span>`);
+    if (!sum.ahead && !sum.behind && sum.has_remote) chips.push(`<span class="gtl-chip eq">${svgIcon('check-circle-2')}<span>origin과 동일</span></span>`);
+  }
+  if (cls === 'remote' && !chips.length) chips.push(`<span class="gtl-chip remote-tag">${svgIcon('git-branch')}<span>기준</span></span>`);
+  if (meta) {
+    if (meta.dirty) chips.push(`<span class="gtl-chip dirty">dirty ${meta.dirty}</span>`);
+    if (meta.unpushed) chips.push(`<span class="gtl-chip ahead">미푸시 ${meta.unpushed}</span>`);
+    if (meta.stash) chips.push(`<span class="gtl-chip muted">stash ${meta.stash}</span>`);
+  }
+  return `
+    <div class="gtl-row gtl-row-${cls}">
+      <span class="gtl-row-ic">${svgIcon(iconKey)}</span>
+      <span class="gtl-row-name">${escape(host)}</span>
+      <span class="gtl-row-sha mono">${escape((sha || '').slice(0, 7) || '—')}</span>
+      <span class="gtl-row-chips">${chips.join('')}</span>
+    </div>`;
+}
+
+function gtlHostRowOff(cls, label) {
+  const iconKey = cls === 'mac' ? 'apple' : 'windows';
+  return `
+    <div class="gtl-row gtl-row-${cls} off">
+      <span class="gtl-row-ic">${svgIcon(iconKey)}</span>
+      <span class="gtl-row-name">${escape(label)} <span class="gtl-row-off">(스캔 데이터 없음)</span></span>
+      <span class="gtl-row-sha mono">—</span>
+      <span class="gtl-row-chips"><span class="gtl-chip muted">단일 호스트</span></span>
+    </div>`;
+}
+
+function renderTimelineGraph(svg, ownerRepo, branch) {
+  return `
+    <section class="gtl-graph">
+      <header class="gtl-graph-head">
+        <span class="mono">${escape(ownerRepo)}</span>
+        <span class="gtl-sep">·</span>
+        <span>${escape(branch)}</span>
+        <span class="gtl-spacer"></span>
+        <span class="gtl-hint">점에 hover · 클릭하면 아래에 상세 표시</span>
+      </header>
+      <div class="gtl-river">${svg}</div>
+    </section>`;
+}
+
+function renderTimelineDetail(c, graph) {
+  return `
+    <section class="gtl-detail">
+      <header class="gtl-detail-head">${svgIcon('git-commit')}<span>선택된 커밋</span></header>
+      ${c ? gitTimelineDetailBody(c, graph) : `<div class="gtl-detail-body empty">위 그래프의 점을 클릭하면 상세 정보가 표시돼요.</div>`}
+    </section>`;
+}
+
+function gitTimelineDetailBody(c, graph) {
+  const sources = c.in || {};
+  const present = Object.entries(sources).filter(([_, v]) => v).map(([k]) => k);
+  const tipPills = (c.tips || []).map(t => {
+    const os = (graph.hosts || []).find(h => h.host === t)?.os || '';
+    const cls = t === 'remote' ? 'remote' : os === 'macos' ? 'mac' : 'win';
+    const lbl = t === 'remote' ? 'origin/' + (graph.default_branch || 'main') : t + ' HEAD';
+    return `<span class="gtl-chip tip-${cls}">${escape(lbl)}</span>`;
+  }).join('');
+  return `
+    <div class="gtl-detail-body">
+      <div class="gtl-detail-row">
+        <span class="gtl-detail-sha mono">${escape(c.sha)}</span>
+        ${c.ancestor ? `<span class="gtl-chip lca">⊥ 공통 조상</span>` : ''}
+        ${tipPills}
+      </div>
+      <div class="gtl-detail-msg">${escape(c.msg || '(메시지 없음)')}</div>
+      <div class="gtl-detail-meta">
+        <span>${escape(c.author || '')}</span>
+        <span class="gtl-sep">·</span>
+        <span>${escape(fmtRelative(c.date))}</span>
+        <span class="gtl-spacer"></span>
+        <span class="gtl-detail-sources">존재: ${present.map(s => {
+          const os = (graph.hosts || []).find(h => h.host === s)?.os || '';
+          const cls = s === 'remote' ? 'remote' : os === 'macos' ? 'mac' : 'win';
+          return `<span class="gtl-src-pill ${cls}">${escape(s)}</span>`;
+        }).join('')}</span>
+      </div>
+    </div>`;
+}
+
+function updateTimelineDetail(c, graph) {
+  const det = document.querySelector('.gtl-detail');
+  if (!det) return;
+  det.querySelectorAll('.gtl-detail-body').forEach(b => b.remove());
+  det.insertAdjacentHTML('beforeend', gitTimelineDetailBody(c, graph));
 }
 
 function gitTimelineSVG(pb, graph) {
@@ -2145,7 +2334,7 @@ function gitTimelineSVG(pb, graph) {
 
   // ── Layout: light, generous spacing
   const padL = 220;     // 200px label + 20 padding (ADR-0003 fix)
-  const padR = 240;     // room for tip pills
+  const padR = 360;     // room for tip pills (ADR-0004: avoid right clip)
   const padT = 56;      // room for LCA label above first lane
   const padB = 32;
   const laneH = 86;     // each lane breathes (was 60)
@@ -2231,8 +2420,8 @@ function gitTimelineSVG(pb, graph) {
       if (isTip) svg += `<circle cx="${x}" cy="${y}" r="${r + 4}" fill="${COLOR[l.cls]}" opacity="0.18"/>`;
       // ancestor amber ring
       if (c.ancestor) svg += `<circle cx="${x}" cy="${y}" r="${r + 3}" fill="none" stroke="#D4A72C" stroke-width="2"/>`;
-      // main dot
-      svg += `<circle cx="${x}" cy="${y}" r="${r}" fill="${COLOR[l.cls]}" stroke="#FFFFFF" stroke-width="2.5">`;
+      // main dot (data-sha for click → Panel 3)
+      svg += `<circle cx="${x}" cy="${y}" r="${r}" fill="${COLOR[l.cls]}" stroke="#FFFFFF" stroke-width="2.5" data-sha="${escape(c.sha)}">`;
       svg += `<title>${escape(c.short || '')} · ${escape(c.msg || '')} · ${escape(c.author || '')} · ${escape(fmtRelative(c.date))}</title>`;
       svg += `</circle>`;
     }
