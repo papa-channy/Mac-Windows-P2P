@@ -2196,3 +2196,14 @@ button { font-family: inherit; }
 .nav-item.is-empty { opacity: 0.5; }
 .nav-item.is-empty:hover { opacity: 0.85; background: var(--surface-hi); }
 .nav-item.is-empty.active { opacity: 1; }
+
+.git-settings-hint {
+  margin: 12px 0 8px;
+  padding: 10px 12px;
+  background: rgba(14, 165, 233, 0.06);
+  border: 1px solid rgba(14, 165, 233, 0.2);
+  border-radius: 7px;
+  font-size: 11.5px;
+  color: var(--text-sec);
+  line-height: 1.6;
+}

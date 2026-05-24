@@ -50,10 +50,34 @@ export function TokenSettings() {
       setInfo(i);
       setToken("");
       toast(`토큰 검증 완료 · ${i.login}`, "success");
+      // Auto-share to peer hosts via age + ssh keys. Best-effort —
+      // failures don't block the local save (the user might not have
+      // SSH set up yet, or peer keys aren't published yet).
+      try {
+        await api.git.publishHostPubkey();
+        const shared = await api.git.sharePatToPeers();
+        if (shared > 0) {
+          toast(`다른 호스트 ${shared}개에 PAT 자동 공유됨`, "success");
+        }
+      } catch (e) {
+        console.warn("share PAT to peers failed:", e);
+      }
       await store.refresh();
     } catch (e) {
       setErrorText(String(e));
       toast(`토큰 검증 실패: ${e}`, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const publishMyKey = async () => {
+    setBusy(true);
+    try {
+      const dst = await api.git.publishHostPubkey();
+      toast(`SSH 공개키 셰어에 게시됨: ${dst.replace(/^.*\//, "")}`, "success");
+    } catch (e) {
+      toast(`공개키 게시 실패: ${e}`, "error");
     } finally {
       setBusy(false);
     }
@@ -120,6 +144,22 @@ export function TokenSettings() {
           disabled={busy || !store.hasToken}
         >
           삭제
+        </button>
+      </div>
+
+      <p className="git-settings-hint">
+        💡 PAT 저장 시 다른 호스트의 SSH 공개키로 age 암호화 후 셰어 통해 자동 공유.
+        다른 호스트가 자기 SSH 키로 복호화해서 keychain 에 import — 양쪽 등록 1회로 OK.
+        SSH 키가 없거나 peer 키가 셰어에 없으면 자동 공유는 skip 됩니다.
+      </p>
+      <div className="git-settings-row">
+        <button
+          className="ghost-btn"
+          onClick={publishMyKey}
+          disabled={busy || !store.ssh?.has_key}
+          title="다른 호스트가 내게 PAT 보낼 수 있게 SSH 공개키를 셰어에 게시"
+        >
+          내 SSH 공개키 셰어에 게시
         </button>
       </div>
     </div>

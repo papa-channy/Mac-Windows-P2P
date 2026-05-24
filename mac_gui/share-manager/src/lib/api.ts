@@ -208,6 +208,18 @@ export const api = {
     testToken: () => invoke<TokenInfo>("git_test_token"),
     sshStatus: () => invoke<GitSshStatus>("git_ssh_status"),
     generateSshKey: () => invoke<GitSshStatus>("git_generate_ssh_key"),
+    /** Publish this host's ssh ed25519 pubkey to
+     * `<share>/00_System/10_Config/host-keys/<host>.ssh.pub` so peer
+     * hosts can encrypt PAT to us. Returns the absolute path written. */
+    publishHostPubkey: () => invoke<string>("git_publish_host_pubkey"),
+    /** Read every peer pubkey from the share, age-encrypt the local
+     * PAT to each one, write `git-token/<peer>.age`. Returns the count
+     * of peers that got a new blob. */
+    sharePatToPeers: () => invoke<number>("git_share_pat_to_peers"),
+    /** Check `git-token/<my-host>.age` and import into local keychain
+     * if a fresh PAT is waiting. Returns true if a new token was
+     * actually imported. */
+    pullPatFromShare: () => invoke<boolean>("git_pull_pat_from_share"),
   },
 
   // --- icon theme install (folder or git URL) ---

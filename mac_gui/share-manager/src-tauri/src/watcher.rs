@@ -20,15 +20,17 @@ pub fn watch_paths() -> Vec<PathBuf> {
         share.join("00_System").join("70_Clipboard"),
         share.join("00_System").join("60_Notes"),
         share.join("00_System").join("10_Config").join("profiles"),
+        share.join("00_System").join("10_Config").join("git-token"),
     ]
 }
 
 pub fn classify_event_path(p: &Path) -> &'static str {
     let s = p.to_string_lossy();
-    if s.contains("/10_Exchange/")  { return "transfers"; }
-    if s.contains("/70_Clipboard/") { return "clipboard"; }
-    if s.contains("/60_Notes/")     { return "notes"; }
-    if s.contains("/profiles/")     { return "profiles"; }
+    if s.contains("/10_Exchange/")   { return "transfers"; }
+    if s.contains("/70_Clipboard/")  { return "clipboard"; }
+    if s.contains("/60_Notes/")      { return "notes"; }
+    if s.contains("/git-token/")     { return "git-token"; }
+    if s.contains("/profiles/")      { return "profiles"; }
     ""
 }
 

@@ -123,17 +123,36 @@ export function GitProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  // Mount + share-changed (topic="git") refresh
+  // Mount + share-changed refresh. Two topics:
+  //   - "git"        — peer host published a new snapshot, re-read it
+  //   - "git-token"  — peer host shared a fresh PAT for us, decrypt +
+  //                     import into our keychain, then refresh the
+  //                     store so the new token is reflected in
+  //                     hasToken.
   useEffect(() => {
     refresh();
+    // One-shot pull on mount — picks up a PAT that a peer host shared
+    // while this app wasn't running.
+    api.git.pullPatFromShare().catch(() => void 0);
+
     let unlisten: (() => void) | undefined;
     (async () => {
       try {
-        unlisten = await listen<{ topic?: string }>("share-changed", (e) => {
-          if (e.payload?.topic === "git") refresh();
+        unlisten = await listen<{ topic?: string }>("share-changed", async (e) => {
+          if (e.payload?.topic === "git") {
+            refresh();
+          } else if (e.payload?.topic === "git-token") {
+            try {
+              const imported = await api.git.pullPatFromShare();
+              if (imported) await refresh();
+            } catch {
+              /* peer key parse / decrypt errors are surfaced by the
+               * explicit Settings → Git flow, not the auto-pull */
+            }
+          }
         });
       } catch {
-        /* ignore — Wave C will deal with the perms onboarding */
+        /* listen unavailable in test env */
       }
     })();
     return () => {

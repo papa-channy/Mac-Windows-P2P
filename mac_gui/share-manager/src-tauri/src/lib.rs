@@ -131,6 +131,10 @@ pub fn run() {
             git::git_test_token,
             git::git_ssh_status,
             git::git_generate_ssh_key,
+            // PAT cross-host sync (ssh + age)
+            git::git_publish_host_pubkey,
+            git::git_share_pat_to_peers,
+            git::git_pull_pat_from_share,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

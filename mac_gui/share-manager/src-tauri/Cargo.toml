@@ -34,6 +34,10 @@ unicode-normalization = "0.1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 keyring = { version = "3", default-features = false, features = ["apple-native"] }
 ureq = { version = "2", features = ["json"] }
+# PAT 셰어 동기화 — ed25519 SSH 키 (이미 양쪽 호스트가 보유) 를 recipient
+# / identity 로 활용해서 PAT 를 셰어 통과 전달. cross-OS 동등 (Win 측도
+# 같은 crate + 같은 wire format).
+age = { version = "0.10", features = ["ssh"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.9"

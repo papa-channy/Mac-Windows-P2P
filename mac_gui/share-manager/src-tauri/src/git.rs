@@ -574,6 +574,217 @@ pub fn git_clear_token() -> Result<(), String> {
     }
 }
 
+// ─── PAT cross-host sync — age + ssh ed25519 keys ──────────────────
+//
+// Each host that wants to participate in PAT sharing:
+//   1) generates an ed25519 ssh key (already in place via
+//      git_ssh_status / git_generate_ssh_key)
+//   2) publishes its public key to
+//      <share>/00_System/10_Config/host-keys/<sanitized-host>.ssh.pub
+//
+// When a host registers a PAT:
+//   3) reads every other host's published pubkey, age-encrypts the PAT
+//      to each one separately, writes
+//      <share>/00_System/10_Config/git-token/<peer-host>.age
+//
+// On startup + share-changed event, every host:
+//   4) checks for <share>/00_System/10_Config/git-token/<my-host>.age,
+//      decrypts with its own ssh private key, imports into local
+//      keychain. The encrypted file is left in place — if the source
+//      host later rotates the PAT it's overwritten in the same slot.
+//
+// `<share>/00_System/10_Config/host-keys/` and `git-token/` are both
+// auto-created on first use. Removing a host's `.age` file out-of-band
+// is harmless — it just stops syncing to that host until next publish.
+
+fn share_config_dir() -> std::path::PathBuf {
+    let p = crate::share::share_root()
+        .join("00_System")
+        .join("10_Config");
+    let _ = std::fs::create_dir_all(&p);
+    p
+}
+
+fn host_keys_dir() -> std::path::PathBuf {
+    let p = share_config_dir().join("host-keys");
+    let _ = std::fs::create_dir_all(&p);
+    p
+}
+
+fn git_token_share_dir() -> std::path::PathBuf {
+    let p = share_config_dir().join("git-token");
+    let _ = std::fs::create_dir_all(&p);
+    p
+}
+
+fn my_host_sanitized() -> String {
+    let h = mac_hostname();
+    let safe = host_id_safe(&h);
+    if safe.is_empty() {
+        "mac".into()
+    } else {
+        safe
+    }
+}
+
+fn my_ssh_pub_path() -> Result<PathBuf, String> {
+    let ssh = home_dir().ok_or("홈 디렉터리 없음")?.join(".ssh");
+    // Prefer the project-specific key — falls back to the user's
+    // personal id_ed25519 if they re-used theirs.
+    for name in ["mac_window_git_ed25519.pub", "id_ed25519.pub"] {
+        let p = ssh.join(name);
+        if p.exists() {
+            return Ok(p);
+        }
+    }
+    Err("ssh ed25519 키가 없습니다 — Settings → Git → SSH 키 생성 먼저".into())
+}
+
+fn my_ssh_priv_path() -> Result<PathBuf, String> {
+    let ssh = home_dir().ok_or("홈 디렉터리 없음")?.join(".ssh");
+    for name in ["mac_window_git_ed25519", "id_ed25519"] {
+        let p = ssh.join(name);
+        if p.exists() {
+            return Ok(p);
+        }
+    }
+    Err("ssh ed25519 개인키가 없습니다".into())
+}
+
+/// Step 2 — publish this host's ssh public key to the share so other
+/// hosts can encrypt PAT for us.
+#[tauri::command]
+pub fn git_publish_host_pubkey() -> Result<String, String> {
+    let src = my_ssh_pub_path()?;
+    let pub_text = std::fs::read_to_string(&src).map_err(|e| e.to_string())?;
+    // Strip any trailing comment whitespace so the published form is
+    // stable regardless of how the user generated their key.
+    let cleaned = pub_text.trim().to_string();
+    let dst = host_keys_dir().join(format!("{}.ssh.pub", my_host_sanitized()));
+    std::fs::write(&dst, format!("{cleaned}\n")).map_err(|e| e.to_string())?;
+    Ok(dst.to_string_lossy().into_owned())
+}
+
+/// List the other hosts that have published a pubkey (excludes ours).
+fn list_peer_pubkeys() -> Result<Vec<(String, String)>, String> {
+    let dir = host_keys_dir();
+    let me = my_host_sanitized();
+    let mut out = Vec::new();
+    let rd = match std::fs::read_dir(&dir) {
+        Ok(r) => r,
+        Err(_) => return Ok(out),
+    };
+    for e in rd.flatten() {
+        let p = e.path();
+        let stem = p
+            .file_name()
+            .and_then(|s| s.to_str())
+            .and_then(|s| s.strip_suffix(".ssh.pub"))
+            .map(|s| s.to_string());
+        let Some(host) = stem else { continue };
+        if host == me {
+            continue;
+        }
+        if let Ok(pubkey) = std::fs::read_to_string(&p) {
+            out.push((host, pubkey.trim().to_string()));
+        }
+    }
+    Ok(out)
+}
+
+/// Step 3 — read the local PAT from keychain and write one encrypted
+/// blob per peer into the share. Each blob is age-encrypted to that
+/// peer's ssh-ed25519 public key.
+#[tauri::command]
+pub fn git_share_pat_to_peers() -> Result<u32, String> {
+    use age::ssh::Recipient as SshRecipient;
+    use age::Encryptor;
+    use std::io::Write as _;
+    use std::str::FromStr;
+
+    let token = get_token().ok_or("로컬 키체인에 PAT가 없습니다")?;
+    let peers = list_peer_pubkeys()?;
+    if peers.is_empty() {
+        return Ok(0);
+    }
+    let mut count: u32 = 0;
+    for (peer_host, pubkey_line) in peers {
+        let recipient = SshRecipient::from_str(&pubkey_line)
+            .map_err(|e| format!("{peer_host} 키 파싱 실패: {e:?}"))?;
+        let encryptor = Encryptor::with_recipients(vec![Box::new(recipient)])
+            .ok_or("recipient 가 비었음")?;
+        let mut out = Vec::new();
+        let mut writer = encryptor
+            .wrap_output(&mut out)
+            .map_err(|e| format!("{peer_host} encrypt 시작 실패: {e}"))?;
+        writer
+            .write_all(token.as_bytes())
+            .map_err(|e| format!("{peer_host} encrypt write 실패: {e}"))?;
+        writer
+            .finish()
+            .map_err(|e| format!("{peer_host} encrypt finish 실패: {e}"))?;
+
+        let dst = git_token_share_dir().join(format!("{peer_host}.age"));
+        std::fs::write(&dst, &out).map_err(|e| format!("{peer_host} write 실패: {e}"))?;
+        count += 1;
+    }
+    Ok(count)
+}
+
+/// Step 4 — look for <share>/git-token/<my-host>.age, decrypt with our
+/// own ssh private key, import into keychain. Returns true when a new
+/// PAT was actually imported.
+#[tauri::command]
+pub fn git_pull_pat_from_share() -> Result<bool, String> {
+    use age::Decryptor;
+    use std::io::Read as _;
+
+    let src = git_token_share_dir().join(format!("{}.age", my_host_sanitized()));
+    if !src.exists() {
+        return Ok(false);
+    }
+    let ciphertext = std::fs::read(&src).map_err(|e| e.to_string())?;
+    let decryptor = match Decryptor::new(&ciphertext[..]).map_err(|e| e.to_string())? {
+        Decryptor::Recipients(d) => d,
+        Decryptor::Passphrase(_) => {
+            return Err("예상치 못한 passphrase age 파일".into())
+        }
+    };
+
+    let priv_path = my_ssh_priv_path()?;
+    let priv_text = std::fs::read_to_string(&priv_path).map_err(|e| e.to_string())?;
+    let identity = age::ssh::Identity::from_buffer(
+        std::io::BufReader::new(priv_text.as_bytes()),
+        Some(priv_path.to_string_lossy().into_owned()),
+    )
+    .map_err(|e| format!("ssh 개인키 파싱 실패: {e}"))?;
+
+    let identities: Vec<Box<dyn age::Identity>> = vec![Box::new(identity)];
+    let mut reader = decryptor
+        .decrypt(identities.iter().map(|i| i.as_ref()))
+        .map_err(|e| format!("복호화 실패: {e}"))?;
+    let mut plaintext = String::new();
+    reader
+        .read_to_string(&mut plaintext)
+        .map_err(|e| format!("복호화 read 실패: {e}"))?;
+    let token = plaintext.trim();
+    if token.is_empty() {
+        return Err("복호화된 PAT가 비어있음".into());
+    }
+
+    // Compare with current local token — skip write if identical so we
+    // don't churn the keychain on every share-changed tick.
+    if let Some(existing) = get_token() {
+        if existing == token {
+            return Ok(false);
+        }
+    }
+    keyring_entry()?
+        .set_password(token)
+        .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
 fn gh_get(token: &str, url: &str) -> Result<serde_json::Value, String> {
     ureq::get(url)
         .set("Authorization", &format!("Bearer {token}"))
