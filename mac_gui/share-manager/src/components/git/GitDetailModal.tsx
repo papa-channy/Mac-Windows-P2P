@@ -9,6 +9,23 @@
 // keep their natural sizes.
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  Apple,
+  CheckCircle2,
+  AlertTriangle,
+  ShieldAlert,
+  CircleDot,
+  Terminal,
+  X,
+  FileCode2,
+  GitCommit,
+  Package,
+  GitPullRequest,
+  ArrowUp,
+  ArrowDown,
+  FileWarning,
+} from "lucide-react";
+import { GithubBrand, WindowsBrand } from "./BrandIcons";
 import { useGitStore } from "../../lib/gitStore";
 import type { RepoStatus, RemoteRepoState } from "../../lib/api";
 import { classifyCard, type RepoCardSummary } from "./RepoCard";
@@ -204,7 +221,7 @@ function DetailHeader({
         onClick={onOpenInspector}
         title="Raw Inspector — diffs / logs / config / commits / sync timeline"
       >
-        <span aria-hidden>{">_"}</span>
+        <Terminal size={14} />
         <span>Inspector</span>
       </button>
       <button
@@ -212,18 +229,18 @@ function DetailHeader({
         onClick={onClose}
         aria-label="닫기"
       >
-        ✕
+        <X size={16} />
       </button>
     </header>
   );
 }
 
-const KIND_ICON: Record<string, string> = {
-  synced: "✓",
-  dirty: "⚠",
-  diverged: "⚠",
-  partial: "◦",
-  conflict: "🚨",
+const KIND_ICON: Record<string, typeof CheckCircle2> = {
+  synced: CheckCircle2,
+  dirty: AlertTriangle,
+  diverged: AlertTriangle,
+  partial: CircleDot,
+  conflict: ShieldAlert,
 };
 
 const KIND_LABEL: Record<string, string> = {
@@ -235,15 +252,16 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 function StatusChip({ kind, overlaps }: { kind: string; overlaps: number }) {
+  const Icon = KIND_ICON[kind] ?? CircleDot;
   return (
     <div className="git-detail-summary">
       <span className={`git-l2-status ${kind}`}>
-        <span aria-hidden>{KIND_ICON[kind]}</span>
+        <Icon size={13} />
         <span>{KIND_LABEL[kind]}</span>
       </span>
       {overlaps > 0 && (
         <span className="git-l2-overlap">
-          <span aria-hidden>⚠</span>
+          <FileWarning size={13} />
           <span>
             <b>{overlaps}개 파일</b> 동시 수정 중
           </span>
@@ -268,11 +286,11 @@ function LaneCol({
   behind: number;
   overlaps: string[];
 }) {
-  if (!host) {
+    if (!host) {
     return (
       <section className={`git-lane ${kind} off`}>
         <header className="lane-head">
-          <span className="lane-icon">{kind === "mac" ? "🍎" : "🪟"}</span>
+          <span className="lane-icon">{kind === "mac" ? <Apple size={20} fill="currentColor" strokeWidth={0} /> : <WindowsBrand size={20} />}</span>
           <div className="lane-meta">
             <h3 className="lane-title">{label}</h3>
             <div className="lane-sub">연결되지 않음</div>
@@ -280,7 +298,7 @@ function LaneCol({
         </header>
         <div className="lane-body empty">
           <div className="empty-pad">
-            <span aria-hidden>◦</span>
+            <CircleDot size={22} />
             <div>이 호스트엔 이 레포가 없어요</div>
           </div>
         </div>
@@ -295,7 +313,7 @@ function LaneCol({
   return (
     <section className={`git-lane ${kind}`}>
       <header className="lane-head">
-        <span className="lane-icon">{kind === "mac" ? "🍎" : "🪟"}</span>
+        <span className="lane-icon">{kind === "mac" ? <Apple size={20} fill="currentColor" strokeWidth={0} /> : <WindowsBrand size={20} />}</span>
         <div className="lane-meta">
           <h3 className="lane-title">{label}</h3>
           <div className="lane-sub">
@@ -306,21 +324,21 @@ function LaneCol({
         </div>
         <div className="lane-tags">
           {ahead > 0 && (
-            <span className={`git-tag ${kind}-tag`}>↑{ahead}</span>
+            <span className={`git-tag ${kind}-tag`}><ArrowUp size={10} />{ahead}</span>
           )}
-          {behind > 0 && <span className="git-tag warn-tag">↓{behind}</span>}
+          {behind > 0 && <span className="git-tag warn-tag"><ArrowDown size={10} />{behind}</span>}
         </div>
       </header>
       <div className="lane-body">
         <h4 className="lane-section">
-          <span aria-hidden>📝</span>
+          <FileCode2 size={12} />
           <span>Work In Progress</span>
           <span className="lane-count">{dirty.length}</span>
         </h4>
         <ul className="lane-files">
           {dirty.length === 0 ? (
             <li className="lane-empty">
-              <span aria-hidden>✓</span>
+              <CheckCircle2 size={12} />
               <span>변경 없음</span>
             </li>
           ) : (
@@ -333,7 +351,7 @@ function LaneCol({
                   className={"lane-file" + (isConflict ? " conflict" : "")}
                 >
                   <span className="lane-file-ic">
-                    {isConflict ? "⚠" : "📄"}
+                    {isConflict ? <FileWarning size={12} /> : <FileCode2 size={12} />}
                   </span>
                   <span
                     className={
@@ -354,13 +372,13 @@ function LaneCol({
         {unpushed > 0 && (
           <>
             <h4 className="lane-section">
-              <span aria-hidden>↑</span>
+              <GitCommit size={12} />
               <span>미푸시 커밋</span>
               <span className="lane-count">{unpushed}</span>
             </h4>
             <ul className="lane-files">
               <li className="lane-info">
-                <span aria-hidden>↑</span>
+                <ArrowUp size={12} />
                 <span>{unpushed}개 로컬에서 커밋했지만 origin엔 없음</span>
               </li>
             </ul>
@@ -369,13 +387,13 @@ function LaneCol({
         {stash > 0 && (
           <>
             <h4 className="lane-section">
-              <span aria-hidden>📦</span>
+              <Package size={12} />
               <span>Stash</span>
               <span className="lane-count">{stash}</span>
             </h4>
             <ul className="lane-files">
               <li className="lane-info">
-                <span aria-hidden>📦</span>
+                <Package size={12} />
                 <span>{stash}개 보관됨</span>
               </li>
             </ul>
@@ -394,7 +412,7 @@ function OriginLane({ remote }: { remote: RemoteRepoState | null }) {
   return (
     <section className="git-lane remote">
       <header className="lane-head">
-        <span className="lane-icon">📦</span>
+        <span className="lane-icon"><GithubBrand size={20} /></span>
         <div className="lane-meta">
           <h3 className="lane-title">GitHub Origin</h3>
           <div className="lane-sub">
@@ -404,7 +422,7 @@ function OriginLane({ remote }: { remote: RemoteRepoState | null }) {
           </div>
         </div>
         {prs.length > 0 && (
-          <span className="git-tag remote-tag">PR {prs.length}</span>
+          <span className="git-tag remote-tag"><GitPullRequest size={10} />PR {prs.length}</span>
         )}
       </header>
       <div className="lane-body lane-origin">
@@ -420,7 +438,7 @@ function OriginLane({ remote }: { remote: RemoteRepoState | null }) {
         {prs.length > 0 && (
           <>
             <h4 className="lane-section">
-              <span aria-hidden>⑂</span>
+              <GitPullRequest size={12} />
               <span>열린 PR</span>
               <span className="lane-count">{prs.length}</span>
             </h4>
@@ -456,21 +474,21 @@ function ConnectorBar({
   return (
     <div className="git-l2-connbar">
       <span className="conn-label mac">
-        <span aria-hidden>🍎</span>
+        <Apple size={14} fill="currentColor" strokeWidth={0} />
         <span>Mac</span>
       </span>
       <span className="conn-arrows mac">
         <ConnectorSummary ahead={macAhead} behind={macBehind} />
       </span>
       <span className="conn-mid">
-        <span aria-hidden>📦</span>
+        <GithubBrand size={14} />
         <span>Origin</span>
       </span>
       <span className="conn-arrows win">
         <ConnectorSummary ahead={winAhead} behind={winBehind} />
       </span>
       <span className="conn-label win">
-        <span aria-hidden>🪟</span>
+        <WindowsBrand size={14} />
         <span>Win</span>
       </span>
     </div>
@@ -481,15 +499,15 @@ function ConnectorSummary({ ahead, behind }: { ahead: number; behind: number }) 
   if (!ahead && !behind) {
     return (
       <span className="conn-eq">
-        <span aria-hidden>✓</span>
+        <CheckCircle2 size={12} />
         <span>동기화</span>
       </span>
     );
   }
   return (
     <>
-      {ahead > 0 && <span className="conn-up">↑{ahead}</span>}
-      {behind > 0 && <span className="conn-down">↓{behind}</span>}
+      {ahead > 0 && <span className="conn-up"><ArrowUp size={11} />{ahead}</span>}
+      {behind > 0 && <span className="conn-down"><ArrowDown size={11} />{behind}</span>}
     </>
   );
 }

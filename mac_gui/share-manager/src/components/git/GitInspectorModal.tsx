@@ -10,18 +10,39 @@
 //   5. Sync Timeline — Status Summary + SVG graph + selected commit (ADR-0003/0004)
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  FileDiff,
+  Activity,
+  Settings as SettingsIcon,
+  ListTree,
+  GitBranch,
+  Terminal,
+  X,
+  ChevronLeft,
+  FileCode2,
+  CheckCircle2,
+  AlertTriangle,
+  ShieldAlert,
+  CircleDot,
+  Zap,
+  ArrowUp,
+  ArrowDown,
+  Target,
+  Apple,
+} from "lucide-react";
+import { GithubBrand, WindowsBrand } from "./BrandIcons";
 import { api, type RepoGraph, type RepoGraphCommit } from "../../lib/api";
 import { useGitStore } from "../../lib/gitStore";
 import { computeGitNarrative } from "../../lib/computeGitNarrative";
 
 type TabId = "diffs" | "logs" | "config" | "commits" | "timeline";
 
-const TABS: { id: TabId; label: string; emoji: string }[] = [
-  { id: "diffs", label: "Raw Diffs", emoji: "📄" },
-  { id: "logs", label: "Daemon Logs", emoji: "📡" },
-  { id: "config", label: "Git Config", emoji: "⚙" },
-  { id: "commits", label: "All Commits", emoji: "🌳" },
-  { id: "timeline", label: "Sync Timeline", emoji: "🌿" },
+const TABS: { id: TabId; label: string; Icon: typeof FileDiff }[] = [
+  { id: "diffs", label: "Raw Diffs", Icon: FileDiff },
+  { id: "logs", label: "Daemon Logs", Icon: Activity },
+  { id: "config", label: "Git Config", Icon: SettingsIcon },
+  { id: "commits", label: "All Commits", Icon: ListTree },
+  { id: "timeline", label: "Sync Timeline", Icon: GitBranch },
 ];
 
 interface Props {
@@ -45,14 +66,14 @@ export function GitInspectorModal({ isOpen, ownerRepo, onClose, onBack }: Props)
       <div className="gi-shell light" onClick={(e) => e.stopPropagation()}>
         <header className="gi-head">
           <button className="gi-back" onClick={onBack} aria-label="뒤로">
-            ‹
+            <ChevronLeft size={18} />
           </button>
-          <span className="gi-title-ic">{">_"}</span>
+          <span className="gi-title-ic"><Terminal size={14} /></span>
           <span className="gi-title-repo mono">{ownerRepo}</span>
           <span className="gi-title-sep">/</span>
           <span className="gi-title-label">Inspector</span>
           <button className="gi-close" onClick={onClose} aria-label="닫기">
-            ✕
+            <X size={16} />
           </button>
         </header>
 
@@ -65,9 +86,7 @@ export function GitInspectorModal({ isOpen, ownerRepo, onClose, onBack }: Props)
                 className={"gi-tab" + (t.id === tab ? " active" : "")}
                 onClick={() => setTab(t.id)}
               >
-                <span className="gi-tab-ic" aria-hidden>
-                  {t.emoji}
-                </span>
+                <span className="gi-tab-ic"><t.Icon size={14} /></span>
                 <span>{t.label}</span>
               </button>
             ))}
@@ -150,7 +169,7 @@ function RawDiffsTab({ ownerRepo }: { ownerRepo: string }) {
       {diffs.map((d) => (
         <div className="gi-diff-card" key={d.file}>
           <header className="gi-diff-head">
-            <span aria-hidden>📄</span>
+            <FileCode2 size={13} />
             <span className="mono">{d.file}</span>
           </header>
           <pre className="gi-diff-pre">{renderDiff(d.text)}</pre>
@@ -293,7 +312,7 @@ function GitConfigTab({ ownerRepo }: { ownerRepo: string }) {
   return (
     <div className="gi-config">
       <div className="gi-config-path">
-        <span aria-hidden>⚙</span>
+        <SettingsIcon size={13} />
         <span className="mono">{conf.path}/.git/config</span>
       </div>
       <pre className="gi-config-pre">{conf.text}</pre>
@@ -469,12 +488,13 @@ function TimelineStatusPanel({
   branch: string;
   pointers: Record<string, string>;
 }) {
-  const kindIcon: Record<string, string> = {
-    synced: "✓",
-    warn: "⚠",
-    danger: "🚨",
-    partial: "◦",
+  const kindIconMap: Record<string, typeof CheckCircle2> = {
+    synced: CheckCircle2,
+    warn: AlertTriangle,
+    danger: ShieldAlert,
+    partial: CircleDot,
   };
+  const KindIcon = kindIconMap[narrative.verdict] ?? CircleDot;
   const lcaSha = narrative.commonAncestor
     ? narrative.commonAncestor.slice(0, 7)
     : "범위 밖";
@@ -487,7 +507,7 @@ function TimelineStatusPanel({
   return (
     <section className={`gtl-status gtl-status-${narrative.verdict}`}>
       <header className="gtl-status-head">
-        <span className="gtl-status-icon">{kindIcon[narrative.verdict]}</span>
+        <span className="gtl-status-icon"><KindIcon size={22} /></span>
         <div>
           <h3 className="gtl-status-title">{narrative.headline}</h3>
           <div className="gtl-status-sub">
@@ -498,7 +518,7 @@ function TimelineStatusPanel({
       <div className="gtl-status-rows">
         <HostRow
           cls="remote"
-          emoji="📦"
+          icon={<GithubBrand size={16} />}
           name="GitHub origin"
           sha={pointers.remote}
           chip={<span className="gtl-chip remote-tag">기준</span>}
@@ -506,29 +526,29 @@ function TimelineStatusPanel({
         {macHost ? (
           <HostRow
             cls="mac"
-            emoji="🍎"
+            icon={<Apple size={16} fill="currentColor" strokeWidth={0} />}
             name={macHost.host}
             sha={pointers[macHost.host]}
             chip={renderSummaryChip(summary[macHost.host])}
           />
         ) : (
-          <HostRowOff cls="mac" emoji="🍎" label="macOS" />
+          <HostRowOff cls="mac" icon={<Apple size={16} fill="currentColor" strokeWidth={0} />} label="macOS" />
         )}
         {winHost ? (
           <HostRow
             cls="win"
-            emoji="🪟"
+            icon={<WindowsBrand size={16} />}
             name={winHost.host}
             sha={pointers[winHost.host]}
             chip={renderSummaryChip(summary[winHost.host])}
           />
         ) : (
-          <HostRowOff cls="win" emoji="🪟" label="Windows" />
+          <HostRowOff cls="win" icon={<WindowsBrand size={16} />} label="Windows" />
         )}
       </div>
       {narrative.action && (
         <div className="gtl-action">
-          <span aria-hidden>⚡</span>
+          <Zap size={14} />
           <span className="gtl-action-text">{narrative.action}</span>
         </div>
       )}
@@ -538,22 +558,20 @@ function TimelineStatusPanel({
 
 function HostRow({
   cls,
-  emoji,
+  icon,
   name,
   sha,
   chip,
 }: {
   cls: string;
-  emoji: string;
+  icon: JSX.Element;
   name: string;
   sha: string | undefined;
   chip: JSX.Element | null;
 }) {
   return (
     <div className={`gtl-row gtl-row-${cls}`}>
-      <span className="gtl-row-ic" aria-hidden>
-        {emoji}
-      </span>
+      <span className="gtl-row-ic">{icon}</span>
       <span className="gtl-row-name">{name}</span>
       <span className="gtl-row-sha mono">
         {sha ? sha.slice(0, 7) : "—"}
@@ -565,18 +583,16 @@ function HostRow({
 
 function HostRowOff({
   cls,
-  emoji,
+  icon,
   label,
 }: {
   cls: string;
-  emoji: string;
+  icon: JSX.Element;
   label: string;
 }) {
   return (
     <div className={`gtl-row gtl-row-${cls} off`}>
-      <span className="gtl-row-ic" aria-hidden>
-        {emoji}
-      </span>
+      <span className="gtl-row-ic">{icon}</span>
       <span className="gtl-row-name">
         {label} <span className="gtl-row-off">(스캔 데이터 없음)</span>
       </span>
@@ -597,15 +613,15 @@ function renderSummaryChip(s: {
   if (!s.ahead && !s.behind && s.has_remote) {
     return (
       <span className="gtl-chip eq">
-        <span aria-hidden>✓</span>
+        <CheckCircle2 size={11} />
         <span>origin과 동일</span>
       </span>
     );
   }
   return (
     <>
-      {s.ahead > 0 && <span className="gtl-chip ahead">↑{s.ahead}</span>}
-      {s.behind > 0 && <span className="gtl-chip behind">↓{s.behind}</span>}
+      {s.ahead > 0 && <span className="gtl-chip ahead"><ArrowUp size={11} />{s.ahead}</span>}
+      {s.behind > 0 && <span className="gtl-chip behind"><ArrowDown size={11} />{s.behind}</span>}
     </>
   );
 }
@@ -962,7 +978,7 @@ function TimelineDetailPanel({
   return (
     <section className="gtl-detail">
       <header className="gtl-detail-head">
-        <span aria-hidden>🎯</span>
+        <Target size={13} />
         <span>선택된 커밋</span>
       </header>
       {commit ? (

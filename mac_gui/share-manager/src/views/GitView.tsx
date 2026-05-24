@@ -6,6 +6,11 @@
 // in T1.5 (next Wave C step). Until then we just log + toast.
 
 import { useMemo, useState } from "react";
+import {
+  GitBranch,
+  CheckCircle2,
+  ShieldAlert,
+} from "lucide-react";
 import { useGitStore } from "../lib/gitStore";
 import { GitToolbar } from "../components/git/GitToolbar";
 import { RepoCard, classifyCard, type RepoCardSummary } from "../components/git/RepoCard";
@@ -57,7 +62,7 @@ export function GitView() {
     <section className="git-view">
       <header className="git-view-head">
         <div>
-          <h1>Git 상태</h1>
+          <h1>Git Status</h1>
           <p className="git-view-subtitle">
             {total === 0
               ? "레포별 Mac-로컬 / Win-로컬 동기화 상태"
@@ -120,7 +125,7 @@ function HeroStats({
           <div className="ghc-num">{total}</div>
           <div className="ghc-sub">3-Node로 동기 모니터링</div>
         </div>
-        <div className="ghc-ic neutral">🌿</div>
+        <div className="ghc-ic neutral"><GitBranch size={20} /></div>
       </div>
       <div className="git-hero-card synced">
         <div className="ghc-body">
@@ -128,7 +133,7 @@ function HeroStats({
           <div className="ghc-num">{synced}</div>
           <div className="ghc-sub">{pct}% in sync</div>
         </div>
-        <div className="ghc-ic sync">✓</div>
+        <div className="ghc-ic sync"><CheckCircle2 size={20} /></div>
       </div>
       <div className={"git-hero-card " + (conflicts > 0 ? "danger" : "safe")}>
         <div className="ghc-body">
@@ -136,7 +141,7 @@ function HeroStats({
           <div className="ghc-num">{conflicts}</div>
           <div className="ghc-sub">{conflicts > 0 ? "머지 전 정리 필요" : "경보 없음"}</div>
         </div>
-        <div className={"ghc-ic " + (conflicts > 0 ? "danger" : "neutral")}>🛡</div>
+        <div className={"ghc-ic " + (conflicts > 0 ? "danger" : "neutral")}><ShieldAlert size={20} /></div>
       </div>
     </section>
   );
@@ -145,10 +150,10 @@ function HeroStats({
 function EmptyState({ hasToken }: { hasToken: boolean }) {
   return (
     <div className="empty git-empty">
-      <div className="empty-icon">🌿</div>
+      <div className="empty-icon"><GitBranch size={28} /></div>
       <div className="empty-title">아직 스캔 기록이 없어요</div>
       <div className="empty-hint">
-        "지금 스캔" 으로 이 머신의 레포를 찾고, Windows 측에서도 스캔하면 양쪽이 비교돼요.
+        "Scan Now" 로 이 머신의 레포를 찾고, Windows 측에서도 스캔하면 양쪽이 비교돼요.
         {!hasToken && (
           <>
             <br />

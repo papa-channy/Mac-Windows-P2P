@@ -1,10 +1,10 @@
-// ThreeNodeBridge — 🍎 MAC ── 📦 ORIGIN ── 🪟 WIN horizontal node row
-// rendered inside each L1 RepoCard. Mirror of windows_gui/.../app.js
-// gitNodeBlock + .git-card-bridge layout.
-//
-// Each node is a tile (icon + LED) + label + a third row that surfaces
-// either dirty count / origin SHA / "Clean" / "없음".
+// ThreeNodeBridge — MAC ── ORIGIN ── WIN horizontal node row inside each
+// L1 RepoCard. Lucide icons (Apple / Github / AppWindow) replace the
+// emoji from the first cut so the visual is consistent with the rest of
+// the chrome.
 
+import { Apple, CheckCircle2 } from "lucide-react";
+import { GithubBrand, WindowsBrand } from "./BrandIcons";
 import type { RepoStatus, RemoteRepoState } from "../../lib/api";
 
 export type NodeKind = "mac" | "remote" | "win";
@@ -27,7 +27,6 @@ export function ThreeNodeBridge({ mac, win, remote }: Props) {
       />
       <div className="gn-link" />
       <NodeBlock kind="win" data={win} dirty={win?.dirty ?? null} />
-      <span className="git-card-chev">›</span>
     </div>
   );
 }
@@ -44,11 +43,11 @@ const LABELS: Record<NodeKind, string> = {
   win: "WIN",
 };
 
-const EMOJI: Record<NodeKind, string> = {
-  mac: "🍎",
-  remote: "📦",
-  win: "🪟",
-};
+function NodeIcon({ kind }: { kind: NodeKind }) {
+  if (kind === "mac") return <Apple size={18} fill="currentColor" strokeWidth={0} />;
+  if (kind === "remote") return <GithubBrand size={18} />;
+  return <WindowsBrand size={18} />;
+}
 
 function NodeBlock({ kind, data, dirty }: NodeBlockProps) {
   const dim = !data;
@@ -62,7 +61,7 @@ function NodeBlock({ kind, data, dirty }: NodeBlockProps) {
   } else {
     third = (
       <span className="gn-clean">
-        <span aria-hidden>✓</span>
+        <CheckCircle2 size={11} />
         <span>Clean</span>
       </span>
     );
@@ -70,7 +69,7 @@ function NodeBlock({ kind, data, dirty }: NodeBlockProps) {
   return (
     <div className={`gn gn-${kind}${dim ? " off" : ""}`}>
       <div className="gn-icon">
-        <span aria-hidden>{EMOJI[kind]}</span>
+        <NodeIcon kind={kind} />
         <span className="gn-led" />
       </div>
       <div className="gn-label">{LABELS[kind]}</div>

@@ -15,10 +15,10 @@
       {
         "label": "main",
         "title": "Mac-Window 공유",
-        "width": 1044,
-        "height": 861,
-        "minWidth": 880,
-        "minHeight": 520,
+        "width": 1320,
+        "height": 880,
+        "minWidth": 980,
+        "minHeight": 600,
         "theme": "Light",
         "decorations": true,
         "dragDropEnabled": true

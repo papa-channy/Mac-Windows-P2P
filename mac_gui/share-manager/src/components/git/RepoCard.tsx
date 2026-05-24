@@ -3,10 +3,20 @@
 // bridge + optional conflict banner. Mirror of windows_gui/.../app.js
 // renderGitL1Card + gitRepoSummary.
 //
-// Clicking the card is meant to open the L2 detail modal — that lands in
-// Wave C step 2 (T1.5). For now the click is a noop hook the consumer
-// can wire.
+// Title uses `text-overflow: ellipsis; white-space: nowrap` so long
+// owner/repo strings shrink instead of word-wrapping vertically (which
+// was breaking conflict cards into 1-char-per-line columns).
 
+import {
+  CheckCircle2,
+  AlertTriangle,
+  ShieldAlert,
+  CircleDot,
+  Clock,
+  ChevronRight,
+} from "lucide-react";
+// ShieldAlert is referenced through KIND_ICON below for the conflict
+// badge; the standalone import keeps tree-shaking happy.
 import type { RepoStatus, RemoteRepoState } from "../../lib/api";
 import { ThreeNodeBridge } from "./ThreeNodeBridge";
 
@@ -30,12 +40,12 @@ interface Props {
   onClick?: (ownerRepo: string | null) => void;
 }
 
-const KIND_ICON: Record<RepoCardKind, string> = {
-  synced: "✓",
-  diverged: "⚠",
-  dirty: "⚠",
-  conflict: "🚨",
-  partial: "◦",
+const KIND_ICON: Record<RepoCardKind, typeof CheckCircle2> = {
+  synced: CheckCircle2,
+  diverged: AlertTriangle,
+  dirty: AlertTriangle,
+  conflict: ShieldAlert,
+  partial: CircleDot,
 };
 
 const KIND_LABEL: Record<RepoCardKind, string> = {
@@ -55,7 +65,6 @@ export function classifyCard(summary: RepoCardSummary): {
   overlaps: string[];
 } {
   const vals = Object.values(summary.byHost);
-  // dirty file overlap (same file dirty across two+ OSes → conflict)
   const filesByOs = new Map<string, Set<string>>();
   for (const v of vals) {
     for (const df of v.dirty_files ?? []) {
@@ -94,6 +103,16 @@ export function RepoCard({ summary, onClick }: Props) {
   const vals = Object.values(summary.byHost);
   const mac = vals.find((v) => v.os === "macos") ?? null;
   const win = vals.find((v) => v.os === "windows") ?? null;
+  const KindIcon = KIND_ICON[kind];
+
+  // Badge label stays short (matches "발산" / "미커밋" / etc) so the
+  // title column never gets pushed into a 1-char-per-line wrap when
+  // the card is narrow. Conflict file count + names live in the badge
+  // tooltip and on the bridge node.
+  const badgeTitle =
+    kind === "conflict"
+      ? `충돌 임박 · ${overlaps.length}개 파일 동시 수정 중\n${overlaps.join("\n")}`
+      : undefined;
 
   return (
     <article
@@ -103,31 +122,28 @@ export function RepoCard({ summary, onClick }: Props) {
       role="button"
       tabIndex={0}
     >
-      {kind === "conflict" && <div className="git-card-stripe" />}
       <header className="git-card-head">
         <div className="git-card-title-wrap">
-          <h3 className="git-card-name">{summary.label}</h3>
+          <h3 className="git-card-name" title={summary.label}>
+            {summary.label}
+          </h3>
           <div className="git-card-meta">
-            <span aria-hidden>🕒</span>
+            <Clock size={11} />
             <span>방금 전 스캔</span>
           </div>
         </div>
-        <span className={`git-card-badge git-card-badge-${kind}`}>
-          <span aria-hidden>{KIND_ICON[kind]}</span>
+        <span
+          className={`git-card-badge git-card-badge-${kind}`}
+          title={badgeTitle}
+        >
+          <KindIcon size={12} />
           <span>{KIND_LABEL[kind]}</span>
         </span>
       </header>
 
       <ThreeNodeBridge mac={mac} win={win} remote={summary.remote} />
 
-      {overlaps.length > 0 && (
-        <div className="git-card-conflict">
-          <span aria-hidden>🚨</span>
-          <span>
-            <b>{overlaps.length}개 파일</b>이 양쪽 머신에서 동시 수정 중입니다.
-          </span>
-        </div>
-      )}
+      <ChevronRight size={16} className="git-card-chev" />
     </article>
   );
 }

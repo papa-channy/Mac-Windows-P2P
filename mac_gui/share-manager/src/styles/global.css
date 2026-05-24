@@ -53,6 +53,9 @@ button { font-family: inherit; }
   flex-direction: column;
   padding: 18px 0;
   gap: 8px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .brand {
@@ -76,37 +79,70 @@ button { font-family: inherit; }
 .brand-title { font-weight: 600; font-size: 13.5px; }
 .brand-subtitle { color: var(--text-sec); font-size: 11px; margin-top: 2px; }
 
+/* Pinned: always visible, never scrolls (Fast Forward / Notes / Clipboard
+ * / Git Status / Refresh / Settings). Compact grid 2-col so 6 items fit
+ * in ~120px and the scrollable area still has room. */
 .nav-pinned {
   padding: 0 10px;
   margin-bottom: 10px;
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.nav-pin {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 4px;
+  padding: 10px 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-sec);
+  font-family: inherit;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
-.nav-pinned .nav-item {
-  padding: 11px 14px;
-  font-weight: 600;
-  font-size: 13px;
+.nav-pin:hover {
+  background: var(--surface-hi);
+  color: var(--text-pri);
+  border-color: var(--text-dim);
 }
-.nav-pinned .nav-item .nav-item-count { display: none; }
+.nav-pin.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-hi));
+  color: white;
+  border-color: var(--accent);
+}
+.nav-pin-icon { display: inline-flex; }
+.nav-pin-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.2px; }
 
-.nav { flex: 1; overflow-y: auto; padding: 0 10px; }
-
-.nav-tools {
+/* Scrollable area: transfer groups + collapsible Log Hub */
+.nav-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
   padding: 0 10px;
-  margin: 8px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  border-top: 1px solid var(--border);
-  padding-top: 12px;
+  min-height: 0;   /* required so flex child can shrink and scroll */
 }
-.nav-tools .nav-item {
-  padding: 11px 14px;
-  font-weight: 600;
-  font-size: 13px;
+
+.nav-group-toggle {
+  background: transparent;
+  border: none;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  text-transform: none;
 }
-.nav-tools .nav-item .nav-item-count { display: none; }
+.nav-group-toggle:hover { color: var(--text-pri); }
+.nav-group-chevron {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-sec);
+}
+.nav-group-icon { color: var(--text-sec); opacity: 0.9; }
 
 /* Active state (only ONE active at a time, anywhere) */
 .nav-item.active {
@@ -156,6 +192,15 @@ button { font-family: inherit; }
 .nav-item-emoji .icon-img { width: 16px; height: 16px; }
 .nav-item-emoji svg { width: 17px; height: 17px; stroke-width: 2; }
 .nav-item.active .nav-item-emoji { color: white; }
+.nav-item-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px;
+  flex-shrink: 0;
+  color: var(--text-sec);
+}
+.nav-item-icon svg { width: 15px; height: 15px; }
+.nav-item-icon .icon-img { width: 16px; height: 16px; }
+.nav-item.active .nav-item-icon { color: white; }
 .nav-item-label { flex: 1; font-size: 12.5px; }
 .nav-item-count {
   background: var(--surface-2);
@@ -168,38 +213,12 @@ button { font-family: inherit; }
 }
 .nav-item.active .nav-item-count { background: var(--accent); color: white; }
 
-.refresh, .settings-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  justify-content: center;
-  margin: 4px 16px;
-  padding: 10px 14px;
-  background: var(--surface-2);
-  color: var(--text-sec);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.1s, color 0.1s, border-color 0.1s;
-  font-family: inherit;
-}
-.refresh:hover, .settings-btn:hover {
-  background: var(--surface-hi);
-  color: var(--text-pri);
-  border-color: var(--text-dim);
-}
-.settings-btn.active {
-  background: var(--accent);
-  color: white;
-  border-color: var(--accent);
-}
-
 .status {
-  padding: 6px 18px;
+  padding: 8px 18px;
   font-size: 10.5px;
   color: var(--text-dim);
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
 }
 
 /* ─── Main panel ──────────────────────────────────────────────── */
@@ -1329,19 +1348,24 @@ button { font-family: inherit; }
 }
 
 .git-card-head {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
   gap: 12px;
   margin-bottom: 12px;
+  overflow: hidden;
 }
+.git-card-title-wrap { min-width: 0; overflow: hidden; }
 .git-card-name {
   margin: 0;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 13.5px;
   font-weight: 600;
   color: var(--text);
-  word-break: break-all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .git-card-meta {
   display: inline-flex;
@@ -1422,18 +1446,6 @@ button { font-family: inherit; }
   align-self: center;
 }
 .git-card:hover .git-card-chev { transform: translateX(2px); color: var(--accent, #2563eb); }
-
-.git-card-conflict {
-  margin-top: 10px;
-  padding: 8px 12px;
-  background: rgba(225, 29, 72, 0.08);
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11.5px;
-  color: #c41818;
-}
 
 .git-empty {
   padding: 60px 24px;
@@ -2150,3 +2162,37 @@ button { font-family: inherit; }
   font-weight: 600;
 }
 .clip-group-body { display: flex; flex-direction: column; gap: 6px; }
+
+/* ─── Lucide icon helpers ─────────────────────────────────────── */
+@keyframes git-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.git-tb-spin { animation: git-spin 1s linear infinite; }
+.git-tb-icon { display: inline-flex; align-items: center; }
+.git-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.git-toolbar-btn.ghost { background: transparent; }
+.git-toolbar-btn svg { display: block; }
+
+.git-card-chev { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--text-sec); transition: transform 0.12s, color 0.12s; }
+.git-card:hover .git-card-chev { transform: translate(2px, -50%); color: var(--accent, #2563eb); }
+.git-card { position: relative; }
+
+/* ─── Generic modal overlay (used by GitDetailModal, HtmlInspectorModal, …) ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(15, 15, 30, 0.42);
+  backdrop-filter: blur(2px);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+/* Empty category rows — keep visible but visually de-prioritized so the
+ * sidebar's full taxonomy is always discoverable. */
+.nav-item.is-empty { opacity: 0.5; }
+.nav-item.is-empty:hover { opacity: 0.85; background: var(--surface-hi); }
+.nav-item.is-empty.active { opacity: 1; }
