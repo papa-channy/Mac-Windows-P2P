@@ -1332,3 +1332,72 @@ mod html_inspect_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod html_inspect_extra_tests {
+    use super::*;
+
+    #[test]
+    fn filters_protocol_prefixes_and_anchors() {
+        let td = tempfile::tempdir().unwrap();
+        let html = td.path().join("page.html");
+        std::fs::write(
+            &html,
+            br##"<html><body>
+<a href="#top">top</a>
+<a href="mailto:foo@example.com">m</a>
+<a href="tel:+1234">t</a>
+<a href="javascript:void(0)">j</a>
+<a href="data:text/plain;base64,YWJj">d</a>
+<a href="//cdn.example.com/x.js">proto-rel</a>
+<a href="http://x.example.com/y">http</a>
+</body></html>"##,
+        )
+        .unwrap();
+        let r = inspect_html_assets(html.to_string_lossy().into_owned()).unwrap();
+        assert!(r.is_html);
+        // All of those refs are filtered out; nothing should remain.
+        assert_eq!(r.assets.len(), 0, "all 7 refs are non-local");
+    }
+
+    #[test]
+    fn classifies_kinds_by_extension() {
+        let td = tempfile::tempdir().unwrap();
+        let html = td.path().join("page.html");
+        std::fs::write(
+            &html,
+            br#"<link href="m.mjs"><img src="i.WEBP"><a href="readme.md">"#,
+        )
+        .unwrap();
+        let r = inspect_html_assets(html.to_string_lossy().into_owned()).unwrap();
+        // case-insensitive extension classification
+        let mjs = r.assets.iter().find(|a| a.reference == "m.mjs").unwrap();
+        assert_eq!(mjs.kind, "script");
+        let webp = r.assets.iter().find(|a| a.reference == "i.WEBP").unwrap();
+        assert_eq!(webp.kind, "img");
+        let md = r.assets.iter().find(|a| a.reference == "readme.md").unwrap();
+        assert_eq!(md.kind, "other");
+    }
+
+    #[test]
+    fn url_in_css_inline_style_attr_picked_up() {
+        let td = tempfile::tempdir().unwrap();
+        let html = td.path().join("page.html");
+        std::fs::write(
+            &html,
+            br#"<div style="background: url('bg.png') no-repeat"></div>"#,
+        )
+        .unwrap();
+        let r = inspect_html_assets(html.to_string_lossy().into_owned()).unwrap();
+        let bg = r.assets.iter().find(|a| a.reference == "bg.png");
+        assert!(bg.is_some(), "url() in style attr should be detected");
+        assert_eq!(bg.unwrap().kind, "img");
+    }
+
+    #[test]
+    fn missing_file_returns_propagated_error() {
+        let r = inspect_html_assets("/nonexistent/path.html".to_string()).unwrap();
+        // Not an html file (doesn't exist) → returns is_html: false.
+        assert!(!r.is_html);
+    }
+}

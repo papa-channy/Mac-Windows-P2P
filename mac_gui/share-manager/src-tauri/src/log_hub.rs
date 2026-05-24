@@ -211,6 +211,45 @@ mod tests {
     }
 
     #[test]
+    fn rotation_trims_to_keep_lines() {
+        let _g = crate::test_util::ENV_LOCK.lock().unwrap();
+        let _f = ShareFixture::new();
+        for i in 0..(ROTATE_KEEP + 50) {
+            append_log("error", serde_json::json!({"event": "send_fail", "n": i}));
+        }
+        let v = list_log_entries("error".into(), None).unwrap();
+        assert_eq!(
+            v.len(),
+            ROTATE_KEEP,
+            "should have been trimmed to ROTATE_KEEP"
+        );
+        // newest first → first entry's `n` should be the last we appended
+        assert_eq!(
+            v[0].get("n").and_then(|x| x.as_u64()),
+            Some((ROTATE_KEEP + 50 - 1) as u64)
+        );
+    }
+
+    #[test]
+    fn caller_supplied_fields_not_overwritten() {
+        let _g = crate::test_util::ENV_LOCK.lock().unwrap();
+        let _f = ShareFixture::new();
+        append_log(
+            "send",
+            serde_json::json!({
+                "ts": "1999-01-01T00:00:00Z",
+                "host": "explicit-host",
+                "os": "linux",
+                "event": "test",
+            }),
+        );
+        let v = list_log_entries("send".into(), None).unwrap();
+        assert_eq!(v[0].get("ts").and_then(|x| x.as_str()), Some("1999-01-01T00:00:00Z"));
+        assert_eq!(v[0].get("host").and_then(|x| x.as_str()), Some("explicit-host"));
+        assert_eq!(v[0].get("os").and_then(|x| x.as_str()), Some("linux"));
+    }
+
+    #[test]
     fn worklog_command_writes_jsonl() {
         let _g = crate::test_util::ENV_LOCK.lock().unwrap();
         let _f = ShareFixture::new();

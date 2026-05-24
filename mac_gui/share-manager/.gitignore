@@ -1,18 +1,7 @@
-# Rust / Cargo
-target/
-**/*.rs.bk
-
-# Node / Vite
-node_modules/
-dist/
-.vite/
-*.local
-
-# Tauri
-src-tauri/target/
-src-tauri/gen/
-
-# macOS
-.DS_Store
+node_modules
+dist
+src-tauri/target
+test-results
+playwright-report
+.vite
 *.tsbuildinfo
-src-tauri/Library/

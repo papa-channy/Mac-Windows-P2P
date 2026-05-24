@@ -1056,4 +1056,36 @@ mod tests {
         assert_eq!(host_id_safe("chans-MacBook.local"), "chans-MacBook_local");
         assert_eq!(host_id_safe("My Mac (work)"), "My_Mac__work_");
     }
+
+    #[test]
+    fn normalizes_url_with_trailing_path_segments() {
+        assert_eq!(
+            normalize_owner_repo("https://github.com/foo/bar/tree/main"),
+            Some("foo/bar".to_string())
+        );
+    }
+
+    #[test]
+    fn normalizes_url_with_subdomain_strips_correctly() {
+        // www. prefix is part of the host, not part of the segment — we
+        // only key off "github.com" appearing in the URL so the colon /
+        // slash trimming after that prefix takes over.
+        assert_eq!(
+            normalize_owner_repo("https://www.github.com/foo/bar.git"),
+            Some("foo/bar".to_string())
+        );
+    }
+
+    #[test]
+    fn default_exclude_dirs_contains_common_build_outputs() {
+        let excl = default_exclude_dirs();
+        for needle in ["node_modules", "target", "venv", ".next", "build", "dist"] {
+            assert!(excl.contains(needle), "missing exclude: {needle}");
+        }
+    }
+
+    #[test]
+    fn host_id_safe_empty_input() {
+        assert_eq!(host_id_safe(""), "");
+    }
 }

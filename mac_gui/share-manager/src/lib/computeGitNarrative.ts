@@ -49,7 +49,10 @@ export function computeGitNarrative(
   graph: RepoGraph,
   branch?: string,
 ): GitNarrative {
-  const b = branch ?? graph.default_branch ?? graph.branches[0] ?? "main";
+  // Use || (not ??) so that an empty-string default_branch falls through
+  // to the first available branch — backend returns "" when the repo
+  // has no origin/HEAD set.
+  const b = branch || graph.default_branch || graph.branches[0] || "main";
   const empty: GitNarrative = {
     verdict: "partial",
     headline: "원격 데이터 없음",

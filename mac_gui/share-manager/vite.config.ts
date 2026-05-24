@@ -9,8 +9,11 @@ export default defineConfig(() => ({
   plugins: [react()],
   clearScreen: false,
   server: {
-    port: 5173,
-    strictPort: true,
+    // Playwright (and other parallel envs) can override the port via
+    // PW_DEV_PORT — Tauri itself always wants 5173 so we only relax
+    // strictPort when the override is set.
+    port: process.env.PW_DEV_PORT ? Number(process.env.PW_DEV_PORT) : 5173,
+    strictPort: !process.env.PW_DEV_PORT,
     host: host || false,
     hmr: host
       ? { protocol: "ws", host, port: 5174 }
