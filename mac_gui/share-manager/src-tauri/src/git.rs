@@ -407,9 +407,21 @@ pub fn scan_and_publish_git() -> Result<u32, String> {
         String,
         std::collections::BTreeMap<String, Vec<CommitNode>>,
     > = std::collections::BTreeMap::new();
+    // Dedup by owner_repo — Mac scans multiple roots (~/Developer +
+    // ~/Projects + …) so the same GitHub repo cloned to two places
+    // would otherwise show up twice in `statuses` and confuse the
+    // dashboard (Windows side stays single because it walks drive
+    // letters, not nested user dirs).
+    let mut seen_owner: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
 
     for p in &found {
         let st = repo_status_at(p);
+        if let Some(ref or) = st.owner_repo {
+            if !seen_owner.insert(or.clone()) {
+                continue; // already published a clone of this repo
+            }
+        }
         let key = st
             .owner_repo
             .clone()

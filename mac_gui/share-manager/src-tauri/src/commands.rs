@@ -160,8 +160,31 @@ pub fn send_path(source_path: String, category: String) -> Result<String, String
     )
     .map_err(|e| e.to_string())?;
     match transfer::engine::send(&req) {
-        Ok(o) => Ok(o.transfer_id),
-        Err(e) => Err(e.to_string()),
+        Ok(o) => {
+            crate::log_hub::append_log(
+                "send",
+                serde_json::json!({
+                    "event": "send_ok",
+                    "source": source_path,
+                    "category": category,
+                    "transfer_id": o.transfer_id,
+                }),
+            );
+            Ok(o.transfer_id)
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            crate::log_hub::append_log(
+                "error",
+                serde_json::json!({
+                    "event": "send_fail",
+                    "source": source_path,
+                    "category": category,
+                    "stderr": msg,
+                }),
+            );
+            Err(msg)
+        }
     }
 }
 
@@ -175,9 +198,35 @@ pub fn send_path_force(source_path: String, category: String) -> Result<String, 
         true,
     )
     .map_err(|e| e.to_string())?;
-    transfer::engine::send(&req)
-        .map(|o| o.transfer_id)
-        .map_err(|e| e.to_string())
+    match transfer::engine::send(&req) {
+        Ok(o) => {
+            crate::log_hub::append_log(
+                "send",
+                serde_json::json!({
+                    "event": "send_ok",
+                    "source": source_path,
+                    "category": category,
+                    "transfer_id": o.transfer_id,
+                    "forced": true,
+                }),
+            );
+            Ok(o.transfer_id)
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            crate::log_hub::append_log(
+                "error",
+                serde_json::json!({
+                    "event": "send_fail",
+                    "source": source_path,
+                    "category": category,
+                    "stderr": msg,
+                    "forced": true,
+                }),
+            );
+            Err(msg)
+        }
+    }
 }
 
 #[tauri::command]
@@ -840,20 +889,57 @@ pub fn auto_verify_pending() -> Result<u32, String> {
             if cache.join(format!("{tid}.json")).exists() {
                 continue;
             }
-            if let Ok(r) = verify_transfer(tid.clone()) {
-                let summary = serde_json::json!({
-                    "transfer_id": r.transfer_id,
-                    "ok": r.ok,
-                    "checked": r.checked,
-                    "mismatches": r.mismatches,
-                    "missing": r.missing,
-                    "ts": chrono::Local::now().to_rfc3339(),
-                });
-                let _ = std::fs::write(
-                    cache.join(format!("{tid}.json")),
-                    serde_json::to_string(&summary).unwrap_or_default(),
-                );
-                done += 1;
+            match verify_transfer(tid.clone()) {
+                Ok(r) => {
+                    let summary = serde_json::json!({
+                        "transfer_id": r.transfer_id,
+                        "ok": r.ok,
+                        "checked": r.checked,
+                        "mismatches": r.mismatches,
+                        "missing": r.missing,
+                        "ts": chrono::Local::now().to_rfc3339(),
+                    });
+                    let _ = std::fs::write(
+                        cache.join(format!("{tid}.json")),
+                        serde_json::to_string(&summary).unwrap_or_default(),
+                    );
+                    // Mirror Windows side: feed the shared 80_Logs hub
+                    // so the Log Hub view shows Mac-originated activity
+                    // alongside Windows entries.
+                    if r.ok {
+                        crate::log_hub::append_log(
+                            "recv",
+                            serde_json::json!({
+                                "event": "verify_ok",
+                                "transfer_id": r.transfer_id,
+                                "checked": r.checked,
+                                "direction": r.direction,
+                            }),
+                        );
+                    } else {
+                        crate::log_hub::append_log(
+                            "error",
+                            serde_json::json!({
+                                "event": "verify_fail",
+                                "transfer_id": r.transfer_id,
+                                "mismatches": r.mismatches,
+                                "missing": r.missing,
+                                "direction": r.direction,
+                            }),
+                        );
+                    }
+                    done += 1;
+                }
+                Err(err) => {
+                    crate::log_hub::append_log(
+                        "error",
+                        serde_json::json!({
+                            "event": "verify_error",
+                            "transfer_id": tid,
+                            "error": err,
+                        }),
+                    );
+                }
             }
         }
     }
