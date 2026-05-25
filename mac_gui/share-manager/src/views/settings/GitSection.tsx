@@ -15,8 +15,8 @@ export function GitSection() {
           ~/.ssh 에 저장 — 셰어에는 절대 게시되지 않습니다.
         </p>
       </header>
-      <TokenSettings />
       <SshSettings />
+      <TokenSettings />
     </section>
   );
 }

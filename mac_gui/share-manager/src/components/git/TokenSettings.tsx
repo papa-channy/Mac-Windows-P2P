@@ -71,30 +71,12 @@ export function TokenSettings() {
     }
   };
 
-  const publishMyKey = async () => {
-    setBusy(true);
-    try {
-      // Auto-generate the SSH key on the first publish so the user
-      // doesn't need a separate "generate" click. No-op if a key
-      // already exists.
-      if (!store.ssh?.has_key) {
-        await api.git.generateSshKey();
-        await store.refresh();
-      }
-      const dst = await api.git.publishHostPubkey();
-      toast(`SSH 공개키 셰어에 게시됨: ${dst.replace(/^.*\//, "")}`, "success");
-    } catch (e) {
-      toast(`공개키 게시 실패: ${e}`, "error");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const clear = async () => {
     setBusy(true);
     try {
       await api.git.clearToken();
       setInfo(null);
+      setErrorText(null);
       toast("토큰 삭제됨", "success");
       await store.refresh();
     } catch (e) {
@@ -107,10 +89,11 @@ export function TokenSettings() {
   return (
     <div className="git-settings-block">
       <div className="git-settings-block-head">
-        <h4>GitHub Personal Access Token</h4>
+        <h4>2. GitHub PAT (Personal Access Token)</h4>
         <p>
-          Classic 권장 · 스코프 <code>repo</code> + <code>read:org</code> · 키체인에 저장됩니다
-          (셰어 / settings.json 에는 미저장).
+          Classic 권장 · 스코프 <code>repo</code> + <code>read:org</code> · 키체인 저장
+          (셰어 / settings.json 에는 미저장). <b>저장 시 1번에서 셰어에 게시한 다른 호스트들의
+          SSH 공개키로 age 암호화 후 자동 공유</b> — 다른 머신에서 같은 PAT 재입력 불필요.
         </p>
       </div>
 
@@ -128,7 +111,9 @@ export function TokenSettings() {
               )
             : <span className="git-settings-ok">✅ 등록됨 (검증 대기)</span>
           : <span className="git-settings-warn">⚠ 등록된 토큰 없음</span>}
-        {errorText && <div className="git-settings-error">❌ {errorText}</div>}
+        {store.hasToken && errorText && (
+          <div className="git-settings-error">❌ {errorText}</div>
+        )}
       </div>
 
       <div className="git-settings-row">
@@ -154,21 +139,6 @@ export function TokenSettings() {
         </button>
       </div>
 
-      <p className="git-settings-hint">
-        💡 PAT 저장 시 다른 호스트의 SSH 공개키로 age 암호화 후 셰어 통해 자동 공유.
-        다른 호스트가 자기 SSH 키로 복호화해서 keychain 에 import — 양쪽 등록 1회로 OK.
-        SSH 키가 없거나 peer 키가 셰어에 없으면 자동 공유는 skip 됩니다.
-      </p>
-      <div className="git-settings-row">
-        <button
-          className="ghost-btn"
-          onClick={publishMyKey}
-          disabled={busy}
-          title="다른 호스트가 내게 PAT 보낼 수 있게 SSH 공개키를 셰어에 게시 (키 없으면 자동 생성)"
-        >
-          {busy ? "처리 중…" : store.ssh?.has_key ? "내 SSH 공개키 셰어에 게시" : "SSH 키 생성 + 셰어에 게시"}
-        </button>
-      </div>
     </div>
   );
 }
