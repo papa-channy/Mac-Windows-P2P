@@ -128,6 +128,12 @@ pub fn run() {
             git::git_file_diff,
             git::git_config_read,
             git::git_list_branches,
+            // Interactive git ops (Task #44)
+            git::git_op_fetch,
+            git::git_op_pull,
+            git::git_op_push,
+            git::git_op_stash,
+            git::git_op_stash_pop,
             git::git_set_token,
             git::git_has_token,
             git::git_clear_token,

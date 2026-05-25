@@ -2268,3 +2268,50 @@ button { font-family: inherit; }
   font-weight: 700;
   color: var(--accent, #2563eb);
 }
+
+/* ─── L2 modal — interactive git ops bar (Mac side) ─────────── */
+.git-ops-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  background: var(--surface-low);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  flex-wrap: wrap;
+}
+.git-ops-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--text-sec);
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+.git-ops-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text);
+  font-family: inherit;
+  transition: background 0.1s, border-color 0.1s;
+}
+.git-ops-btn:hover:not(:disabled) {
+  background: var(--surface-hi);
+  border-color: var(--accent, #2563eb);
+}
+.git-ops-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.git-ops-btn.busy { background: rgba(37, 99, 235, 0.07); border-color: var(--accent, #2563eb); }
+.git-ops-disabled {
+  font-size: 11.5px;
+  color: var(--text-sec);
+  font-style: italic;
+}

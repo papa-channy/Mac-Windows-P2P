@@ -199,6 +199,19 @@ export const api = {
       invoke<string>("git_config_read", { repoPath }),
     listBranches: (repoPath: string) =>
       invoke<string[]>("git_list_branches", { repoPath }),
+    /** Interactive ops — each returns {ok, stdout, stderr, exit_code}.
+     * Pull uses --ff-only so a diverged branch fails loudly rather
+     * than silently starting a merge. */
+    opFetch: (repoPath: string) =>
+      invoke<GitOpResult>("git_op_fetch", { repoPath }),
+    opPull: (repoPath: string) =>
+      invoke<GitOpResult>("git_op_pull", { repoPath }),
+    opPush: (repoPath: string) =>
+      invoke<GitOpResult>("git_op_push", { repoPath }),
+    opStash: (repoPath: string, message?: string) =>
+      invoke<GitOpResult>("git_op_stash", { repoPath, message }),
+    opStashPop: (repoPath: string) =>
+      invoke<GitOpResult>("git_op_stash_pop", { repoPath }),
     /** Single shared PAT — no host param per brief §18.3. */
     setToken: (token: string) =>
       invoke<void>("git_set_token", { token }),
@@ -270,6 +283,14 @@ export interface ReleaseEntry {
   title: string;
   highlights: string[];
   notes: string;
+}
+
+/** Result of an interactive git op (pull/push/fetch/stash). */
+export interface GitOpResult {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+  exit_code: number | null;
 }
 
 /** mDNS-discovered SMB host on the local subnet. */

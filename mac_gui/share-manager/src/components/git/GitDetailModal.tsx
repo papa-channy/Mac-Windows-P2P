@@ -29,6 +29,7 @@ import { GithubBrand, WindowsBrand } from "./BrandIcons";
 import { useGitStore } from "../../lib/gitStore";
 import type { RepoStatus, RemoteRepoState } from "../../lib/api";
 import { classifyCard, type RepoCardSummary } from "./RepoCard";
+import { GitOpsBar } from "./GitOpsBar";
 
 interface Props {
   isOpen: boolean;
@@ -146,6 +147,8 @@ export function GitDetailModal({
           onClose={onClose}
         />
         <StatusChip kind={kind} overlaps={overlaps.length} />
+
+        <GitOpsBar repoPath={macHost?.repo.path ?? null} />
 
         <div className="git-l2-shell">
           {overlaps.length > 0 && <div className="git-l2-pulse" />}

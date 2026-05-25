@@ -535,6 +535,113 @@ pub fn git_config_read(repo_path: String) -> Result<String, String> {
     std::fs::read_to_string(&p).map_err(|e| e.to_string())
 }
 
+// ─── Interactive ops — pull / push / fetch / stash / stash pop ─────
+//
+// Mac side runs `git` against the repo path and returns combined
+// stdout+stderr so the toast can show whatever git printed. Failure
+// means the git CLI exited non-zero (auth failure, conflicts, no
+// upstream, …). Each op auto-fires log_hub events so the Log Hub view
+// records who ran what when.
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GitOpResult {
+    pub ok: bool,
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: Option<i32>,
+}
+
+fn run_git_op(repo: &Path, args: &[&str]) -> GitOpResult {
+    let out = Command::new("git").arg("-C").arg(repo).args(args).output();
+    match out {
+        Ok(o) => GitOpResult {
+            ok: o.status.success(),
+            stdout: String::from_utf8_lossy(&o.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&o.stderr).into_owned(),
+            exit_code: o.status.code(),
+        },
+        Err(e) => GitOpResult {
+            ok: false,
+            stdout: String::new(),
+            stderr: format!("git exec failed: {e}"),
+            exit_code: None,
+        },
+    }
+}
+
+fn log_op(op: &'static str, repo: &Path, r: &GitOpResult) {
+    let category = if r.ok { "send" } else { "error" };
+    crate::log_hub::append_log(
+        category,
+        serde_json::json!({
+            "event": if r.ok { format!("git_{op}_ok") } else { format!("git_{op}_fail") },
+            "op": op,
+            "repo": repo.to_string_lossy(),
+            "stderr": r.stderr.lines().take(3).collect::<Vec<_>>().join("\n"),
+            "exit": r.exit_code,
+        }),
+    );
+}
+
+#[tauri::command]
+pub fn git_op_fetch(repo_path: String) -> Result<GitOpResult, String> {
+    let repo = Path::new(&repo_path);
+    if !repo.join(".git").exists() {
+        return Err("레포 경로가 유효하지 않음".into());
+    }
+    let r = run_git_op(repo, &["fetch", "--all", "--prune"]);
+    log_op("fetch", repo, &r);
+    Ok(r)
+}
+
+#[tauri::command]
+pub fn git_op_pull(repo_path: String) -> Result<GitOpResult, String> {
+    let repo = Path::new(&repo_path);
+    if !repo.join(".git").exists() {
+        return Err("레포 경로가 유효하지 않음".into());
+    }
+    // `--ff-only` is the safe default — if the local branch has
+    // diverged the op refuses with a clear error rather than starting
+    // a merge the user didn't ask for. Toast surfaces the stderr.
+    let r = run_git_op(repo, &["pull", "--ff-only"]);
+    log_op("pull", repo, &r);
+    Ok(r)
+}
+
+#[tauri::command]
+pub fn git_op_push(repo_path: String) -> Result<GitOpResult, String> {
+    let repo = Path::new(&repo_path);
+    if !repo.join(".git").exists() {
+        return Err("레포 경로가 유효하지 않음".into());
+    }
+    let r = run_git_op(repo, &["push"]);
+    log_op("push", repo, &r);
+    Ok(r)
+}
+
+#[tauri::command]
+pub fn git_op_stash(repo_path: String, message: Option<String>) -> Result<GitOpResult, String> {
+    let repo = Path::new(&repo_path);
+    if !repo.join(".git").exists() {
+        return Err("레포 경로가 유효하지 않음".into());
+    }
+    let msg = message.unwrap_or_else(|| "share-manager auto stash".to_string());
+    let r = run_git_op(repo, &["stash", "push", "-u", "-m", &msg]);
+    log_op("stash", repo, &r);
+    Ok(r)
+}
+
+#[tauri::command]
+pub fn git_op_stash_pop(repo_path: String) -> Result<GitOpResult, String> {
+    let repo = Path::new(&repo_path);
+    if !repo.join(".git").exists() {
+        return Err("레포 경로가 유효하지 않음".into());
+    }
+    let r = run_git_op(repo, &["stash", "pop"]);
+    log_op("stash_pop", repo, &r);
+    Ok(r)
+}
+
 #[tauri::command]
 pub fn git_list_branches(repo_path: String) -> Result<Vec<String>, String> {
     let repo = Path::new(&repo_path);
