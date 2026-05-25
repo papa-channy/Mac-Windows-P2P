@@ -63,6 +63,7 @@ pub fn run() {
             commands::open_path,
             commands::reveal_in_explorer,
             commands::list_directory,
+            commands::read_file_preview,
             commands::parent_directory,
             commands::home_directory,
             commands::desktop_directory,

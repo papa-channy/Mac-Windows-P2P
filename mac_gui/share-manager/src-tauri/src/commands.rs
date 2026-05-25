@@ -275,6 +275,53 @@ pub fn reveal_in_explorer(app: tauri::AppHandle, path: String) -> Result<(), Str
         .map_err(|e| e.to_string())
 }
 
+// ─── File preview (Task #45) ──────────────────────────────────────
+//
+// Reads the head of a file for the DetailsModal preview. Returns the
+// text content (UTF-8 valid only — binary refused), the size, and a
+// `truncated` flag if the file was longer than max_bytes. For images
+// + PDF the frontend uses convertFileSrc directly against item.path
+// — this command is only for text-shaped content.
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FilePreview {
+    pub size_bytes: u64,
+    pub text: String,
+    pub truncated: bool,
+    pub binary: bool,
+}
+
+#[tauri::command]
+pub fn read_file_preview(path: String, max_bytes: Option<u64>) -> Result<FilePreview, String> {
+    let cap = max_bytes.unwrap_or(256 * 1024);
+    let p = Path::new(&path);
+    let meta = std::fs::metadata(p).map_err(|e| e.to_string())?;
+    if meta.is_dir() {
+        return Err("디렉토리는 미리보기 불가".into());
+    }
+    let size_bytes = meta.len();
+    use std::io::Read as _;
+    let mut f = std::fs::File::open(p).map_err(|e| e.to_string())?;
+    let mut buf = vec![0u8; cap.min(size_bytes) as usize];
+    let n = f.read(&mut buf).map_err(|e| e.to_string())?;
+    buf.truncate(n);
+    let truncated = (n as u64) < size_bytes;
+    match String::from_utf8(buf) {
+        Ok(text) => Ok(FilePreview {
+            size_bytes,
+            text,
+            truncated,
+            binary: false,
+        }),
+        Err(_) => Ok(FilePreview {
+            size_bytes,
+            text: String::new(),
+            truncated,
+            binary: true,
+        }),
+    }
+}
+
 #[tauri::command]
 pub fn list_directory(path: String, max_depth: u32) -> Result<FsNode, String> {
     let p = PathBuf::from(&path);

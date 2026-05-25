@@ -97,6 +97,12 @@ export const api = {
 
   // --- filesystem helpers ---
   openPath: (path: string) => invoke<void>("open_path", { path }),
+  /** Read up to `maxBytes` (default 256 KB) of a file as UTF-8 text.
+   * Used by DetailsModal preview for non-image / non-PDF formats.
+   * Returns `binary: true` when the head bytes aren't valid UTF-8 —
+   * frontend should fall back to "preview unavailable". */
+  readFilePreview: (path: string, maxBytes?: number) =>
+    invoke<FilePreview>("read_file_preview", { path, maxBytes }),
   revealInExplorer: (path: string) =>
     invoke<void>("reveal_in_explorer", { path }),
   listDirectory: (path: string, maxDepth: number) =>
@@ -283,6 +289,14 @@ export interface ReleaseEntry {
   title: string;
   highlights: string[];
   notes: string;
+}
+
+/** File preview head, returned by `read_file_preview`. */
+export interface FilePreview {
+  size_bytes: number;
+  text: string;
+  truncated: boolean;
+  binary: boolean;
 }
 
 /** Result of an interactive git op (pull/push/fetch/stash). */

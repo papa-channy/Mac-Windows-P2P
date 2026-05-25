@@ -7,6 +7,7 @@ import { Modal } from "./Modal";
 import { api, type TransferItem, type VerifyResult } from "../lib/api";
 import { useToast } from "../lib/toast";
 import { fmtBytes, fmtFull, parseTransferName, prettyName } from "../lib/format";
+import { PreviewPanel } from "./PreviewPanel";
 
 interface Props {
   item: TransferItem | null;
@@ -97,6 +98,7 @@ export function DetailsModal({ item, onClose }: Props) {
         <Row label="transfer_id" value={item.transfer_id} mono />
       )}
       {verifyResult && <VerifyCard result={verifyResult} />}
+      <PreviewPanel item={item} />
     </Modal>
   );
 }
