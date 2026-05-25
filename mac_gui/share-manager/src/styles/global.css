@@ -2418,3 +2418,41 @@ button { font-family: inherit; }
   font-size: 11px;
   color: #b45309;
 }
+
+/* ─── Inline last-result strips (GitToolbar + GitOpsBar) ──────── */
+.git-toolbar-wrap, .git-ops-wrap { display: flex; flex-direction: column; gap: 6px; }
+.git-toolbar-result, .git-ops-result {
+  display: grid;
+  grid-template-columns: 18px auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  border: 1px solid var(--border);
+}
+.git-toolbar-result.ok, .git-ops-result.ok {
+  background: rgba(48, 209, 88, 0.08);
+  border-color: rgba(48, 209, 88, 0.35);
+}
+.git-toolbar-result.err, .git-ops-result.err {
+  background: rgba(225, 29, 72, 0.07);
+  border-color: rgba(225, 29, 72, 0.35);
+}
+.git-tb-result-mark { font-weight: 800; font-size: 13px; text-align: center; }
+.git-toolbar-result.ok .git-tb-result-mark, .git-ops-result.ok .git-tb-result-mark { color: #1f883d; }
+.git-toolbar-result.err .git-tb-result-mark, .git-ops-result.err .git-tb-result-mark { color: #c41818; }
+.git-tb-result-op {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-weight: 600;
+  color: var(--text);
+  font-size: 11.5px;
+}
+.git-tb-result-msg {
+  color: var(--text-sec);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.git-tb-result-time { color: var(--text-dim); font-size: 10.5px; }

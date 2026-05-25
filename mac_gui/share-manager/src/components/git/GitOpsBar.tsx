@@ -42,8 +42,16 @@ interface Props {
   repoPath: string | null;
 }
 
+interface OpResultLine {
+  op: OpId;
+  ok: boolean;
+  message: string;
+  at: number;
+}
+
 export function GitOpsBar({ repoPath }: Props) {
   const [busy, setBusy] = useState<OpId | null>(null);
+  const [last, setLast] = useState<OpResultLine | null>(null);
   const toast = useToast();
   const store = useGitStore();
 
@@ -64,15 +72,19 @@ export function GitOpsBar({ repoPath }: Props) {
       const r = await fn();
       const tail = r.stderr.trim().split("\n").slice(-2).join(" · ") || r.stdout.trim().slice(0, 120);
       if (r.ok) {
-        toast(`✓ git ${op} 완료${tail ? ` · ${tail}` : ""}`, "success");
-        // Re-publish snapshot so the dashboard reflects the new state
-        // immediately (HEAD moved, dirty cleared, etc).
+        const msg = tail || "완료";
+        toast(`✓ git ${op} · ${msg}`, "success");
+        setLast({ op, ok: true, message: msg, at: Date.now() });
         store.scanAndPublish().catch(() => void 0);
       } else {
-        toast(`✗ git ${op} 실패 (exit ${r.exit_code ?? "?"}): ${tail}`, "error");
+        const msg = `exit ${r.exit_code ?? "?"} · ${tail || "stderr 없음"}`;
+        toast(`✗ git ${op} 실패 · ${msg}`, "error");
+        setLast({ op, ok: false, message: msg, at: Date.now() });
       }
     } catch (e) {
-      toast(`✗ git ${op} 호출 실패: ${e}`, "error");
+      const msg = String(e);
+      toast(`✗ git ${op} 호출 실패: ${msg}`, "error");
+      setLast({ op, ok: false, message: msg, at: Date.now() });
     } finally {
       setBusy(null);
     }
@@ -89,24 +101,33 @@ export function GitOpsBar({ repoPath }: Props) {
   };
 
   return (
-    <div className="git-ops-bar">
-      <span className="git-ops-label">Mac ops</span>
-      {OPS.map(({ id, label, Icon, title }) => {
-        const active = busy === id;
-        return (
-          <button
-            key={id}
-            type="button"
-            className={"git-ops-btn" + (active ? " busy" : "")}
-            disabled={busy !== null}
-            onClick={() => run(id, handler(id))}
-            title={title}
-          >
-            {active ? <Loader2 size={13} className="git-tb-spin" /> : <Icon size={13} />}
-            <span>{label}</span>
-          </button>
-        );
-      })}
+    <div className="git-ops-wrap">
+      <div className="git-ops-bar">
+        <span className="git-ops-label">Mac ops</span>
+        {OPS.map(({ id, label, Icon, title }) => {
+          const active = busy === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              className={"git-ops-btn" + (active ? " busy" : "")}
+              disabled={busy !== null}
+              onClick={() => run(id, handler(id))}
+              title={title}
+            >
+              {active ? <Loader2 size={13} className="git-tb-spin" /> : <Icon size={13} />}
+              <span>{label}</span>
+            </button>
+          );
+        })}
+      </div>
+      {last && (
+        <div className={"git-ops-result " + (last.ok ? "ok" : "err")}>
+          <span className="git-tb-result-mark">{last.ok ? "✓" : "✗"}</span>
+          <span className="git-tb-result-op">git {last.op}</span>
+          <span className="git-tb-result-msg">{last.message}</span>
+        </div>
+      )}
     </div>
   );
 }

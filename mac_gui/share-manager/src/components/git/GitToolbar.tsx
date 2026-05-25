@@ -15,21 +15,39 @@ import { Search, Cloud, RefreshCw, Loader2 } from "lucide-react";
 import { useGitStore } from "../../lib/gitStore";
 import { useToast } from "../../lib/toast";
 
+interface OpResult {
+  op: "scan" | "sync" | "refresh";
+  ok: boolean;
+  message: string;
+  at: number; // epoch ms
+}
+
 export function GitToolbar() {
   const store = useGitStore();
   const toast = useToast();
   const [scanning, setScanning] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // Inline "last result" survives the toast timeout — users who looked
+  // away during the spinner can still see what happened.
+  const [last, setLast] = useState<OpResult | null>(null);
+
+  const record = (op: OpResult["op"], ok: boolean, message: string) => {
+    setLast({ op, ok, message, at: Date.now() });
+  };
 
   const scan = async () => {
     if (scanning) return;
     setScanning(true);
     try {
       const n = await store.scanAndPublish();
-      toast(`Scanned and published ${n} repo${n === 1 ? "" : "s"}`, "success");
+      const msg = `Scanned and published ${n} repo${n === 1 ? "" : "s"}`;
+      toast(msg, "success");
+      record("scan", true, msg);
     } catch (e) {
-      toast(`Scan failed: ${e}`, "error");
+      const msg = `Scan failed: ${e}`;
+      toast(msg, "error");
+      record("scan", false, String(e));
     } finally {
       setScanning(false);
     }
@@ -39,19 +57,27 @@ export function GitToolbar() {
     if (fetching) return;
     const ownerRepos = collectOwnerRepos(store);
     if (ownerRepos.length === 0) {
-      toast("No repos to fetch — run Scan Now first", "error");
+      const msg = "No repos to fetch — run Scan Now first";
+      toast(msg, "error");
+      record("sync", false, msg);
       return;
     }
     if (!store.hasToken) {
-      toast("PAT missing — add one in Settings → Git", "error");
+      const msg = "PAT missing — add one in Settings → Git";
+      toast(msg, "error");
+      record("sync", false, msg);
       return;
     }
     setFetching(true);
     try {
       const states = await store.fetchRemote(ownerRepos);
-      toast(`Synced ${states.length} repos from GitHub`, "success");
+      const msg = `Synced ${states.length} repos from GitHub`;
+      toast(msg, "success");
+      record("sync", true, msg);
     } catch (e) {
-      toast(`Remote sync failed: ${e}`, "error");
+      const msg = `Remote sync failed: ${e}`;
+      toast(msg, "error");
+      record("sync", false, String(e));
     } finally {
       setFetching(false);
     }
@@ -62,39 +88,67 @@ export function GitToolbar() {
     setRefreshing(true);
     try {
       await store.refresh();
+      record("refresh", true, "Re-read snapshots + cache");
+    } catch (e) {
+      record("refresh", false, String(e));
     } finally {
       setRefreshing(false);
     }
   };
 
   return (
-    <div className="git-toolbar">
-      <ToolbarButton
-        kind="primary"
-        icon={scanning ? <Loader2 size={14} className="git-tb-spin" /> : <Search size={14} />}
-        label={scanning ? "Scanning…" : "Scan Now"}
-        title="Walk local roots (~/Developer, ~/Projects, …) and publish this host's snapshot"
-        onClick={scan}
-        disabled={scanning || store.loading}
-      />
-      <ToolbarButton
-        kind="primary"
-        icon={fetching ? <Loader2 size={14} className="git-tb-spin" /> : <Cloud size={14} />}
-        label={fetching ? "Syncing…" : "Sync Remote"}
-        title="Fetch default branch / branches / open PRs for every known repo via GitHub API"
-        onClick={syncRemote}
-        disabled={fetching || store.loading}
-      />
-      <ToolbarButton
-        kind="ghost"
-        icon={refreshing ? <Loader2 size={14} className="git-tb-spin" /> : <RefreshCw size={14} />}
-        label={refreshing ? "Refreshing…" : "Refresh All"}
-        title="Re-read every snapshot + cache on the share without firing network calls"
-        onClick={refreshAll}
-        disabled={refreshing || store.loading}
-      />
+    <div className="git-toolbar-wrap">
+      <div className="git-toolbar">
+        <ToolbarButton
+          kind="primary"
+          icon={scanning ? <Loader2 size={14} className="git-tb-spin" /> : <Search size={14} />}
+          label={scanning ? "Scanning…" : "Scan Now"}
+          title="Walk local roots (~/Developer, ~/Projects, …) and publish this host's snapshot"
+          onClick={scan}
+          disabled={scanning || store.loading}
+        />
+        <ToolbarButton
+          kind="primary"
+          icon={fetching ? <Loader2 size={14} className="git-tb-spin" /> : <Cloud size={14} />}
+          label={fetching ? "Syncing…" : "Sync Remote"}
+          title="Fetch default branch / branches / open PRs for every known repo via GitHub API"
+          onClick={syncRemote}
+          disabled={fetching || store.loading}
+        />
+        <ToolbarButton
+          kind="ghost"
+          icon={refreshing ? <Loader2 size={14} className="git-tb-spin" /> : <RefreshCw size={14} />}
+          label={refreshing ? "Refreshing…" : "Refresh All"}
+          title="Re-read every snapshot + cache on the share without firing network calls"
+          onClick={refreshAll}
+          disabled={refreshing || store.loading}
+        />
+      </div>
+      {last && (
+        <div className={"git-toolbar-result " + (last.ok ? "ok" : "err")}>
+          <span className="git-tb-result-mark">{last.ok ? "✓" : "✗"}</span>
+          <span className="git-tb-result-op">{labelFor(last.op)}</span>
+          <span className="git-tb-result-msg">{last.message}</span>
+          <span className="git-tb-result-time">{fmtSince(last.at)}</span>
+        </div>
+      )}
     </div>
   );
+}
+
+function labelFor(op: OpResult["op"]): string {
+  switch (op) {
+    case "scan":    return "Scan Now";
+    case "sync":    return "Sync Remote";
+    case "refresh": return "Refresh All";
+  }
+}
+
+function fmtSince(at: number): string {
+  const sec = Math.floor((Date.now() - at) / 1000);
+  if (sec < 60) return `${sec}초 전`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}분 전`;
+  return new Date(at).toLocaleTimeString();
 }
 
 function ToolbarButton({
