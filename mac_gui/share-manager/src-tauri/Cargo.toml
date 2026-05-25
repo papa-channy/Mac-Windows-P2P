@@ -38,6 +38,11 @@ ureq = { version = "2", features = ["json"] }
 # / identity 로 활용해서 PAT 를 셰어 통과 전달. cross-OS 동등 (Win 측도
 # 같은 crate + 같은 wire format).
 age = { version = "0.10", features = ["ssh"] }
+# mDNS browse — discover direct-link SMB hosts on the local subnet so
+# the user doesn't have to manually type the Windows IP after every
+# network change. Pure-Rust, cross-platform (works on the Win side too
+# when the contract gets backported).
+mdns-sd = "0.13"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.9"

@@ -5,6 +5,7 @@
 
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { api, type SmbHost } from "../../lib/api";
 import { useSettings } from "../../lib/settings";
 
 interface ConnectionStatus {
@@ -28,7 +29,8 @@ export function NetworkSection() {
   const { settings, update } = useSettings();
   const [conn, setConn] = useState<ConnectionStatus | null>(null);
   const [speed, setSpeed] = useState<SpeedResult | null>(null);
-  const [busy, setBusy] = useState<"" | "conn" | "speed">("");
+  const [hosts, setHosts] = useState<SmbHost[] | null>(null);
+  const [busy, setBusy] = useState<"" | "conn" | "speed" | "discover">("");
 
   const setHost = (h: string) =>
     update((s) => ({ ...s, network: { ...s.network, remote_host: h } }));
@@ -56,6 +58,26 @@ export function NetworkSection() {
     }
   };
 
+  const discover = async () => {
+    setBusy("discover");
+    setHosts(null);
+    try {
+      const r = await api.discoverSmbHosts(3);
+      setHosts(r);
+    } catch (e) {
+      console.error("smb discover failed:", e);
+      setHosts([]);
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const pickHost = (h: SmbHost) => {
+    // Prefer the .local mDNS hostname over a raw IPv4 — it survives
+    // DHCP-induced IP changes on the same subnet.
+    setHost(h.mdns_host);
+  };
+
   const runSpeed = async () => {
     setBusy("speed");
     setSpeed(null);
@@ -81,11 +103,58 @@ export function NetworkSection() {
           <input
             type="text"
             className="text-input"
-            placeholder="192.168.50.1"
+            placeholder="DESKTOP-XXXX.local 또는 192.168.x.x"
             value={settings.network.remote_host}
             onChange={(e) => setHost(e.target.value)}
           />
-          <span className="settings-hint">직결 링크의 Windows 호스트 주소.</span>
+          <span className="settings-hint">
+            직결 링크의 Windows 호스트 주소. `.local` mDNS 이름을 쓰면 IP 가
+            바뀌어도 자동 추적.
+          </span>
+        </div>
+      </div>
+
+      <div className="settings-row">
+        <div className="settings-label">자동 검색</div>
+        <div className="settings-control">
+          <div className="btn-row">
+            <button
+              className="ghost-btn"
+              onClick={discover}
+              disabled={!!busy}
+              title="직결망 내 SMB 호스트 (445 포트) 를 mDNS 로 browse"
+            >
+              {busy === "discover" ? "🔍 검색 중…" : "🔍 직결망 호스트 자동 검색"}
+            </button>
+          </div>
+          {hosts !== null && (
+            <div className="discovery-results">
+              {hosts.length === 0 ? (
+                <div className="discovery-empty">
+                  발견된 SMB 호스트 없음. Windows 측이 SMB 공유를 활성화했는지 확인.
+                </div>
+              ) : (
+                hosts.map((h) => {
+                  const active = settings.network.remote_host === h.mdns_host;
+                  return (
+                    <button
+                      key={h.fullname}
+                      className={"discovery-row" + (active ? " active" : "")}
+                      onClick={() => pickHost(h)}
+                      title={`address: ${h.addresses.join(", ")} · port ${h.port}`}
+                    >
+                      <span className="discovery-host">{h.hostname}</span>
+                      <span className="discovery-mdns">{h.mdns_host}</span>
+                      <span className="discovery-addrs">
+                        {h.addresses.slice(0, 2).join(", ")}
+                      </span>
+                      {active && <span className="discovery-tick">선택됨</span>}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
         </div>
       </div>
 

@@ -2,6 +2,7 @@ mod announcement;
 mod clipboard;
 mod commands;
 mod desktop_alias;
+mod discovery;
 mod git;
 mod log_hub;
 mod mount;
@@ -108,6 +109,8 @@ pub fn run() {
             commands::auto_verify_pending,
             // T7 quality framework worklog
             commands::append_worklog,
+            // mDNS direct-link discovery
+            discovery::discover_smb_hosts,
             // T4 Log Hub
             log_hub::list_log_entries,
             log_hub::append_log_worklog,

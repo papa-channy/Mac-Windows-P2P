@@ -244,6 +244,12 @@ export const api = {
     invoke<unknown>("check_connection", { host, port }),
   speedTestLocal: (bytes?: number) =>
     invoke<unknown>("speed_test_local", { bytes }),
+  /** Browse `_smb._tcp.local.` for `timeoutSecs` (default 3) and return
+   * the discovered SMB hosts on the local subnet. Used by the Settings
+   * → Network "자동 검색" button so users don't have to manually type
+   * the Windows IP after every network change. */
+  discoverSmbHosts: (timeoutSecs?: number) =>
+    invoke<SmbHost[]>("discover_smb_hosts", { timeoutSecs }),
 
   // --- desktop alias ---
   installDesktopAlias: () => invoke<void>("install_desktop_alias"),
@@ -264,6 +270,15 @@ export interface ReleaseEntry {
   title: string;
   highlights: string[];
   notes: string;
+}
+
+/** mDNS-discovered SMB host on the local subnet. */
+export interface SmbHost {
+  fullname: string;
+  hostname: string;
+  mdns_host: string;
+  addresses: string[];
+  port: number;
 }
 
 /** Category IDs that have a JSONL stream under 80_Logs. The 5th sidebar
