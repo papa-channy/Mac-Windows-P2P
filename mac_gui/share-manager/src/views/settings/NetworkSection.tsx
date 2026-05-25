@@ -131,7 +131,10 @@ export function NetworkSection() {
             <div className="discovery-results">
               {hosts.length === 0 ? (
                 <div className="discovery-empty">
-                  발견된 SMB 호스트 없음. Windows 측이 SMB 공유를 활성화했는지 확인.
+                  발견된 호스트 없음. Windows 의 native SMB 는 mDNS 광고를 안 하므로
+                  보통 여기엔 안 잡혀요. Windows 호스트명을 알면 위 입력란에
+                  <code> DESKTOP-XXXX.local</code> 형태로 직접 입력하세요 — 그대로
+                  연결됩니다.
                 </div>
               ) : (
                 hosts.map((h) => {

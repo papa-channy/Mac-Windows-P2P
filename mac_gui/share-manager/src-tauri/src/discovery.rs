@@ -37,24 +37,43 @@ pub struct SmbHost {
 pub fn discover_smb_hosts(timeout_secs: Option<u64>) -> Result<Vec<SmbHost>, String> {
     let timeout = Duration::from_secs(timeout_secs.unwrap_or(3));
     let daemon = ServiceDaemon::new().map_err(|e| e.to_string())?;
-    let receiver = daemon
-        .browse("_smb._tcp.local.")
-        .map_err(|e| e.to_string())?;
+
+    // Windows's built-in SMB server does NOT advertise `_smb._tcp.local.`
+    // — only macOS and Samba do. To catch a Windows peer we also browse
+    // `_workstation._tcp` (Samba's secondary registration, sometimes
+    // installed alongside file sharing tools) and `_device-info._tcp`
+    // (Apple Bonjour Print/Sleep service which Windows hosts running
+    // Bonjour for iTunes happen to register too). At minimum the
+    // peer's `<host>.local.` A/AAAA record is resolvable so the user
+    // can type the hostname manually as a fallback.
+    let services = ["_smb._tcp.local.", "_workstation._tcp.local.", "_device-info._tcp.local."];
+    let receivers: Vec<_> = services
+        .iter()
+        .map(|s| daemon.browse(s).map_err(|e| e.to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Drop our own host from the results — listing the running mac as a
+    // candidate remote_host is always wrong.
+    let self_host = mac_local_host();
 
     let mut by_host: HashMap<String, SmbHost> = HashMap::new();
     let start = Instant::now();
     while start.elapsed() < timeout {
         let remaining = timeout.saturating_sub(start.elapsed());
-        match receiver.recv_timeout(remaining.min(Duration::from_millis(250))) {
-            Ok(ServiceEvent::ServiceResolved(info)) => {
+        let slice = remaining.min(Duration::from_millis(120));
+        let mut got_event = false;
+        for recv in &receivers {
+            if let Ok(ServiceEvent::ServiceResolved(info)) = recv.recv_timeout(slice) {
+                got_event = true;
                 let fullname = info.get_fullname().to_string();
-                // Bonjour fullnames are "<instance>._smb._tcp.local." —
-                // the instance part is what we want for short hostname.
                 let hostname = info
                     .get_hostname()
                     .trim_end_matches('.')
                     .trim_end_matches(".local")
                     .to_string();
+                if hostname.eq_ignore_ascii_case(&self_host) {
+                    continue;
+                }
                 let mdns_host = format!("{hostname}.local");
                 let mut addrs: Vec<String> = info
                     .get_addresses()
@@ -77,10 +96,9 @@ pub fn discover_smb_hosts(timeout_secs: Option<u64>) -> Result<Vec<SmbHost>, Str
                     }
                 }
             }
-            // Non-resolved events (SearchStarted, ServiceFound …) — ignore.
-            Ok(_) => {}
-            // recv_timeout fires repeatedly; just loop until we hit our window.
-            Err(_) => {}
+        }
+        if !got_event {
+            std::thread::sleep(Duration::from_millis(50));
         }
     }
     let _ = daemon.shutdown();
@@ -98,6 +116,24 @@ pub fn discover_smb_hosts(timeout_secs: Option<u64>) -> Result<Vec<SmbHost>, Str
         }
     });
     Ok(out)
+}
+
+/// macOS LocalHostName via scutil — what every Bonjour-aware app uses
+/// to identify itself on the LAN. Falls back to `hostname` env when
+/// scutil isn't reachable (test env).
+fn mac_local_host() -> String {
+    if let Ok(out) = std::process::Command::new("scutil")
+        .args(["--get", "LocalHostName"])
+        .output()
+    {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !s.is_empty() {
+                return s;
+            }
+        }
+    }
+    std::env::var("HOSTNAME").unwrap_or_default()
 }
 
 fn is_likely_windows(hostname: &str) -> bool {
