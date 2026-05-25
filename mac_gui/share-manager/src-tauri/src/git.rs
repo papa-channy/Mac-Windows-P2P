@@ -10,6 +10,7 @@
 // stay byte-identical across both clients so the dashboard can render
 // either host's snapshot without per-OS branching.
 
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -402,39 +403,53 @@ pub fn scan_and_publish_git() -> Result<u32, String> {
     }
     found.sort();
 
-    let mut statuses: Vec<RepoStatus> = Vec::new();
+    // Phase 1 — parallel status + log scan. Each repo is independent
+    // and each call shells out ~7-8 times to `git -C`, so this is
+    // pure IO-bound work that benefits from rayon's work-stealing
+    // pool. On an 8-core mac with 98 repos this drops from ~30s
+    // sequential to ~4-6s.
+    let scanned: Vec<(PathBuf, RepoStatus, Vec<(String, Vec<CommitNode>)>)> = found
+        .par_iter()
+        .map(|p| {
+            let st = repo_status_at(p);
+            let branches = graph_branches(p, &st);
+            let mut by_branch: Vec<(String, Vec<CommitNode>)> = Vec::with_capacity(branches.len());
+            for b in branches {
+                let log = repo_commit_log(p, &b, 50);
+                if !log.is_empty() {
+                    by_branch.push((b, log));
+                }
+            }
+            (p.clone(), st, by_branch)
+        })
+        .collect();
+
+    // Phase 2 — sequential merge into output structs. Cheap; we need
+    // the owner_repo dedup to be deterministic which means
+    // single-threaded ordered iteration over the sorted `found` list.
+    let mut statuses: Vec<RepoStatus> = Vec::with_capacity(scanned.len());
     let mut logs: std::collections::BTreeMap<
         String,
         std::collections::BTreeMap<String, Vec<CommitNode>>,
     > = std::collections::BTreeMap::new();
-    // Dedup by owner_repo — Mac scans multiple roots (~/Developer +
-    // ~/Projects + …) so the same GitHub repo cloned to two places
-    // would otherwise show up twice in `statuses` and confuse the
-    // dashboard (Windows side stays single because it walks drive
-    // letters, not nested user dirs).
     let mut seen_owner: std::collections::HashSet<String> =
         std::collections::HashSet::new();
-
-    for p in &found {
-        let st = repo_status_at(p);
+    for (_p, st, by_branch) in scanned {
         if let Some(ref or) = st.owner_repo {
             if !seen_owner.insert(or.clone()) {
-                continue; // already published a clone of this repo
+                continue;
             }
         }
         let key = st
             .owner_repo
             .clone()
             .unwrap_or_else(|| st.path.clone());
-        let mut by_branch = std::collections::BTreeMap::new();
-        for b in graph_branches(p, &st) {
-            let log = repo_commit_log(p, &b, 50);
-            if !log.is_empty() {
-                by_branch.insert(b, log);
-            }
-        }
         if !by_branch.is_empty() {
-            logs.insert(key, by_branch);
+            let mut m = std::collections::BTreeMap::new();
+            for (b, log) in by_branch {
+                m.insert(b, log);
+            }
+            logs.insert(key, m);
         }
         statuses.push(st);
     }
@@ -1178,14 +1193,23 @@ pub fn github_fetch_check_runs(
 #[tauri::command]
 pub fn github_fetch_remote(owner_repos: Vec<String>) -> Result<Vec<RemoteRepoState>, String> {
     let token = get_token().ok_or("등록된 토큰이 없습니다")?;
-    let mut out = Vec::new();
+    // Dedup first (preserving first-seen order)
     let mut seen = std::collections::HashSet::new();
-    for or in owner_repos {
-        if or.is_empty() || !seen.insert(or.clone()) {
-            continue;
-        }
-        out.push(fetch_one_remote(&token, &or));
-    }
+    let unique: Vec<String> = owner_repos
+        .into_iter()
+        .filter(|or| !or.is_empty() && seen.insert(or.clone()))
+        .collect();
+
+    // Parallel GH API — each fetch_one_remote does 3 HTTP roundtrips.
+    // rayon's default pool (≈ N CPUs) is already a reasonable cap on
+    // concurrent outbound requests for the per-token rate limit
+    // (5000/h primary, 900/m secondary). For ~100 repos that's still
+    // ~300 requests but spread across 8-16 workers ⇒ < 15s.
+    let out: Vec<RemoteRepoState> = unique
+        .par_iter()
+        .map(|or| fetch_one_remote(&token, or))
+        .collect();
+
     let cache = serde_json::json!({
         "fetched_at": chrono::Local::now().to_rfc3339(),
         "repos": out,

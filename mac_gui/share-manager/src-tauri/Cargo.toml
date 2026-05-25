@@ -43,6 +43,10 @@ age = { version = "0.10", features = ["ssh"] }
 # network change. Pure-Rust, cross-platform (works on the Win side too
 # when the contract gets backported).
 mdns-sd = "0.13"
+# parallel git scan + remote fetch — without it the 98-repo case is
+# ~30s of sequential `git -C` shell-outs; rayon brings it down to
+# ~4-6s on an 8-core mac (IO-bound work, plenty of headroom).
+rayon = "1.10"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.9"
