@@ -208,12 +208,43 @@ pub struct AppearanceSettings {
     pub icon_theme_path: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct NotificationSettings {
+    /// Master toggle. When false, nothing fires regardless of channel
+    /// flags below.
+    #[serde(default)]
+    pub enabled: bool,
+    /// macOS native banner via tauri-plugin-notification.
+    #[serde(default = "default_true")]
+    pub native: bool,
+    /// Slack-compatible webhook ({"text": "..."} POST). Same format
+    /// works for Discord and most Slack-clones — paste the incoming
+    /// webhook URL.
+    #[serde(default)]
+    pub webhook_url: String,
+    /// Per-event-type filter. Defaults: send + verify, off for the rest.
+    #[serde(default = "default_true")]
+    pub on_send_ok: bool,
+    #[serde(default = "default_true")]
+    pub on_send_fail: bool,
+    #[serde(default = "default_true")]
+    pub on_verify_fail: bool,
+    #[serde(default)]
+    pub on_verify_ok: bool,
+    #[serde(default)]
+    pub on_clipboard: bool,
+}
+
+fn default_true() -> bool { true }
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Settings {
     pub schema_version: u32,
     pub tree: TreeSettings,
     pub network: NetworkSettings,
     pub appearance: AppearanceSettings,
+    #[serde(default)]
+    pub notifications: NotificationSettings,
 }
 
 impl Default for Settings {
@@ -232,6 +263,16 @@ impl Default for Settings {
                 icon_theme: "default".to_string(),
                 icon_themes: Vec::new(),
                 icon_theme_path: None,
+            },
+            notifications: NotificationSettings {
+                enabled: false,
+                native: true,
+                webhook_url: String::new(),
+                on_send_ok: true,
+                on_send_fail: true,
+                on_verify_fail: true,
+                on_verify_ok: false,
+                on_clipboard: false,
             },
         }
     }

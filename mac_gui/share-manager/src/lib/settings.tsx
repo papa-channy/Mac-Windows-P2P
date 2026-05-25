@@ -26,6 +26,17 @@ export interface IconTheme {
   icon_count: number;
 }
 
+export interface NotificationSettings {
+  enabled: boolean;
+  native: boolean;
+  webhook_url: string;
+  on_send_ok: boolean;
+  on_send_fail: boolean;
+  on_verify_fail: boolean;
+  on_verify_ok: boolean;
+  on_clipboard: boolean;
+}
+
 export interface AppSettings {
   schema_version: number;
   tree: {
@@ -40,6 +51,7 @@ export interface AppSettings {
     icon_themes: IconTheme[];
     icon_theme_path?: string | null;
   };
+  notifications: NotificationSettings;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -47,6 +59,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
   tree: { max_depth: 4, shortcuts: [] },
   network: { remote_host: "192.168.50.1" },
   appearance: { icon_theme: "default", icon_themes: [], icon_theme_path: null },
+  notifications: {
+    enabled: false,
+    native: true,
+    webhook_url: "",
+    on_send_ok: true,
+    on_send_fail: true,
+    on_verify_fail: true,
+    on_verify_ok: false,
+    on_clipboard: false,
+  },
 };
 
 function mergeWithDefaults(raw: unknown): AppSettings {
@@ -56,6 +78,7 @@ function mergeWithDefaults(raw: unknown): AppSettings {
     tree: { ...DEFAULT_SETTINGS.tree, ...(r.tree ?? {}) },
     network: { ...DEFAULT_SETTINGS.network, ...(r.network ?? {}) },
     appearance: { ...DEFAULT_SETTINGS.appearance, ...(r.appearance ?? {}) },
+    notifications: { ...DEFAULT_SETTINGS.notifications, ...(r.notifications ?? {}) },
   };
 }
 

@@ -8,6 +8,7 @@ import { NetworkSection } from "./settings/NetworkSection";
 import { PolicySection } from "./settings/PolicySection";
 import { AppearanceSection } from "./settings/AppearanceSection";
 import { GitSection } from "./settings/GitSection";
+import { NotificationSection } from "./settings/NotificationSection";
 
 export function SettingsView() {
   return (
@@ -24,6 +25,7 @@ export function SettingsView() {
         <NetworkSection />
         <PolicySection />
         <GitSection />
+        <NotificationSection />
         <AppearanceSection />
       </div>
     </section>

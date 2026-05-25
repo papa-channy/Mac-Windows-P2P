@@ -150,7 +150,7 @@ pub fn read_manifest(transfer_id: String) -> Result<serde_json::Value, String> {
 /// is mac_to_windows because that's the entry-point case (Quick Action click).
 /// A 2nd optional arg flips it for the rare programmatic case.
 #[tauri::command]
-pub fn send_path(source_path: String, category: String) -> Result<String, String> {
+pub fn send_path(app: tauri::AppHandle, source_path: String, category: String) -> Result<String, String> {
     let req = transfer::engine::build_request(
         PathBuf::from(&source_path),
         &category,
@@ -170,6 +170,12 @@ pub fn send_path(source_path: String, category: String) -> Result<String, String
                     "transfer_id": o.transfer_id,
                 }),
             );
+            crate::notify::dispatch(
+                &app,
+                crate::notify::NotifyEvent::SendOk,
+                "✓ Windows로 전송 완료",
+                &format!("{} → {}", file_label(&source_path), category),
+            );
             Ok(o.transfer_id)
         }
         Err(e) => {
@@ -183,13 +189,27 @@ pub fn send_path(source_path: String, category: String) -> Result<String, String
                     "stderr": msg,
                 }),
             );
+            crate::notify::dispatch(
+                &app,
+                crate::notify::NotifyEvent::SendFail,
+                "✗ 전송 실패",
+                &format!("{}: {}", file_label(&source_path), msg.lines().next().unwrap_or("")),
+            );
             Err(msg)
         }
     }
 }
 
+fn file_label(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(path)
+        .to_string()
+}
+
 #[tauri::command]
-pub fn send_path_force(source_path: String, category: String) -> Result<String, String> {
+pub fn send_path_force(app: tauri::AppHandle, source_path: String, category: String) -> Result<String, String> {
     let req = transfer::engine::build_request(
         PathBuf::from(&source_path),
         &category,
@@ -210,6 +230,12 @@ pub fn send_path_force(source_path: String, category: String) -> Result<String, 
                     "forced": true,
                 }),
             );
+            crate::notify::dispatch(
+                &app,
+                crate::notify::NotifyEvent::SendOk,
+                "✓ Windows로 전송 완료 (overwrite)",
+                &format!("{} → {}", file_label(&source_path), category),
+            );
             Ok(o.transfer_id)
         }
         Err(e) => {
@@ -223,6 +249,12 @@ pub fn send_path_force(source_path: String, category: String) -> Result<String, 
                     "stderr": msg,
                     "forced": true,
                 }),
+            );
+            crate::notify::dispatch(
+                &app,
+                crate::notify::NotifyEvent::SendFail,
+                "✗ 전송 실패 (overwrite)",
+                &format!("{}: {}", file_label(&source_path), msg.lines().next().unwrap_or("")),
             );
             Err(msg)
         }
@@ -863,7 +895,7 @@ fn verify_cache_dir() -> PathBuf {
 }
 
 #[tauri::command]
-pub fn auto_verify_pending() -> Result<u32, String> {
+pub fn auto_verify_pending(app: tauri::AppHandle) -> Result<u32, String> {
     if !crate::mount::is_share_mounted() {
         return Ok(0);
     }
@@ -916,6 +948,12 @@ pub fn auto_verify_pending() -> Result<u32, String> {
                                 "direction": r.direction,
                             }),
                         );
+                        crate::notify::dispatch(
+                            &app,
+                            crate::notify::NotifyEvent::VerifyOk,
+                            "✓ 무결성 OK",
+                            &format!("{} · {} files", r.transfer_id, r.checked),
+                        );
                     } else {
                         crate::log_hub::append_log(
                             "error",
@@ -926,6 +964,15 @@ pub fn auto_verify_pending() -> Result<u32, String> {
                                 "missing": r.missing,
                                 "direction": r.direction,
                             }),
+                        );
+                        crate::notify::dispatch(
+                            &app,
+                            crate::notify::NotifyEvent::VerifyFail,
+                            "⚠ 무결성 불일치",
+                            &format!(
+                                "{} · mismatches={} missing={}",
+                                r.transfer_id, r.mismatches, r.missing
+                            ),
                         );
                     }
                     done += 1;

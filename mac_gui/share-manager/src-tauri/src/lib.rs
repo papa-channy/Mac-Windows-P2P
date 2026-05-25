@@ -7,6 +7,7 @@ mod git;
 mod log_hub;
 mod mount;
 mod notes;
+mod notify;
 mod policy;
 mod share;
 mod transfer;
