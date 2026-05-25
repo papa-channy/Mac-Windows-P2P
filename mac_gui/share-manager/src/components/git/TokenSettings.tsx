@@ -74,6 +74,13 @@ export function TokenSettings() {
   const publishMyKey = async () => {
     setBusy(true);
     try {
+      // Auto-generate the SSH key on the first publish so the user
+      // doesn't need a separate "generate" click. No-op if a key
+      // already exists.
+      if (!store.ssh?.has_key) {
+        await api.git.generateSshKey();
+        await store.refresh();
+      }
       const dst = await api.git.publishHostPubkey();
       toast(`SSH 공개키 셰어에 게시됨: ${dst.replace(/^.*\//, "")}`, "success");
     } catch (e) {
@@ -156,10 +163,10 @@ export function TokenSettings() {
         <button
           className="ghost-btn"
           onClick={publishMyKey}
-          disabled={busy || !store.ssh?.has_key}
-          title="다른 호스트가 내게 PAT 보낼 수 있게 SSH 공개키를 셰어에 게시"
+          disabled={busy}
+          title="다른 호스트가 내게 PAT 보낼 수 있게 SSH 공개키를 셰어에 게시 (키 없으면 자동 생성)"
         >
-          내 SSH 공개키 셰어에 게시
+          {busy ? "처리 중…" : store.ssh?.has_key ? "내 SSH 공개키 셰어에 게시" : "SSH 키 생성 + 셰어에 게시"}
         </button>
       </div>
     </div>
