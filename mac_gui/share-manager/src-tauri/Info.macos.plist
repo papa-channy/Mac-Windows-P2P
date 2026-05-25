@@ -33,5 +33,19 @@
 
     <key>NSAppleEventsUsageDescription</key>
     <string>Finder Service "Windows 로 보내기" 우클릭 메뉴를 통한 자동 전송에 필요합니다.</string>
+
+    <!-- Sonoma+ (macOS 14) requires explicit Local Network usage
+         description for any app that uses Bonjour / mDNS multicast
+         (224.0.0.251 / FF02::FB). Without these two keys
+         discovery::discover_smb_hosts gets 0 results because the OS
+         silently blocks the multicast packets. -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>share-manager 가 직결망의 SMB 호스트를 mDNS 로 자동 검색합니다.</string>
+
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_smb._tcp</string>
+        <string>_device-info._tcp</string>
+    </array>
 </dict>
 </plist>

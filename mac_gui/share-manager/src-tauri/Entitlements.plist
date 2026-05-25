@@ -18,6 +18,12 @@
     <key>com.apple.security.network.client</key>
     <true/>
 
+    <!-- Network server — needed for mDNS / Bonjour browse to receive
+         multicast responses on UDP/5353. Without this the discovery
+         module sends queries but never sees the replies. -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+
     <!-- The app is NOT sandboxed (no app-sandbox key). Direct distribution
          via Developer ID does not require sandboxing. -->
 </dict>
