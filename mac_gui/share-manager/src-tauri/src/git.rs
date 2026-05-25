@@ -1074,6 +1074,107 @@ fn fetch_one_remote(token: &str, owner_repo: &str) -> RemoteRepoState {
     st
 }
 
+// ─── GitHub Actions / Checks API (Task #46) ────────────────────────
+//
+// Hit `/repos/{owner_repo}/commits/{sha}/check-runs` per commit and
+// fold the result into a single per-sha summary the frontend can
+// overlay on each commit dot in the Sync Timeline.
+//
+// Sequential per SHA — the API has no batch endpoint and parallel
+// requests need a runtime we don't pull in for one feature.
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct CheckRunSummary {
+    pub total: u32,
+    pub success: u32,
+    pub failure: u32,
+    pub in_progress: u32,
+    pub neutral: u32,
+    /// Aggregated verdict: "success" / "failure" / "pending" / "neutral" / "none"
+    pub overall: String,
+    /// Click-through URL of the first run (typically the GitHub Actions tab).
+    pub html_url: Option<String>,
+}
+
+fn classify_check_runs(runs: &serde_json::Value) -> CheckRunSummary {
+    let mut s = CheckRunSummary::default();
+    let arr = match runs.get("check_runs").and_then(|v| v.as_array()) {
+        Some(a) => a,
+        None => {
+            s.overall = "none".into();
+            return s;
+        }
+    };
+    s.total = arr.len() as u32;
+    if s.total == 0 {
+        s.overall = "none".into();
+        return s;
+    }
+    for r in arr {
+        let status = r.get("status").and_then(|v| v.as_str()).unwrap_or("");
+        let conclusion = r.get("conclusion").and_then(|v| v.as_str()).unwrap_or("");
+        if status != "completed" {
+            s.in_progress += 1;
+        } else {
+            match conclusion {
+                "success" => s.success += 1,
+                "failure" | "timed_out" | "action_required" | "startup_failure" => {
+                    s.failure += 1
+                }
+                "neutral" | "skipped" | "stale" | "cancelled" => s.neutral += 1,
+                _ => s.neutral += 1,
+            }
+        }
+        if s.html_url.is_none() {
+            s.html_url = r
+                .get("html_url")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+        }
+    }
+    // Priority: any failure → failure; else any pending → pending; else
+    // success > 0 → success; else neutral.
+    s.overall = if s.failure > 0 {
+        "failure".into()
+    } else if s.in_progress > 0 {
+        "pending".into()
+    } else if s.success > 0 {
+        "success".into()
+    } else {
+        "neutral".into()
+    };
+    s
+}
+
+#[tauri::command]
+pub fn github_fetch_check_runs(
+    owner_repo: String,
+    shas: Vec<String>,
+) -> Result<std::collections::HashMap<String, CheckRunSummary>, String> {
+    let token = get_token().ok_or("등록된 토큰이 없습니다")?;
+    let mut out = std::collections::HashMap::new();
+    for sha in shas {
+        if sha.is_empty() {
+            continue;
+        }
+        let url = format!("https://api.github.com/repos/{owner_repo}/commits/{sha}/check-runs?per_page=20");
+        // Don't fail the whole batch on a single 404 / 403 — that
+        // commit just gets no summary, frontend renders the bare dot.
+        match gh_get(&token, &url) {
+            Ok(v) => {
+                out.insert(sha, classify_check_runs(&v));
+            }
+            Err(_) => {
+                // record the failed sha so the frontend stops asking
+                let mut s = CheckRunSummary::default();
+                s.overall = "error".into();
+                out.insert(sha, s);
+            }
+        }
+    }
+    Ok(out)
+}
+
 #[tauri::command]
 pub fn github_fetch_remote(owner_repos: Vec<String>) -> Result<Vec<RemoteRepoState>, String> {
     let token = get_token().ok_or("등록된 토큰이 없습니다")?;

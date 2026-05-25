@@ -195,6 +195,15 @@ export const api = {
      * PAT, returns the live results and updates remote-cache.json. */
     fetchRemote: (ownerRepos: string[]) =>
       invoke<RemoteRepoState[]>("github_fetch_remote", { ownerRepos }),
+    /** Fetch GitHub Actions / Checks API per commit. Returns a map
+     * sha → CheckRunSummary so the Sync Timeline can overlay ✓/✗/⏳
+     * on each dot. Sequential per SHA — capped at ~10 SHAs to stay
+     * under ~5 sec total. */
+    fetchCheckRuns: (ownerRepo: string, shas: string[]) =>
+      invoke<Record<string, CheckRunSummary>>("github_fetch_check_runs", {
+        ownerRepo,
+        shas,
+      }),
     readRemoteCache: () => invoke<RemoteCacheDoc>("read_remote_cache"),
     /** Build the per-repo merged graph (§18.4 schema). */
     buildRepoGraph: (ownerRepo: string) =>
@@ -494,4 +503,17 @@ export interface RepoGraph {
   hosts: { host: string; os: string }[];
   has_token: boolean;
   per_branch: Record<string, RepoGraphBranch>;
+}
+
+/** GitHub Actions / Checks summary per commit — overlaid on each dot
+ * in the Sync Timeline. `overall` is one of "success" | "failure" |
+ * "pending" | "neutral" | "none" | "error". */
+export interface CheckRunSummary {
+  total: number;
+  success: number;
+  failure: number;
+  in_progress: number;
+  neutral: number;
+  overall: string;
+  html_url: string | null;
 }

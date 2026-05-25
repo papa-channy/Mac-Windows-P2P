@@ -125,6 +125,7 @@ pub fn run() {
             git::list_git_status,
             git::list_git_logs,
             git::github_fetch_remote,
+            git::github_fetch_check_runs,
             git::read_remote_cache,
             git::build_repo_graph,
             git::git_file_diff,

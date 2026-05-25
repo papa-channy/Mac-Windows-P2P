@@ -31,7 +31,7 @@ import {
   Apple,
 } from "lucide-react";
 import { GithubBrand, WindowsBrand } from "./BrandIcons";
-import { api, type RepoGraph, type RepoGraphCommit } from "../../lib/api";
+import { api, type CheckRunSummary, type RepoGraph, type RepoGraphCommit } from "../../lib/api";
 import { useGitStore } from "../../lib/gitStore";
 import { computeGitNarrative } from "../../lib/computeGitNarrative";
 
@@ -418,12 +418,14 @@ function SyncTimelineTab({ ownerRepo }: { ownerRepo: string }) {
   const [graph, setGraph] = useState<RepoGraph | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<RepoGraphCommit | null>(null);
+  const [checks, setChecks] = useState<Record<string, CheckRunSummary>>({});
 
   useEffect(() => {
     let cancelled = false;
     setGraph(null);
     setSelected(null);
     setError(null);
+    setChecks({});
     (async () => {
       try {
         const g = await api.git.buildRepoGraph(ownerRepo);
@@ -437,6 +439,18 @@ function SyncTimelineTab({ ownerRepo }: { ownerRepo: string }) {
           const commits = g.per_branch[defBranch]?.commits ?? [];
           const ancestor = commits.find((c) => c.ancestor) ?? commits[0] ?? null;
           setSelected(ancestor);
+          // Best-effort: fetch check runs for the top ~12 commits on
+          // this branch so the dots get overlaid. Capped to keep total
+          // latency under ~5s (12 × ~350ms GH API).
+          if (g.has_token) {
+            const shas = commits.slice(0, 12).map((c) => c.sha);
+            try {
+              const r = await api.git.fetchCheckRuns(ownerRepo, shas);
+              if (!cancelled) setChecks(r);
+            } catch {
+              /* token revoked or rate limited — bare dots still work */
+            }
+          }
         }
       } catch (e) {
         if (!cancelled) setError(String(e));
@@ -470,6 +484,7 @@ function SyncTimelineTab({ ownerRepo }: { ownerRepo: string }) {
       <TimelineGraphPanel
         graph={graph}
         branch={branch}
+        checks={checks}
         onSelectCommit={setSelected}
       />
       <TimelineDetailPanel commit={selected} graph={graph} />
@@ -631,10 +646,12 @@ function renderSummaryChip(s: {
 function TimelineGraphPanel({
   graph,
   branch,
+  checks,
   onSelectCommit,
 }: {
   graph: RepoGraph;
   branch: string;
+  checks: Record<string, CheckRunSummary>;
   onSelectCommit: (c: RepoGraphCommit) => void;
 }) {
   const pb = graph.per_branch[branch];
@@ -881,6 +898,16 @@ function TimelineGraphPanel({
                         {c.short} · {c.msg} · {c.author} · {fmtRelative(c.date)}
                       </title>
                     </circle>
+                    {/* Check-run overlay — only on the remote lane (the
+                     * one source of truth for "did CI pass on this
+                     * commit"). Placed at upper-right of the dot. */}
+                    {l.key === "remote" && checks[c.sha] && (
+                      <CheckRunBadge
+                        cx={x + r + 2}
+                        cy={y - r - 2}
+                        summary={checks[c.sha]}
+                      />
+                    )}
                   </g>
                 );
               }),
@@ -963,8 +990,60 @@ function TimelineGraphPanel({
           </svg>
           공통 조상 (LCA)
         </span>
+        <span className="gtl-legend-item" title="GitHub Actions / Checks 결과">
+          <svg width={14} height={14}>
+            <circle cx={7} cy={7} r={6} fill="#1F883D" />
+            <text x={7} y={10} textAnchor="middle" fontSize={8} fontWeight={800} fill="#FFFFFF">✓</text>
+          </svg>
+          CI 통과 / 실패 / 진행
+        </span>
       </div>
     </section>
+  );
+}
+
+function CheckRunBadge({
+  cx,
+  cy,
+  summary,
+}: {
+  cx: number;
+  cy: number;
+  summary: CheckRunSummary;
+}) {
+  // Small 12×12 chip stuck to the upper-right of each remote dot.
+  // Fill + glyph keyed off `overall`.
+  const cfg = (() => {
+    switch (summary.overall) {
+      case "success":  return { fill: "#1F883D", glyph: "✓", title: "CI passed" };
+      case "failure":  return { fill: "#CF222E", glyph: "✗", title: "CI failed" };
+      case "pending":  return { fill: "#BF8700", glyph: "⏳", title: "CI in progress" };
+      case "neutral":  return { fill: "#6B6B75", glyph: "○", title: "CI neutral" };
+      case "error":    return { fill: "#A0A0A8", glyph: "?", title: "Check run fetch failed" };
+      default:         return null; // "none" — don't render
+    }
+  })();
+  if (!cfg) return null;
+  return (
+    <g style={{ pointerEvents: "none" }}>
+      <circle cx={cx} cy={cy} r={7} fill={cfg.fill} stroke="#FFFFFF" strokeWidth={1.5} />
+      <text
+        x={cx}
+        y={cy + 3}
+        textAnchor="middle"
+        fontSize={9}
+        fontWeight={800}
+        fill="#FFFFFF"
+        fontFamily="system-ui, -apple-system, sans-serif"
+      >
+        {cfg.glyph}
+      </text>
+      <title>
+        {cfg.title}
+        {summary.total > 0 &&
+          ` · ${summary.success}✓ ${summary.failure}✗ ${summary.in_progress}⏳ (총 ${summary.total})`}
+      </title>
+    </g>
   );
 }
 
