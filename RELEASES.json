@@ -5,15 +5,21 @@
     "title": "Git 대시보드 · Log Hub · 공유 클립보드 sticky · HTML 인스펙터",
     "highlights": [
       "🌿 Git 사이드바 — Windows-수준 3-layer 대시보드 (L1 RepoCard 그리드 + 3-node bridge / L2 swimlane 모달 / L3 라이트 Inspector 5 탭). 양 OS 가 같은 `<share>/00_System/90_Git/<host>.git-status.json` 에 게시해서 한 화면에서 비교 — 충돌 임박 / 발산 / 미커밋 / 동기화 자동 분류",
+      "⚡ 인터랙티브 git ops — L2 modal 의 'Mac ops' 행에서 Fetch / Pull / Push / Stash / Stash Pop 한 번에. 결과 inline 표시 (toast 사라져도 stick), 성공 후 자동 scan publish",
+      "🔑 cross-host PAT 동기화 — 한쪽 호스트에 PAT 등록 시 ed25519 SSH 공개키로 age 암호화 후 셰어 통해 다른 호스트에 자동 import. 양쪽 등록 1회만 → 반대편 keychain 자동 채워짐. PAT 평문은 양쪽 OS keychain 안에만, 셰어엔 ciphertext 만",
       "📑 Log Hub — `<share>/00_System/80_Logs/<cat>.jsonl` 스트림 5종 (Sent / Received / Errors / Compressed images / Worklog) 통합 view. 양 호스트가 같은 jsonl 에 append 해서 cross-OS 시간순 timeline 표시",
-      "📋 ClipboardView sticky panel — `current.json` 단일 메시지 r/w, 1.5초 내 양쪽 반영. 누른 사람이 덮어쓰는 sticky-note 채널 (스트리밍 jsonl timeline 과 별개). 50-entry history 보관",
-      "⚠ HTML asset 사전점검 — `.html` 단일 파일 전송 시 sibling `style.css` / `<script src>` 자동 탐지 → 누락 없이 폴더째 보내거나 그대로 보내거나 취소",
-      "🔑 GitHub PAT + SSH 키 Settings — macOS Keychain 전용 (service=`mac-window-git`, account=`github-pat`). 셰어/settings.json 에 절대 미저장. ed25519 SSH 키 자동 생성 + 공개키 클립보드 복사",
-      "🔄 Sync Timeline narrative (ADR-0003/0004) — Status Summary verdict (8 케이스 verdict-action 룰), 3-lane SVG 그래프 (lane bands + LCA amber marker + tip pills brand color), 클릭 시 Selected Commit 상세",
-      "사이드바 영어화 — In / Out / Archive + Log Hub 그룹 (Windows 와 동일 정보 구조)",
-      "Cargo tests 51 통과, tsc clean, npm build 269 kB JS / 47 kB CSS / 85 modules"
+      "📋 ClipboardView sticky panel — `current.json` 단일 메시지 r/w, 1.5초 내 양쪽 반영. 누른 사람이 덮어쓰는 sticky-note 채널 + 50-entry history 보관",
+      "🔍 File preview — Items 의 transfer 클릭 시 DetailsModal 안에서 이미지/PDF/markdown/소스코드/~50 텍스트 형식 즉시 미리보기 (256 KB cap, binary graceful fallback)",
+      "✓ CI/build status overlay — Sync Timeline 의 remote dot 위에 GitHub Actions check run 결과 (✓ 녹 / ✗ 빨 / ⏳ 호박) 자동 오버레이. top 12 commits 의 status 한눈에",
+      "🔔 멀티 채널 알림 — Settings 에서 macOS 알림 센터 + Slack/Discord webhook 동시 ON. 전송/검증 결과 이벤트 별 필터",
+      "🌐 mDNS 자동 발견 — Settings → Network → '자동 검색' 으로 직결망의 SMB 호스트 자동 발견 (`_smb._tcp` + `_workstation._tcp` + `_device-info._tcp` + 현재 마운트 파싱). `.local` hostname 으로 IP 변경 자동 추적",
+      "⚠ HTML asset 사전점검 — `.html` 단일 파일 전송 시 sibling `style.css` / `<script src>` 자동 탐지 → 누락 없이 폴더째 또는 그대로",
+      "🔄 Sync Timeline narrative (ADR-0003/0004) — Status Summary verdict (8 케이스 verdict-action 룰), 3-lane SVG 그래프 (lane bands + LCA amber marker + tip pills brand color)",
+      "⚡ Scan + Sync Remote 속도 5-10x 빨라짐 — rayon par_iter 로 98 repos × 7-8 git CLI shell-out 을 병렬 실행 (~30초 → ~4-6초)",
+      "사이드바 영어화 + collapsible Log Hub + Windows 11 4-pane 멀티컬러 로고 + 모든 chrome 아이콘 lucide-react 통일",
+      "Cargo tests 64 통과, tsc clean, vitest 19 + Playwright E2E 9 통과"
     ],
-    "notes": "Mac 측이 Windows v0.3 git 대시보드와 feature parity 도달. 자동 업데이트로 받으면 사이드바에 새 '🌿 Git' 항목, Log Hub 5개 sub-item, ClipboardView 상단 sticky 패널 등장. PAT 와 SSH 키 모두 OS Keychain 전용. 통합 테스트는 mockups/quality/INTEGRATION_TEST.md 의 12 시나리오 참조."
+    "notes": "Mac 측이 Windows v0.3 git 대시보드와 feature parity 도달 + Mac-only UX 개선 9건 (PAT sync / git ops / file preview / CI overlay / notification / mDNS / collapsible 사이드바 / lucide 아이콘 / rayon parallelism). 자동 업데이트로 받으면 사이드바에 '🌿 Git Status' 항목 + Log Hub + sticky clipboard 등장. PAT + SSH 키 모두 OS Keychain 전용. 통합 테스트는 mockups/quality/INTEGRATION_TEST.md 의 12 시나리오 + PAT_SHARE_PROTOCOL.md 참조."
   },
   {
     "version": "0.2.4",
