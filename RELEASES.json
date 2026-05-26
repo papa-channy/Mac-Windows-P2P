@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.3.1",
+    "date": "2026-05-26",
+    "title": "Updater 수동 fallback — DMG 다운로드 버튼",
+    "highlights": [
+      "⬇ UpdaterBanner 에 'DMG 다운로드' 보조 버튼 추가 — Tauri 자동 설치가 silent fail (macOS .app self-replace 문제) 해도 사용자가 한 번 클릭으로 GitHub Releases 의 DMG 직접 받아 수동 설치 가능",
+      "자동 설치 실패 감지 시 banner 가 빨간 안내 + 'DMG 다운로드' 를 primary CTA 로 승격 + 재시도 버튼 추가",
+      "릴리스 노트 link — banner 에서 직접 GitHub Releases 페이지 열기"
+    ],
+    "notes": "v0.3.0 의 자동 업데이터가 macOS 에서 install 단계 silent fail 하는 케이스가 라이브 시험에서 확인됨 (다운로드 OK, .app 교체 단계 fail, 다시 launch 시 같은 banner 무한 반복). 이번 patch 는 root cause 추적 대신 사용자가 막힐 때 즉시 빠져나갈 fallback 을 보장 — '⬇ DMG' 보조 버튼이 항상 노출, 자동 설치 실패 후엔 primary CTA 로 승격됨."
+  },
+  {
     "version": "0.3.0",
     "date": "2026-05-24",
     "title": "Git 대시보드 · Log Hub · 공유 클립보드 sticky · HTML 인스펙터",

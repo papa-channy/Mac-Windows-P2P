@@ -2456,3 +2456,17 @@ button { font-family: inherit; }
   text-overflow: ellipsis;
 }
 .git-tb-result-time { color: var(--text-dim); font-size: 10.5px; }
+
+.updater-notes-link {
+  margin-left: 10px;
+  background: transparent;
+  border: none;
+  color: var(--accent, #2563eb);
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px;
+}
+.updater-notes-link:hover { text-decoration: underline; }
