@@ -152,6 +152,11 @@ export const api = {
   openPrivacySettings: (pane?: string) =>
     invoke<void>("open_privacy_settings", { pane }),
   hasFullDiskAccess: () => invoke<boolean>("has_full_disk_access"),
+  /** Force tccd to register our bundle in the FDA / per-folder lists.
+   * Call right before openPrivacySettings so the bundle is already
+   * visible (toggle off) by the time the user looks. See SP-B-1. */
+  triggerMacTccRegistration: () =>
+    invoke<void>("trigger_mac_tcc_registration"),
 
   // --- T2 shared clipboard (Windows §13 v2 mirror) ---
   readSharedClipboard: () => invoke<SharedClipboardEntry>("read_shared_clipboard"),

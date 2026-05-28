@@ -1,9 +1,17 @@
 // PermissionsOnboarding.tsx — first-launch Full Disk Access walkthrough.
 //
 // macOS won't populate the FDA list unless the app actually attempts to
-// access a protected location, so on mount we call has_full_disk_access
-// once — even though we don't actually use the result, the failed read
-// causes TCC to add our bundle to the list.
+// access a protected location. On Ventura a single TCC.db probe was
+// usually enough; Sonoma+ batches probes and may not surface us in the
+// list on the first try (SP-B-1).
+//
+// Two-phase trigger for that reason:
+//   1. On mount — has_full_disk_access() runs as both the FDA probe AND
+//      the polling driver.
+//   2. Right before opening System Settings — trigger_mac_tcc_registration
+//      hits multiple protected paths in one shot so tccd MUST register us
+//      across every relevant privacy pane. A short delay lets tccd flush
+//      before the System Settings UI reads its state.
 //
 // While the modal is open we poll has_full_disk_access every 1.5s. When
 // the user toggles us ON in System Settings the poll returns true and
@@ -81,6 +89,11 @@ export function PermissionsOnboarding({ isOpen, onClose }: Props) {
               className="primary-btn"
               onClick={async () => {
                 try {
+                  // Force tccd to register us across all relevant privacy
+                  // panels before the user sees the FDA list. Then a short
+                  // delay so tccd flushes, then open System Settings.
+                  await api.triggerMacTccRegistration();
+                  await new Promise((r) => setTimeout(r, 250));
                   await api.openPrivacySettings("Privacy_AllFiles");
                 } catch (e) {
                   console.warn("open_privacy_settings failed:", e);

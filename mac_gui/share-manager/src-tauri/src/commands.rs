@@ -1278,6 +1278,51 @@ pub fn has_full_disk_access() -> bool {
     false
 }
 
+/// Force tccd to register our bundle in the Privacy panels by probing
+/// several protected paths in one shot.
+///
+/// macOS only adds an app to the Full Disk Access / Desktop / Documents
+/// lists when it observes the app actually attempting to read those
+/// locations. A single TCC.db open is sometimes enough on Ventura but
+/// Sonoma+ batches/caches probes and may not surface the bundle on the
+/// first attempt — the user then sees the "+ button" friction described
+/// in SP-B-1.
+///
+/// We probe the canonical FDA anchor (TCC.db) plus the per-folder
+/// privacy paths so the bundle shows up in every relevant pane the user
+/// might check. Every read is best-effort; permission errors are the
+/// expected case and explicitly discarded.
+///
+/// Call site contract: invoke this **immediately before**
+/// `open_privacy_settings` so by the time the System Settings UI reads
+/// TCC state, the registration is already there. A short delay in the
+/// caller (~250ms) gives tccd time to flush.
+#[tauri::command]
+pub fn trigger_mac_tcc_registration() {
+    let _ = std::fs::File::open("/Library/Application Support/com.apple.TCC/TCC.db");
+    let _ = std::fs::metadata("/Library/Application Support/com.apple.TCC");
+    if let Ok(home) = std::env::var("HOME") {
+        // Order: FDA-only paths first (Library/Mail, Safari, Messages),
+        // then per-folder privacy paths (Desktop, Documents, Downloads).
+        // Hitting both buckets means the bundle appears in BOTH the FDA
+        // list and any per-folder list the user might browse.
+        let probes = [
+            "Library/Mail",
+            "Library/Safari",
+            "Library/Messages",
+            "Library/Application Support/MobileSync",
+            "Desktop",
+            "Documents",
+            "Downloads",
+        ];
+        for sub in probes {
+            let p = std::path::PathBuf::from(&home).join(sub);
+            let _ = std::fs::read_dir(&p);
+            let _ = std::fs::metadata(&p);
+        }
+    }
+}
+
 /// Open System Settings to the Privacy & Security → Full Disk Access pane,
 /// where the user can grant share-manager unrestricted filesystem access
 /// so it stops hitting per-folder TCC prompts.

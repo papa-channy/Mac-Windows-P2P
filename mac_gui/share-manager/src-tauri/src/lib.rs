@@ -101,6 +101,7 @@ pub fn run() {
             commands::current_app_version,
             commands::open_privacy_settings,
             commands::has_full_disk_access,
+            commands::trigger_mac_tcc_registration,
             // T2 shared clipboard + compressed gallery
             commands::read_shared_clipboard,
             commands::write_shared_clipboard,

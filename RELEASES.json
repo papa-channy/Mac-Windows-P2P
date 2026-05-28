@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.3.2",
+    "date": "2026-05-28",
+    "title": "FDA 권한 onboarding — share-manager 가 리스트에 안 뜨던 친절도 fix",
+    "highlights": [
+      "🔓 첫 launch 의 '시스템 설정 열기' 버튼이 누락된 share-manager 를 자동으로 FDA 리스트에 등록 — Sonoma+ 에서 단일 TCC.db probe 만으로 부족했던 케이스 보강",
+      "TCC.db + ~/Library/{Mail, Safari, Messages, MobileSync} + ~/{Desktop, Documents, Downloads} 7 경로 한 번에 probe → tccd 가 확실히 bundle 인지 (multi-path trigger)",
+      "버튼 클릭 시 trigger → 250ms tccd flush → 설정 창 열기 순서 → 사용자가 보는 순간 share-manager 가 토글 OFF 로 이미 등장. + 버튼으로 수동 추가 friction 제거",
+      "신설 식별자 B-1-e (`trigger_mac_tcc_registration`) — 향후 다른 권한 panel 에도 재사용 가능"
+    ],
+    "notes": "M4-B Session A walk 중 발견: clean state (tccutil reset) 후 '시스템 설정 열기' 를 눌렀을 때 FDA 패널이 정상 열리지만 share-manager 가 리스트에 부재 → 사용자가 + 버튼 → Finder 에서 앱 찾아 수동 추가하는 친절도 빵점 친절도. macOS Sonoma+ 의 tccd 가 단일 path probe 만으로는 bundle surface 안 하는 케이스. 여러 보호된 path 를 한 번에 두드려서 강제 등록하도록 Rust 측 multi-path trigger command 추가 + 버튼 sequencing 재배열. Spotlight SP-B-1 추적."
+  },
+  {
     "version": "0.3.1",
     "date": "2026-05-26",
     "title": "Updater 수동 fallback — DMG 다운로드 버튼",
