@@ -567,34 +567,56 @@ button { font-family: inherit; }
   align-items: center;
 }
 
-/* ─── Clipboard panel ─────────────────────────────────────────── */
-.clip-timeline-body {
+/* ─── Clipboard — OS-split 2-column card timeline ──────────────── */
+.clip-os-split {
   flex: 1;
   overflow-y: auto;
-  padding: 18px 24px 32px;
-  max-width: 900px;
-  margin: 0 auto;
-  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+  padding: 0 28px 24px;
 }
-.clip-timeline { display: flex; flex-direction: column; gap: 6px; }
-.clip-entry {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 11px 14px;
-  cursor: pointer;
-  transition: background 0.1s, border-color 0.1s, transform 0.05s;
+.clip-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
 }
-.clip-entry:hover { background: var(--surface-hi); border-color: var(--text-dim); }
-.clip-entry:active { transform: scale(0.998); }
-.clip-entry-head {
+.clip-col-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  padding: 9px 11px;
+  /* 컨테이너 padding-top:0 덕에 헤더가 스크롤 영역 최상단에 붙어
+     위로 비치는 카드가 없다. box-shadow 로 아래 카드와 경계만 강조. */
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 10px -8px rgba(0, 0, 0, 0.18);
+}
+.clip-col.local .clip-col-head { border-color: var(--accent); }
+.clip-col-title { font-weight: 600; font-size: 12.5px; color: var(--text); }
+.clip-col-count {
+  margin-left: auto;
   font-size: 11px;
   color: var(--text-sec);
-  margin-bottom: 5px;
+  font-variant-numeric: tabular-nums;
 }
+.clip-col-empty {
+  padding: 26px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-sec);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+.clip-col-body { display: flex; flex-direction: column; gap: 8px; }
+
+/* OS badge (also used in column head) */
 .clip-entry-os {
   padding: 2px 7px;
   border-radius: 4px;
@@ -604,59 +626,67 @@ button { font-family: inherit; }
   text-transform: uppercase;
   font-family: -apple-system, system-ui, sans-serif;
 }
-.clip-entry-os-win {
-  background: rgba(10, 132, 255, 0.13);
-  color: #0a84ff;
-}
-.clip-entry-os-mac {
-  background: rgba(45, 164, 78, 0.13);
-  color: #2da44e;
-}
-.clip-entry-host { font-family: "SF Mono", Consolas, monospace; font-size: 10.5px; }
-.clip-entry-time { margin-left: auto; font-variant-numeric: tabular-nums; }
-.clip-entry-text {
-  font-size: 12.5px;
-  color: var(--text-pri);
-  font-family: "SF Mono", Consolas, monospace;
-  line-height: 1.5;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  word-break: break-all;
-}
-.clip-entry-text.url { color: var(--accent); }
+.clip-entry-os-win { background: rgba(10, 132, 255, 0.13); color: #0a84ff; }
+.clip-entry-os-mac { background: rgba(45, 164, 78, 0.13); color: #2da44e; }
 
-/* Image entry — thumbnail bounded so a 4K screenshot doesn't blow out the timeline */
-.clip-entry-image .clip-image-wrap {
+/* Card */
+.clip-card {
   display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  margin-top: 4px;
-}
-.clip-image-thumb {
-  max-width: 280px;
-  max-height: 200px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
   background: var(--surface);
-  object-fit: contain;
-  display: block;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.12s, box-shadow 0.12s, transform 0.06s;
+  font: inherit;
+  color: inherit;
 }
-.clip-image-missing {
-  width: 280px;
-  height: 140px;
-  display: grid;
-  place-items: center;
-  color: var(--text-dim);
-  font-size: 11px;
+.clip-card:hover {
+  border-color: var(--text-dim);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.clip-card:active { transform: scale(0.997); }
+.clip-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--text-sec);
+}
+.clip-card-host { font-family: "SF Mono", Consolas, monospace; }
+.clip-card-time { margin-left: auto; font-variant-numeric: tabular-nums; }
+.clip-card-text {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 7.5em;
+  overflow: hidden;
+}
+.clip-card-text.url { color: var(--accent); }
+.clip-card-thumb {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: 6px;
   background: var(--surface-low);
-  border: 1px dashed var(--border);
+}
+.clip-card-missing {
+  padding: 24px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--text-sec);
+  background: var(--surface-low);
   border-radius: 6px;
 }
-.clip-image-meta {
-  color: var(--text-sec);
+.clip-card-imgmeta {
   font-size: 11px;
+  color: var(--text-sec);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1978,69 +2008,6 @@ button { font-family: inherit; }
 
 .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 
-/* ─── T2.5 Clipboard sort toggle + by-host grouping ─────────── */
-.clip-sort-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 6px 0 10px;
-}
-.clip-sort-label {
-  font-size: 11.5px;
-  color: var(--text-sec);
-  font-weight: 600;
-}
-.clip-sort-tabs {
-  display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  overflow: hidden;
-}
-.clip-sort-tab {
-  padding: 5px 11px;
-  background: var(--surface-low);
-  border: 0;
-  font-size: 11.5px;
-  color: var(--text-sec);
-  cursor: pointer;
-}
-.clip-sort-tab:hover { background: var(--surface-hi); color: var(--text); }
-.clip-sort-tab.active {
-  background: var(--accent, #2563eb);
-  color: white;
-}
-.clip-sort-count {
-  margin-left: auto;
-  font-size: 11.5px;
-  color: var(--text-sec);
-}
-
-.clip-timeline.grouped { display: flex; flex-direction: column; gap: 14px; }
-.clip-group {
-  background: var(--surface-low);
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 10px 12px;
-}
-.clip-group-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px dashed var(--border);
-}
-.clip-group-host { font-weight: 600; font-size: 12.5px; color: var(--text); }
-.clip-group-count {
-  margin-left: auto;
-  padding: 1px 8px;
-  background: var(--surface-hi);
-  border-radius: 999px;
-  font-size: 10.5px;
-  color: var(--text-sec);
-  font-weight: 600;
-}
-.clip-group-body { display: flex; flex-direction: column; gap: 6px; }
 
 /* ─── Lucide icon helpers ─────────────────────────────────────── */
 @keyframes git-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

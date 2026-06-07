@@ -879,6 +879,29 @@ N-5-a vendor install.sh         · impl · v0.2.1  · N/A · ✅A
 
 ## 4. Spotlight — partial / gap 상세
 
+### SP-E-2 · 오프라인 복원력 — 노트 쓰기 큐 + 클립보드 상대 캐시 (v0.3.4)
+
+- **배경**: 직결망(SMB) 해제 시 노트는 쓰기 거부(Err), 클립보드는 상대(Win)
+  항목이 사라짐. 사용자 요구 — 오프라인에 써두고 연결 시 자동 공유 + 상대
+  클립보드도 마지막 동기화 상태 유지.
+- **노트 (E-10)**:
+  - `save`/`delete` 가 오프라인에서도 성공 → 로컬 미러 + `pending/` 큐
+  - `flush_pending` (E-10-i) — mount 전환 시 (clipboard poller 가 호출) 셰어로
+    replay. 충돌은 last-write-wins (`updated_at`, RFC3339 timezone-aware):
+    상대가 더 최신이면 내 오프라인 편집 폐기 + 미러 동기화
+  - 프론트 `NotesView` (E-12-a) — 새 메모 id 를 ref 로 고정 (`noteIdRef`).
+    이전엔 디바운스 자동저장이 매번 null id → 백엔드가 매 저장 새 UUID →
+    메모 1개가 N개로 분열. ref 가 클로저 캡처 문제 회피.
+- **클립보드 (E-2/E-5)**:
+  - `sync_from_share` (E-5-b) — 마운트 중 5초마다 + 전환 시 셰어의 상대 host
+    스트림+이미지를 로컬 캐시로 **merge** (E-5-c, 셰어 rotate 해도 본 history
+    유지)
+  - `list_entries` 가 캐시 디렉토리 전체(내 것 + 상대 것) 읽음 → unmount 후에도
+    2컬럼 양쪽 표시
+- **테스트**: cargo 68/68 (신규 5 — offline queue / flush / 충돌 / merge / pull-survive)
+- **commit**: pending (v0.3.4)
+- **Cross-OS**: Windows 측 동일 패턴 backport 필요 (백로그 §5)
+
 ### SP-E-1 · E-8-b SharedClipboardPanel 제거 — Notes 와 기능 중복
 
 - **상태**: deprecated (frontend 제거 완료) — 2026-06-01

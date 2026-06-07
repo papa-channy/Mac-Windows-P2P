@@ -4,6 +4,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type NoteEntry } from "../lib/api";
 import { useShareTopic } from "../lib/useShareTopic";
 
+/** Frontend-stable note id. The backend mints a UUID when save() gets a
+ *  null id, so a brand-new note that autosaves several times (debounced
+ *  edits) would create one file PER save unless we pin the id up front.
+ *  We hold it in a ref — not state — so the debounced setTimeout closure
+ *  always reads the current id rather than a stale captured value. */
+function newNoteId(): string {
+  const raw =
+    (globalThis.crypto?.randomUUID?.() ??
+      `${Date.now()}-${Math.random().toString(16).slice(2)}`).replace(/-/g, "");
+  return `note-${raw}`;
+}
+
 export function NotesView() {
   const [notes, setNotes] = useState<NoteEntry[]>([]);
   const [selected, setSelected] = useState<NoteEntry | null>(null);
@@ -11,6 +23,10 @@ export function NotesView() {
   const [body, setBody] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
   const saveTimer = useRef<number | null>(null);
+  // The id the next autosave will write to. null until the first edit of
+  // a new note, at which point we mint one and reuse it for every
+  // subsequent debounced save of that same note.
+  const noteIdRef = useRef<string | null>(null);
 
   const refresh = useCallback(
     () => api.listNotes().then(setNotes).catch(() => void 0),
@@ -28,6 +44,7 @@ export function NotesView() {
 
   const openNote = async (id: string) => {
     const n = await api.getNote(id);
+    noteIdRef.current = n.id;
     setSelected(n);
     setTitle(n.title);
     setBody(n.body);
@@ -35,11 +52,19 @@ export function NotesView() {
   };
 
   const scheduleSave = (nextTitle: string, nextBody: string) => {
+    // Pin an id on the first edit so every debounced save of this note
+    // targets the SAME file (otherwise a null id mints a fresh UUID each
+    // time → duplicate notes).
+    if (!noteIdRef.current) {
+      noteIdRef.current = newNoteId();
+    }
+    const targetId = noteIdRef.current;
     setSaveStatus("편집 중…");
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(async () => {
       try {
-        const saved = await api.saveNote(selected?.id ?? null, nextTitle, nextBody);
+        const saved = await api.saveNote(targetId, nextTitle, nextBody);
+        noteIdRef.current = saved.id;
         setSelected(saved);
         setSaveStatus("저장됨");
         refresh();
@@ -60,6 +85,10 @@ export function NotesView() {
           <button
             className="primary-btn"
             onClick={() => {
+              // Cancel any in-flight autosave + clear the pinned id so the
+              // next edit mints a fresh one for the new note.
+              if (saveTimer.current) window.clearTimeout(saveTimer.current);
+              noteIdRef.current = null;
               setSelected(null);
               setTitle("");
               setBody("");
@@ -126,7 +155,9 @@ export function NotesView() {
                   className="ghost-btn"
                   onClick={async () => {
                     if (!confirm("이 메모를 삭제할까요?")) return;
+                    if (saveTimer.current) window.clearTimeout(saveTimer.current);
                     await api.deleteNote(selected.id);
+                    noteIdRef.current = null;
                     setSelected(null);
                     setTitle("");
                     setBody("");

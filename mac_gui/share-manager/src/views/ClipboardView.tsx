@@ -1,33 +1,48 @@
-// ClipboardView — T2 clipboard history timeline.
+// ClipboardView — 양쪽 OS 클립보드를 좌우 2컬럼으로 분리한 카드 타임라인.
 //
-// Streaming jsonl timeline (per-OS clipboard polls), newest-first or
-// grouped by host. The shared-text sticky panel (T2.5, E-8-b) was
-// removed — that "leave one message for the other side" role is covered
-// by the dedicated Notes page (NotesView, E-12-a), which is a superset
-// (multiple notes + titles + autosave). See
-// mockups/clipboard-refactor/PROMPT.md.
-//
-// Sort toggle:
-//   - "newest": every entry chronological, newest first (default)
-//   - "by-host": grouped by host name, then newest-first within group
+// 레이아웃: 화면을 좌우로 나눠 한쪽은 상대(remote) OS, 한쪽은 내(local)
+// OS 클립보드. 규칙은 "상대가 왼쪽, 나는 오른쪽" — Mac에서 보면
+// 좌=Windows / 우=Mac, Windows에서 보면 좌=Mac / 우=Windows. 각 컬럼은
+// 독립적으로 newest-first 라서 OS 분리와 시간순 정렬을 동시에 만족한다.
+// (sticky 공유텍스트 패널은 v0.3.3에서 제거 — Notes가 그 역할. E-8-b dep.)
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { api, type ClipboardEntry, type ClipboardImageEntry } from "../lib/api";
 import { useToast } from "../lib/toast";
 import { fmtRelative } from "../lib/format";
 import { useShareTopic } from "../lib/useShareTopic";
 
-type SortMode = "newest" | "by-host";
+type Os = "macos" | "windows";
+
+/** Tauri webview의 navigator는 호스트 OS를 반영한다. Mac 빌드는 macos,
+ *  Windows 미러 빌드는 windows를 반환 — 좌우 배치가 자동으로 뒤집힌다. */
+function detectLocalOs(): Os {
+  if (typeof navigator !== "undefined" && /Win/i.test(navigator.userAgent)) {
+    return "windows";
+  }
+  return "macos";
+}
+
+function osShort(os: Os): string {
+  return os === "macos" ? "Mac" : "Win";
+}
+
+function osLabel(os: Os, isLocal: boolean): string {
+  const name = os === "macos" ? "Mac" : "Windows";
+  return isLocal ? `내 클립보드 · ${name}` : `${name} 클립보드`;
+}
 
 function isUrl(s: string): boolean {
-  return /^https?:\/\//.test(s.trim());
+  const t = s.trim();
+  return /^https?:\/\/\S+$/i.test(t) || /^www\.\S+$/i.test(t);
 }
 
 export function ClipboardView() {
   const [entries, setEntries] = useState<ClipboardEntry[]>([]);
-  const [sortMode, setSortMode] = useState<SortMode>("newest");
   const toast = useToast();
+  const localOs = detectLocalOs();
+  const remoteOs: Os = localOs === "macos" ? "windows" : "macos";
 
   const refresh = useCallback(
     () => api.listClipboardEntries(200).then(setEntries).catch(() => void 0),
@@ -41,7 +56,7 @@ export function ClipboardView() {
 
   useShareTopic("clipboard", refresh);
 
-  const onClickEntry = async (e: ClipboardEntry) => {
+  const onCopy = async (e: ClipboardEntry) => {
     try {
       if (e.kind === "image") {
         await api.copyImageToOsClipboard(e.image_ref);
@@ -55,8 +70,9 @@ export function ClipboardView() {
     }
   };
 
-  // Memoize the grouped view so we don't reshuffle on every refresh tick.
-  const groups = useMemo(() => groupEntries(entries, sortMode), [entries, sortMode]);
+  // OS 2분법으로 분리. macos/windows 외 값(이론상 없음)은 내 쪽으로 귀속.
+  const remoteEntries = entries.filter((e) => e.os === remoteOs);
+  const localEntries = entries.filter((e) => e.os !== remoteOs);
 
   return (
     <section className="panel">
@@ -64,7 +80,8 @@ export function ClipboardView() {
         <div>
           <h2>📋 클립보드 (양쪽 통합)</h2>
           <div className="subtitle">
-            양쪽 호스트가 OS 클립보드를 1.5초마다 자동 기록 · 이미지 30일 보관 후 자동 정리 · 항목 클릭 → 내 OS 클립보드로 복사
+            양쪽 호스트가 OS 클립보드를 1.5초마다 자동 기록 · 좌측은 상대 OS,
+            우측은 내 OS · 카드 클릭 → 내 클립보드로 복사
           </div>
         </div>
         <div className="header-actions">
@@ -82,157 +99,82 @@ export function ClipboardView() {
         </div>
       </header>
 
-      <div className="clip-timeline-body">
-        <div className="clip-sort-row">
-          <span className="clip-sort-label">정렬</span>
-          <div className="clip-sort-tabs" role="tablist">
-            <button
-              role="tab"
-              className={"clip-sort-tab" + (sortMode === "newest" ? " active" : "")}
-              onClick={() => setSortMode("newest")}
-            >
-              ⏱ 최신순
-            </button>
-            <button
-              role="tab"
-              className={"clip-sort-tab" + (sortMode === "by-host" ? " active" : "")}
-              onClick={() => setSortMode("by-host")}
-            >
-              👥 호스트별
-            </button>
-          </div>
-          <span className="clip-sort-count">총 {entries.length}건</span>
-        </div>
-
-        {groups.length === 0 ? (
-          <div className="empty">
-            <div className="empty-icon">📋</div>
-            <div className="empty-title">기록이 없어요</div>
-            <div className="empty-hint">텍스트나 이미지를 복사하면 자동으로 여기 쌓여요.</div>
-          </div>
-        ) : sortMode === "by-host" ? (
-          <div className="clip-timeline grouped">
-            {groups.map((g) => (
-              <div className="clip-group" key={g.key}>
-                <header className="clip-group-head">
-                  <span
-                    className={
-                      "clip-entry-os " +
-                      (g.os === "macos" ? "clip-entry-os-mac" : "clip-entry-os-win")
-                    }
-                  >
-                    {g.os === "macos" ? "Mac" : "Win"}
-                  </span>
-                  <span className="clip-group-host">{g.host}</span>
-                  <span className="clip-group-count">{g.entries.length}건</span>
-                </header>
-                <div className="clip-group-body">
-                  {g.entries.map((e, idx) =>
-                    e.kind === "image" ? (
-                      <ImageEntry
-                        key={idx}
-                        entry={e}
-                        onClick={() => onClickEntry(e)}
-                      />
-                    ) : (
-                      <TextEntry key={idx} entry={e} onClick={() => onClickEntry(e)} />
-                    ),
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="clip-timeline">
-            {entries.map((e, idx) =>
-              e.kind === "image" ? (
-                <ImageEntry key={idx} entry={e} onClick={() => onClickEntry(e)} />
-              ) : (
-                <TextEntry key={idx} entry={e} onClick={() => onClickEntry(e)} />
-              ),
-            )}
-          </div>
-        )}
+      <div className="clip-os-split">
+        <ClipColumn os={remoteOs} isLocal={false} entries={remoteEntries} onCopy={onCopy} />
+        <ClipColumn os={localOs} isLocal={true} entries={localEntries} onCopy={onCopy} />
       </div>
     </section>
   );
 }
 
-interface Group {
-  key: string;
-  host: string;
-  os: string;
+function ClipColumn({
+  os,
+  isLocal,
+  entries,
+  onCopy,
+}: {
+  os: Os;
+  isLocal: boolean;
   entries: ClipboardEntry[];
-}
-
-function groupEntries(entries: ClipboardEntry[], mode: SortMode): Group[] {
-  if (mode !== "by-host") {
-    return entries.length > 0
-      ? [{ key: "_all", host: "_", os: "_", entries }]
-      : [];
-  }
-  const m = new Map<string, Group>();
-  for (const e of entries) {
-    const key = `${e.os}:${e.host}`;
-    let g = m.get(key);
-    if (!g) {
-      g = { key, host: e.host, os: e.os, entries: [] };
-      m.set(key, g);
-    }
-    g.entries.push(e);
-  }
-  // Sort groups: macOS first, then alphabetical by host; entries within
-  // each group are already newest-first because backend returns them that way.
-  return [...m.values()].sort((a, b) => {
-    if (a.os !== b.os) return a.os === "macos" ? -1 : 1;
-    return a.host.localeCompare(b.host);
-  });
-}
-
-// ─── Entry components (unchanged) ─────────────────────────────────
-
-function EntryHead({ entry }: { entry: ClipboardEntry }) {
+  onCopy: (e: ClipboardEntry) => void;
+}) {
+  const osClass = os === "macos" ? "clip-entry-os-mac" : "clip-entry-os-win";
   return (
-    <div className="clip-entry-head">
-      <span
-        className={
-          "clip-entry-os " +
-          (entry.os === "macos" ? "clip-entry-os-mac" : "clip-entry-os-win")
-        }
-      >
-        {entry.os === "macos" ? "Mac" : "Win"}
-      </span>
-      <span className="clip-entry-host">{entry.host}</span>
-      <span className="clip-entry-time">{fmtRelative(entry.ts)}</span>
+    <div className={"clip-col" + (isLocal ? " local" : " remote")}>
+      <header className="clip-col-head">
+        <span className={"clip-entry-os " + osClass}>{osShort(os)}</span>
+        <span className="clip-col-title">{osLabel(os, isLocal)}</span>
+        <span className="clip-col-count">{entries.length}건</span>
+      </header>
+      {entries.length === 0 ? (
+        <div className="clip-col-empty">
+          {isLocal
+            ? "내 클립보드 기록이 없어요. 복사하면 여기 쌓여요."
+            : "상대 호스트 기록이 없어요."}
+        </div>
+      ) : (
+        <div className="clip-col-body">
+          {entries.map((e, i) =>
+            e.kind === "image" ? (
+              <ImageCard key={i} entry={e} onClick={() => onCopy(e)} />
+            ) : (
+              <TextCard key={i} entry={e} onClick={() => onCopy(e)} />
+            ),
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function TextEntry({
-  entry,
-  onClick,
-}: {
-  entry: ClipboardEntry;
-  onClick: () => void;
-}) {
+function CardHead({ entry }: { entry: ClipboardEntry }) {
+  return (
+    <div className="clip-card-head">
+      <span className="clip-card-host">{entry.host}</span>
+      <span className="clip-card-time">{fmtRelative(entry.ts)}</span>
+    </div>
+  );
+}
+
+function TextCard({ entry, onClick }: { entry: ClipboardEntry; onClick: () => void }) {
   const text = entry.content.slice(0, 600);
   const url = isUrl(text);
   return (
-    <div className="clip-entry" onClick={onClick}>
-      <EntryHead entry={entry} />
-      <div className={"clip-entry-text" + (url ? " url" : "")}>{text}</div>
-    </div>
+    <button className="clip-card" onClick={onClick} title="클릭 → 내 클립보드로 복사">
+      <CardHead entry={entry} />
+      <div className={"clip-card-text" + (url ? " url" : "")}>{text}</div>
+    </button>
   );
 }
 
-function ImageEntry({
+function ImageCard({
   entry,
   onClick,
 }: {
   entry: ClipboardImageEntry;
   onClick: () => void;
 }) {
-  const [src, setSrc] = useState<string>("");
+  const [src, setSrc] = useState("");
   useEffect(() => {
     let cancelled = false;
     api
@@ -241,21 +183,22 @@ function ImageEntry({
       .catch(() => { if (!cancelled) setSrc(""); });
     return () => { cancelled = true; };
   }, [entry.image_ref]);
-
   const kb = Math.round(entry.size_bytes / 1024);
   return (
-    <div className="clip-entry clip-entry-image" onClick={onClick}>
-      <EntryHead entry={entry} />
-      <div className="clip-image-wrap">
-        {src ? (
-          <img className="clip-image-thumb" src={src} alt="clipboard image" />
-        ) : (
-          <div className="clip-image-missing">이미지 로드 실패 / 만료됨</div>
-        )}
-        <span className="clip-image-meta">
-          {entry.width} × {entry.height} · {kb} KB
-        </span>
-      </div>
-    </div>
+    <button
+      className="clip-card clip-card-image"
+      onClick={onClick}
+      title="클릭 → 내 클립보드로 복사"
+    >
+      <CardHead entry={entry} />
+      {src ? (
+        <img className="clip-card-thumb" src={src} alt="clipboard image" />
+      ) : (
+        <div className="clip-card-missing">이미지 로드 실패 / 만료됨</div>
+      )}
+      <span className="clip-card-imgmeta">
+        {entry.width} × {entry.height} · {kb} KB
+      </span>
+    </button>
   );
 }

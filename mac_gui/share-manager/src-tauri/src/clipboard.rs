@@ -22,6 +22,9 @@ const CLEANUP_INTERVAL: Duration = Duration::from_secs(3600); // 1 hour
 const MAX_HISTORY_LINES: usize = 200;
 const MAX_TEXT_CHARS: usize = 32_000;
 const POLL_INTERVAL: Duration = Duration::from_millis(1500);
+/// How often to pull other hosts' clipboard streams into the local cache
+/// while mounted, so the remote (e.g. Windows) timeline survives unmount.
+const PULL_INTERVAL: Duration = Duration::from_secs(5);
 
 // ─── Paths — share (when mounted) AND local cache (always available) ─
 //
@@ -303,11 +306,15 @@ pub fn start_poller(app: AppHandle) {
 
         // Push any offline backlog that accumulated since the last run
         // (e.g. share was unmounted last session, we kept appending
-        // locally, now it's back).
+        // locally, now it's back). Same transition flushes the notes
+        // offline write queue.
         let mut last_mount = crate::mount::is_share_mounted();
         if last_mount {
             let _ = sync_to_share();
+            let _ = sync_from_share();
+            let _ = crate::notes::flush_pending();
         }
+        let mut last_pull = Instant::now();
 
         let mut last_text: Option<String> = None;
         let mut last_image_hash: Option<String> = None;
@@ -317,12 +324,23 @@ pub fn start_poller(app: AppHandle) {
             std::thread::sleep(POLL_INTERVAL);
 
             // Mount transition: unmount→mount triggers a one-shot sync
-            // of whatever the local cache accumulated while offline.
+            // of whatever the local cache accumulated while offline, plus
+            // a flush of the notes offline write queue.
             let now_mount = crate::mount::is_share_mounted();
             if now_mount && !last_mount {
                 let _ = sync_to_share();
+                let _ = sync_from_share();
+                let _ = crate::notes::flush_pending();
+                last_pull = Instant::now();
             }
             last_mount = now_mount;
+
+            // Periodic pull of remote hosts' streams while mounted, so the
+            // other side's clipboard is cached for offline viewing.
+            if now_mount && last_pull.elapsed() >= PULL_INTERVAL {
+                let _ = sync_from_share();
+                last_pull = Instant::now();
+            }
 
             if last_cleanup.elapsed() >= CLEANUP_INTERVAL {
                 cleanup_old_images(IMAGE_TTL_DAYS);
@@ -399,18 +417,11 @@ pub fn list_entries(limit: usize) -> Result<Vec<serde_json::Value>, String> {
     if crate::mount::is_share_mounted() {
         collect_from(&clipboard_dir(), &mut all, &mut seen);
     }
-    // Local cache: always read, regardless of mount state. This is what
-    // makes the timeline survive an unmount.
-    // local_history_path() is a FILE, not a dir; read it directly.
-    if let Ok(content) = std::fs::read_to_string(local_history_path()) {
-        for line in content.lines() {
-            if line.trim().is_empty() { continue; }
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-                let key = entry_key(&v);
-                if seen.insert(key) { all.push(v); }
-            }
-        }
-    }
+    // Local cache: always read ALL host streams (our own + remote hosts'
+    // streams pulled in by sync_from_share), regardless of mount state.
+    // This is what makes the timeline — including the OTHER host's
+    // clipboard — survive an unmount.
+    collect_from(&local_cache_dir(), &mut all, &mut seen);
 
     all.sort_by(|a, b| {
         let ta = a.get("ts").and_then(|v| v.as_str()).unwrap_or("");
@@ -476,6 +487,109 @@ pub fn sync_to_share() -> std::io::Result<usize> {
         eprintln!("[clipboard] synced {pushed} offline entries to share");
     }
     Ok(pushed)
+}
+
+/// Union two JSONL streams, dedup by (ts, host), sorted oldest→newest so
+/// a subsequent rotate keeps the newest tail. Used to merge a remote
+/// host's share stream into our local cache copy without ever shrinking
+/// what we've already seen (the share may rotate its head away).
+fn merge_jsonl(cache_text: &str, share_text: &str) -> String {
+    use std::collections::HashSet;
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut rows: Vec<(String, String)> = Vec::new(); // (ts, raw line)
+    for src in [cache_text, share_text] {
+        for line in src.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let parsed = serde_json::from_str::<serde_json::Value>(line).ok();
+            let key = parsed
+                .as_ref()
+                .map(entry_key)
+                .unwrap_or_else(|| line.to_string());
+            if !seen.insert(key) {
+                continue;
+            }
+            let ts = parsed
+                .as_ref()
+                .and_then(|v| v.get("ts").and_then(|x| x.as_str().map(String::from)))
+                .unwrap_or_default();
+            rows.push((ts, line.to_string()));
+        }
+    }
+    rows.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut out = rows
+        .into_iter()
+        .map(|(_, l)| l)
+        .collect::<Vec<_>>()
+        .join("\n");
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out
+}
+
+/// Pull OTHER hosts' clipboard streams + images from the share into the
+/// local cache, so the timeline keeps showing the remote (e.g. Windows)
+/// clipboard even after the share is unmounted. Our own stream is skipped
+/// — the local cache is its source of truth. Merge (not overwrite) so a
+/// share-side rotation never drops history we've already cached. No-op
+/// when unmounted. Returns the number of remote streams updated.
+pub fn sync_from_share() -> std::io::Result<usize> {
+    if !crate::mount::is_share_mounted() {
+        return Ok(0);
+    }
+    let own_name = local_history_path()
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+    let cache = local_cache_dir();
+    create_dir_all(&cache)?;
+
+    let mut pulled = 0usize;
+    if let Ok(rd) = std::fs::read_dir(clipboard_dir()) {
+        for ent in rd.flatten() {
+            let p = ent.path();
+            if p.extension().and_then(|s| s.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let name = match p.file_name().and_then(|s| s.to_str()) {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+            if name == own_name {
+                continue; // our own stream — local cache is authoritative
+            }
+            let Ok(share_text) = std::fs::read_to_string(&p) else {
+                continue;
+            };
+            let target = cache.join(&name);
+            let cache_text = std::fs::read_to_string(&target).unwrap_or_default();
+            let merged = merge_jsonl(&cache_text, &share_text);
+            if merged != cache_text {
+                let _ = std::fs::write(&target, &merged);
+                let _ = rotate_jsonl(&target, MAX_HISTORY_LINES);
+                pulled += 1;
+            }
+        }
+    }
+
+    // Mirror any share PNG not present locally (remote hosts' images).
+    let local_img = local_images_dir();
+    let _ = create_dir_all(&local_img);
+    if let Ok(rd) = std::fs::read_dir(images_dir()) {
+        for ent in rd.flatten() {
+            if ent.path().extension().and_then(|s| s.to_str()) != Some("png") {
+                continue;
+            }
+            let target = local_img.join(ent.file_name());
+            if !target.exists() {
+                let _ = std::fs::copy(ent.path(), &target);
+            }
+        }
+    }
+    Ok(pulled)
 }
 
 // ─── Shared clipboard (current.json + history/) ────────────────────
@@ -752,5 +866,59 @@ mod tests {
             .filter(|l| !l.trim().is_empty())
             .count();
         assert_eq!(share_lines, 2);
+    }
+
+    #[test]
+    fn merge_jsonl_dedups_and_orders_oldest_first() {
+        let a = r#"{"ts":"2026-06-01T10:00:00+09:00","host":"win","content":"a"}"#;
+        let dup = r#"{"ts":"2026-06-01T10:00:00+09:00","host":"win","content":"a"}"#;
+        let b = r#"{"ts":"2026-06-01T11:00:00+09:00","host":"win","content":"b"}"#;
+        let merged = merge_jsonl(&format!("{a}\n"), &format!("{dup}\n{b}\n"));
+        let lines: Vec<&str> = merged.lines().filter(|l| !l.trim().is_empty()).collect();
+        assert_eq!(lines.len(), 2, "duplicate (ts,host) collapsed");
+        assert!(lines[0].contains(r#""content":"a""#), "oldest first");
+        assert!(lines[1].contains(r#""content":"b""#));
+    }
+
+    #[test]
+    fn pulls_remote_stream_and_survives_unmount() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let _env = EnvGuard::new();
+
+        // Our own entry.
+        append_entry("my mac entry").unwrap();
+
+        // A remote (Windows) host stream written directly to the share.
+        let win = serde_json::json!({
+            "ts": "2026-06-01T10:00:00+09:00",
+            "host": "DESKTOP-WIN", "os": "windows",
+            "content": "from windows", "kind": "text", "len": 12,
+        });
+        std::fs::create_dir_all(clipboard_dir()).unwrap();
+        std::fs::write(
+            clipboard_dir().join("DESKTOP-WIN.history.jsonl"),
+            format!("{win}\n"),
+        ).unwrap();
+
+        // Pull remote → local cache.
+        let pulled = sync_from_share().unwrap();
+        assert_eq!(pulled, 1, "one remote stream pulled");
+        assert!(local_cache_dir().join("DESKTOP-WIN.history.jsonl").exists());
+
+        // Mounted: timeline shows both hosts.
+        let mounted = list_entries(10).unwrap();
+        let c: Vec<&str> = mounted.iter()
+            .filter_map(|e| e.get("content").and_then(|v| v.as_str())).collect();
+        assert!(c.contains(&"from windows"));
+        assert!(c.contains(&"my mac entry"));
+
+        // Unmount — share invisible, but the remote entry survives via cache.
+        let off = tempfile::tempdir().unwrap();
+        std::env::set_var("MW_SHARE_ROOT", off.path());
+        let offline = list_entries(10).unwrap();
+        let oc: Vec<&str> = offline.iter()
+            .filter_map(|e| e.get("content").and_then(|v| v.as_str())).collect();
+        assert!(oc.contains(&"from windows"), "remote entry survives unmount");
+        assert!(oc.contains(&"my mac entry"), "own entry survives unmount");
     }
 }

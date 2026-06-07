@@ -1,14 +1,20 @@
 // notes.rs — shared note storage at 00_System/60_Notes/<note-id>.json.
 //
 // Storage contract:
-//   - Share is the single source of truth for writes (save / delete).
-//     Save while unmounted is rejected — two hosts editing the same
-//     note while offline would otherwise produce conflicting last-
-//     writes-wins outcomes once both reconnect.
-//   - Reads fall back to a read-only local mirror under
-//     ~/Library/Application Support/MacWindowShare/cache/notes/.
-//     Every successful read from the share also refreshes the mirror,
-//     so an offline session sees the most recent snapshot.
+//   - When mounted, the share is the live source of truth: save/delete
+//     write through to the share AND refresh the local mirror.
+//   - When UNMOUNTED, save/delete still succeed offline. The edit lands
+//     in the local mirror (so it's visible immediately) and a marker is
+//     queued under cache/notes-pending/. On the next mount transition
+//     `flush_pending()` replays the queue to the share.
+//   - Conflict policy is last-write-wins by `updated_at`: if the other
+//     host edited the same note while we were offline and its share copy
+//     is newer than our queued edit, flush keeps the share version and
+//     drops ours (and refreshes the mirror to match).
+//   - Reads fall back to the read-only mirror when unmounted. Every
+//     successful read from the share also refreshes the mirror, so an
+//     offline session sees the most recent snapshot of any note it has
+//     opened at least once while connected.
 
 use std::path::PathBuf;
 
@@ -28,6 +34,48 @@ fn local_mirror_dir() -> PathBuf {
         .join("notes");
     let _ = std::fs::create_dir_all(&p);
     p
+}
+
+/// Offline write queue. `<id>.json` = a pending save (full note body);
+/// `<id>.delete` = a pending delete marker. Replayed by `flush_pending`
+/// on the next mount transition.
+fn pending_dir() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let p = PathBuf::from(home)
+        .join("Library")
+        .join("Application Support")
+        .join("MacWindowShare")
+        .join("cache")
+        .join("notes-pending");
+    let _ = std::fs::create_dir_all(&p);
+    p
+}
+
+fn read_created_at(p: &std::path::Path) -> Option<String> {
+    std::fs::read_to_string(p)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .and_then(|v| v.get("created_at").and_then(|x| x.as_str().map(String::from)))
+}
+
+fn note_updated_at(p: &std::path::Path) -> Option<String> {
+    std::fs::read_to_string(p)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .and_then(|v| v.get("updated_at").and_then(|x| x.as_str().map(String::from)))
+}
+
+/// `a` strictly newer than `b`? Parses RFC3339 (timezone-aware) so two
+/// hosts in different timezones compare correctly; falls back to string
+/// order if either fails to parse.
+fn is_newer(a: &str, b: &str) -> bool {
+    match (
+        chrono::DateTime::parse_from_rfc3339(a),
+        chrono::DateTime::parse_from_rfc3339(b),
+    ) {
+        (Ok(ta), Ok(tb)) => ta > tb,
+        _ => a > b,
+    }
 }
 
 pub fn host_info() -> serde_json::Value {
@@ -118,26 +166,21 @@ pub fn get(id: &str) -> Result<serde_json::Value, String> {
 }
 
 pub fn save(id: Option<String>, title: String, body: String) -> Result<serde_json::Value, String> {
-    if !crate::mount::is_share_mounted() {
-        return Err("셰어 미마운트 — 노트는 셰어 연결 후에만 저장 가능합니다.".into());
-    }
-
     let now = chrono::Local::now().to_rfc3339();
     let id = match id {
         Some(s) if !s.is_empty() => sanitize_id(&s),
         _ => format!("note-{}", uuid::Uuid::new_v4().simple()),
     };
-    let p = notes_dir().join(format!("{id}.json"));
+    let mounted = crate::mount::is_share_mounted();
 
-    let created_at = if p.exists() {
-        std::fs::read_to_string(&p)
-            .ok()
-            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
-            .and_then(|v| v.get("created_at").and_then(|x| x.as_str().map(String::from)))
-            .unwrap_or_else(|| now.clone())
+    // Preserve created_at from whichever copy already exists (share when
+    // mounted, else the offline mirror).
+    let existing = if mounted {
+        notes_dir().join(format!("{id}.json"))
     } else {
-        now.clone()
+        local_mirror_dir().join(format!("{id}.json"))
     };
+    let created_at = read_created_at(&existing).unwrap_or_else(|| now.clone());
 
     let note = serde_json::json!({
         "schema_version": 1,
@@ -149,24 +192,108 @@ pub fn save(id: Option<String>, title: String, body: String) -> Result<serde_jso
         "updated_by": host_info(),
     });
     let pretty = serde_json::to_string_pretty(&note).map_err(|e| e.to_string())?;
-    std::fs::write(&p, &pretty).map_err(|e| e.to_string())?;
-    // Mirror locally so the new note is also visible offline.
+
+    // Mirror always — it's the offline source of truth and makes the
+    // note visible immediately regardless of mount state.
     let _ = std::fs::write(local_mirror_dir().join(format!("{id}.json")), &pretty);
+
+    if mounted {
+        // Write through to the share, and clear any stale pending markers.
+        std::fs::write(notes_dir().join(format!("{id}.json")), &pretty)
+            .map_err(|e| e.to_string())?;
+        let _ = std::fs::remove_file(pending_dir().join(format!("{id}.json")));
+        let _ = std::fs::remove_file(pending_dir().join(format!("{id}.delete")));
+    } else {
+        // Offline — queue the save; a prior delete marker is superseded.
+        let _ = std::fs::write(pending_dir().join(format!("{id}.json")), &pretty);
+        let _ = std::fs::remove_file(pending_dir().join(format!("{id}.delete")));
+    }
     Ok(note)
 }
 
 pub fn delete(id: &str) -> Result<(), String> {
-    if !crate::mount::is_share_mounted() {
-        return Err("셰어 미마운트 — 노트 삭제는 셰어 연결 후에만 가능합니다.".into());
-    }
     let safe = sanitize_id(id);
-    let p = notes_dir().join(format!("{safe}.json"));
-    if p.exists() {
-        std::fs::remove_file(&p).map_err(|e| e.to_string())?;
-    }
-    // Mirror removal — best-effort.
+    let mounted = crate::mount::is_share_mounted();
+
+    // Mirror removal always.
     let _ = std::fs::remove_file(local_mirror_dir().join(format!("{safe}.json")));
+
+    if mounted {
+        let p = notes_dir().join(format!("{safe}.json"));
+        if p.exists() {
+            std::fs::remove_file(&p).map_err(|e| e.to_string())?;
+        }
+        let _ = std::fs::remove_file(pending_dir().join(format!("{safe}.json")));
+        let _ = std::fs::remove_file(pending_dir().join(format!("{safe}.delete")));
+    } else {
+        // Offline — cancel any queued save, queue the delete instead.
+        let _ = std::fs::remove_file(pending_dir().join(format!("{safe}.json")));
+        let _ = std::fs::write(pending_dir().join(format!("{safe}.delete")), b"");
+    }
     Ok(())
+}
+
+/// Replay the offline write queue to the share. Called on a mount
+/// transition (and at poller startup if already mounted). Returns the
+/// number of pending operations applied. No-op when unmounted.
+///
+/// Conflict policy (last-write-wins): for a pending save, if the share
+/// copy is newer than our queued edit (the other host edited it while we
+/// were offline) we keep the share version and refresh our mirror — our
+/// offline edit is dropped. Otherwise we write our edit through.
+pub fn flush_pending() -> usize {
+    if !crate::mount::is_share_mounted() {
+        return 0;
+    }
+    let pdir = pending_dir();
+    let Ok(rd) = std::fs::read_dir(&pdir) else {
+        return 0;
+    };
+    let mirror = local_mirror_dir();
+    let share = notes_dir();
+    let mut applied = 0usize;
+
+    for ent in rd.flatten() {
+        let p = ent.path();
+        let name = match p.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+
+        if let Some(id) = name.strip_suffix(".delete") {
+            let sp = share.join(format!("{id}.json"));
+            if sp.exists() {
+                let _ = std::fs::remove_file(&sp);
+            }
+            let _ = std::fs::remove_file(mirror.join(format!("{id}.json")));
+            let _ = std::fs::remove_file(&p);
+            applied += 1;
+        } else if let Some(id) = name.strip_suffix(".json") {
+            let Ok(raw) = std::fs::read_to_string(&p) else {
+                continue;
+            };
+            let pending_updated = serde_json::from_str::<serde_json::Value>(&raw)
+                .ok()
+                .and_then(|v| v.get("updated_at").and_then(|x| x.as_str().map(String::from)))
+                .unwrap_or_default();
+            let sp = share.join(format!("{id}.json"));
+            let share_updated = note_updated_at(&sp).unwrap_or_default();
+
+            if !share_updated.is_empty() && is_newer(&share_updated, &pending_updated) {
+                // Other host's edit is newer — keep it, sync mirror to it.
+                if let Ok(sr) = std::fs::read_to_string(&sp) {
+                    let _ = std::fs::write(mirror.join(format!("{id}.json")), sr);
+                }
+            } else {
+                // Our edit wins (or share has no copy) — write it through.
+                let _ = std::fs::write(&sp, &raw);
+                let _ = std::fs::write(mirror.join(format!("{id}.json")), &raw);
+            }
+            let _ = std::fs::remove_file(&p);
+            applied += 1;
+        }
+    }
+    applied
 }
 
 #[cfg(test)]
@@ -209,10 +336,9 @@ mod tests {
     }
 
     #[test]
-    fn save_rejected_when_share_not_mounted() {
+    fn save_offline_queues_to_pending_and_mirror() {
         let _g = ENV_LOCK.lock().unwrap();
-        // Point share_root at a path that DOESN'T contain 00_System →
-        // is_share_mounted() == false.
+        // share_root at a path WITHOUT 00_System → is_share_mounted() false.
         let tmp = tempfile::tempdir().unwrap();
         std::env::set_var("MW_SHARE_ROOT", tmp.path());
 
@@ -220,8 +346,96 @@ mod tests {
         let prev_home = std::env::var("HOME").ok();
         std::env::set_var("HOME", home_tmp.path());
 
-        let err = save(None, "title".into(), "body".into()).unwrap_err();
-        assert!(err.contains("셰어"));
+        // Offline save now SUCCEEDS — lands in mirror + pending queue.
+        let saved = save(None, "offline title".into(), "offline body".into()).unwrap();
+        let id = saved.get("id").and_then(|v| v.as_str()).unwrap().to_string();
+
+        assert!(local_mirror_dir().join(format!("{id}.json")).exists(), "mirror written");
+        assert!(pending_dir().join(format!("{id}.json")).exists(), "queued pending");
+
+        // Offline list reads from the mirror.
+        let listed = list().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].get("title").and_then(|v| v.as_str()), Some("offline title"));
+
+        if let Some(h) = prev_home { std::env::set_var("HOME", h); }
+        else { std::env::remove_var("HOME"); }
+        std::env::remove_var("MW_SHARE_ROOT");
+    }
+
+    #[test]
+    fn flush_pending_replays_offline_saves_to_share() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let home_tmp = tempfile::tempdir().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", home_tmp.path());
+
+        // (1) Offline (no 00_System) — queue a save.
+        let off = tempfile::tempdir().unwrap();
+        std::env::set_var("MW_SHARE_ROOT", off.path());
+        let saved = save(None, "t".into(), "queued body".into()).unwrap();
+        let id = saved.get("id").and_then(|v| v.as_str()).unwrap().to_string();
+        assert!(pending_dir().join(format!("{id}.json")).exists());
+
+        // (2) Reconnect — share now has 00_System → mounted.
+        let on = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(on.path().join("00_System")).unwrap();
+        std::env::set_var("MW_SHARE_ROOT", on.path());
+
+        let applied = flush_pending();
+        assert_eq!(applied, 1, "one pending op applied");
+        // Pending cleared, share has the note.
+        assert!(!pending_dir().join(format!("{id}.json")).exists(), "pending cleared");
+        assert!(notes_dir().join(format!("{id}.json")).exists(), "share has note");
+        let body = get(&id).unwrap();
+        assert_eq!(body.get("body").and_then(|v| v.as_str()), Some("queued body"));
+
+        if let Some(h) = prev_home { std::env::set_var("HOME", h); }
+        else { std::env::remove_var("HOME"); }
+        std::env::remove_var("MW_SHARE_ROOT");
+    }
+
+    #[test]
+    fn flush_pending_keeps_newer_share_copy() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let home_tmp = tempfile::tempdir().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        std::env::set_var("HOME", home_tmp.path());
+
+        let on = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(on.path().join("00_System")).unwrap();
+        std::env::set_var("MW_SHARE_ROOT", on.path());
+
+        // Share already has a NEWER copy (other host edited concurrently).
+        let newer = serde_json::json!({
+            "schema_version": 1, "id": "note-x",
+            "title": "remote", "body": "remote newer body",
+            "created_at": "2026-06-01T00:00:00+09:00",
+            "updated_at": "2026-06-01T12:00:00+09:00",
+            "updated_by": {"host": "win", "os": "windows"}
+        });
+        std::fs::write(
+            notes_dir().join("note-x.json"),
+            serde_json::to_string_pretty(&newer).unwrap(),
+        ).unwrap();
+
+        // Our queued (older) offline edit.
+        let older = serde_json::json!({
+            "schema_version": 1, "id": "note-x",
+            "title": "mine", "body": "my older body",
+            "created_at": "2026-06-01T00:00:00+09:00",
+            "updated_at": "2026-06-01T09:00:00+09:00",
+            "updated_by": {"host": "mac", "os": "macos"}
+        });
+        std::fs::write(
+            pending_dir().join("note-x.json"),
+            serde_json::to_string_pretty(&older).unwrap(),
+        ).unwrap();
+
+        flush_pending();
+        // Share keeps the newer remote body; ours is dropped.
+        let got = get("note-x").unwrap();
+        assert_eq!(got.get("body").and_then(|v| v.as_str()), Some("remote newer body"));
 
         if let Some(h) = prev_home { std::env::set_var("HOME", h); }
         else { std::env::remove_var("HOME"); }

@@ -315,8 +315,10 @@
 - **E-4-c** `clipboard::list_compressed_images` · `clipboard.rs:568` · function
 - **E-4-d** `clipboard::compressed_image_path` · `clipboard.rs:598` · function
 
-### E-5 Share-back sync (local → share)
-- **E-5-a** `clipboard::sync_to_share` · `clipboard.rs:434` · function
+### E-5 Share sync (local ↔ share, offline resilience)
+- **E-5-a** `clipboard::sync_to_share` (local → share, 오프라인 backlog push) · `clipboard.rs` · function
+- **E-5-b** `clipboard::sync_from_share` (share → local, 상대 host 스트림 pull → unmount 후에도 표시) · `clipboard.rs` · function · cross-ref SP-E-2
+- **E-5-c** `clipboard::merge_jsonl` (union + dedup by ts|host, oldest-first) · `clipboard.rs` · helper
 
 ### E-6 Shared clipboard sticky (current.json)
 - **E-6-a** `clipboard::read_shared_clipboard` · `clipboard.rs:487` · function
@@ -337,7 +339,7 @@
 - **E-7-j** `compressed_image_path` · `commands.rs:923` · tauri-command
 
 ### E-8 Frontend Clipboard UI
-- **E-8-a** `ClipboardView` · `src/views/ClipboardView.tsx` · view
+- **E-8-a** `ClipboardView` (OS-split 2컬럼 카드 타임라인 — 좌 remote / 우 local, 각 시간순) · `src/views/ClipboardView.tsx` · view · meta: `redesign 2026-06-01`
 - **E-8-b** `SharedClipboardPanel` (sticky top panel) · ~~`src/components/SharedClipboardPanel.tsx`~~ · component · **DEPRECATED 2026-06-01** — Notes 페이지 (E-12-a) 와 기능 중복으로 제거. 식별자 재사용 금지. backend E-6 + commands E-7-f/g/h 는 Windows mirror contract (L-4) 위해 유지 (Mac 소비처 없음). 참고: `mockups/clipboard-refactor/PROMPT.md`
 
 ### E-9 JSONL utilities (clipboard 측)
@@ -353,6 +355,8 @@
 - **E-10-f** `notes::host_info` · `notes.rs:33` · helper
 - **E-10-g** `notes::list_from` (local mirror merge) · `notes.rs:54` · helper
 - **E-10-h** `notes::notes_dir` · `notes.rs:15` · helper
+- **E-10-i** `notes::flush_pending` (오프라인 쓰기 큐 → 셰어 replay, last-write-wins) · `notes.rs` · function · cross-ref SP-E-2
+- **E-10-j** `notes::pending_dir` + offline save/delete 큐 (`<id>.json` / `<id>.delete`) · `notes.rs` · contract
 
 ### E-11 Tauri command surface (notes)
 - **E-11-a** `list_notes` · `commands.rs:851` · tauri-command
