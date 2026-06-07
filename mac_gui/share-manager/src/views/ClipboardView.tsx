@@ -1,9 +1,13 @@
-// ClipboardView — T2 + T2.5 combined panel.
+// ClipboardView — T2 clipboard history timeline.
 //
-//   Top:    SharedClipboardPanel — sticky-note style current.json
-//   Bottom: Streaming jsonl timeline (per-OS clipboard polls)
+// Streaming jsonl timeline (per-OS clipboard polls), newest-first or
+// grouped by host. The shared-text sticky panel (T2.5, E-8-b) was
+// removed — that "leave one message for the other side" role is covered
+// by the dedicated Notes page (NotesView, E-12-a), which is a superset
+// (multiple notes + titles + autosave). See
+// mockups/clipboard-refactor/PROMPT.md.
 //
-// Sort toggle on the timeline:
+// Sort toggle:
 //   - "newest": every entry chronological, newest first (default)
 //   - "by-host": grouped by host name, then newest-first within group
 
@@ -13,7 +17,6 @@ import { api, type ClipboardEntry, type ClipboardImageEntry } from "../lib/api";
 import { useToast } from "../lib/toast";
 import { fmtRelative } from "../lib/format";
 import { useShareTopic } from "../lib/useShareTopic";
-import { SharedClipboardPanel } from "../components/SharedClipboardPanel";
 
 type SortMode = "newest" | "by-host";
 
@@ -80,8 +83,6 @@ export function ClipboardView() {
       </header>
 
       <div className="clip-timeline-body">
-        <SharedClipboardPanel />
-
         <div className="clip-sort-row">
           <span className="clip-sort-label">정렬</span>
           <div className="clip-sort-tabs" role="tablist">

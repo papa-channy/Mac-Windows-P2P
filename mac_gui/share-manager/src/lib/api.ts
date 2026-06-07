@@ -158,12 +158,15 @@ export const api = {
   triggerMacTccRegistration: () =>
     invoke<void>("trigger_mac_tcc_registration"),
 
-  // --- T2 shared clipboard (Windows §13 v2 mirror) ---
-  readSharedClipboard: () => invoke<SharedClipboardEntry>("read_shared_clipboard"),
-  writeSharedClipboard: (content: string) =>
-    invoke<SharedClipboardEntry>("write_shared_clipboard", { content }),
-  listClipboardHistory: (limit?: number) =>
-    invoke<SharedClipboardEntry[]>("list_clipboard_history", { limit }),
+  // --- shared-clipboard sticky (E-8-b) — REMOVED ---
+  // The read/write_shared_clipboard + list_clipboard_history wrappers
+  // were removed along with SharedClipboardPanel: that "leave one
+  // message for the other side" role is covered by the Notes page
+  // (E-12-a). The Rust commands still exist for the Windows mirror
+  // contract (L-4) but have no Mac frontend consumer.
+  // See mockups/clipboard-refactor/PROMPT.md.
+
+  // --- compressed image gallery (LogsView "Compressed" tab) ---
   listCompressedImages: () =>
     invoke<{ ref: string; size_bytes: number; ts: string }[]>("list_compressed_images"),
   compressedImagePath: (imageRef: string) =>

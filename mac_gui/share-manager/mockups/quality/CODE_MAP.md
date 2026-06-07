@@ -338,7 +338,7 @@
 
 ### E-8 Frontend Clipboard UI
 - **E-8-a** `ClipboardView` · `src/views/ClipboardView.tsx` · view
-- **E-8-b** `SharedClipboardPanel` (sticky top panel) · `src/components/SharedClipboardPanel.tsx` · component
+- **E-8-b** `SharedClipboardPanel` (sticky top panel) · ~~`src/components/SharedClipboardPanel.tsx`~~ · component · **DEPRECATED 2026-06-01** — Notes 페이지 (E-12-a) 와 기능 중복으로 제거. 식별자 재사용 금지. backend E-6 + commands E-7-f/g/h 는 Windows mirror contract (L-4) 위해 유지 (Mac 소비처 없음). 참고: `mockups/clipboard-refactor/PROMPT.md`
 
 ### E-9 JSONL utilities (clipboard 측)
 - **E-9-a** `clipboard::append_jsonl_line` · `clipboard.rs:138` · helper

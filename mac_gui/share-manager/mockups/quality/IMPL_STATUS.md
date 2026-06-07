@@ -486,8 +486,8 @@ E-6-d list_clipboard_history  · impl · WC3       · ✓   · ✅A
 
 E-7-a..j 10 commands          · impl · WA/WC3    · ✓   · ✅A
 
-E-8-a ClipboardView           · impl · port      · ✓   · ✅A
-E-8-b SharedClipboardPanel    · impl · WC3       · ✓   · ✅A
+E-8-a ClipboardView           · impl · port      · ✓   · ⚠M  [sticky 제거 — 타임라인 전용 단일책임화, Session C 재walk]
+E-8-b SharedClipboardPanel    · dep  · WC3→2026-06-01 · ✓ · ✅A  [DEPRECATED — Notes(E-12-a) 중복으로 frontend 제거. backend L-4 위해 유지. §SP-E-1]
 
 E-9-a append_jsonl_line       · impl · v0.2      · ✓   · ✅A
 E-9-b rotate_jsonl            · impl · v0.2      · ✓   · ✅A
@@ -878,6 +878,29 @@ N-5-a vendor install.sh         · impl · v0.2.1  · N/A · ✅A
 ```
 
 ## 4. Spotlight — partial / gap 상세
+
+### SP-E-1 · E-8-b SharedClipboardPanel 제거 — Notes 와 기능 중복
+
+- **상태**: deprecated (frontend 제거 완료) — 2026-06-01
+- **배경**: 클립보드 페이지 상단 sticky "공유 텍스트" 패널(E-8-b)이 별도
+  "공유 메모" 페이지(E-12-a NotesView)와 역할 중복. Notes 가 "여러 개 +
+  제목 + 자동저장(0.6s 디바운스)" 으로 상위호환이라, sticky 의 "1칸
+  빠른 메시지" 는 특수 케이스에 불과 → 사용자가 "왜 중복?" 혼동
+- **조치**:
+  - `SharedClipboardPanel.tsx` 파일 제거 (git rm)
+  - `ClipboardView.tsx` 의 import + 렌더 제거 → 페이지가 클립보드 자동
+    기록 타임라인 **단일 책임**으로 정리
+  - `api.ts` 의 sticky 전용 wrapper (readSharedClipboard /
+    writeSharedClipboard / listClipboardHistory) 제거
+  - `global.css` 의 `.shared-clip*` dead CSS 블록 제거 (CSS 53.86→51.58 kB)
+- **유지된 것 (의도)**:
+  - backend `clipboard::read/write_shared_clipboard` + commands
+    E-7-f/g/h + `current.json` (E-6) + `SharedClipboardEntry` wire
+    (L-4-a) — Windows mirror contract 위해 남김. Mac frontend 소비처
+    없음. Windows 측 정리 시 함께 제거 검토
+- **후속**: 클립보드 페이지 디자인 리팩토링 (`mockups/clipboard-refactor/`)
+  — 외부 AI 프롬프트로 타임라인 전용 레이아웃 고도화 진행 중
+- **commit**: pending (이 작업)
 
 ### SP-B-1 · B-1-b/c FDA 리스트에 share-manager 미등록 — multi-path TCC trigger 필요
 
