@@ -899,8 +899,17 @@ N-5-a vendor install.sh         · impl · v0.2.1  · N/A · ✅A
   - `list_entries` 가 캐시 디렉토리 전체(내 것 + 상대 것) 읽음 → unmount 후에도
     2컬럼 양쪽 표시
 - **테스트**: cargo 68/68 (신규 5 — offline queue / flush / 충돌 / merge / pull-survive)
-- **commit**: pending (v0.3.4)
-- **Cross-OS**: Windows 측 동일 패턴 backport 필요 (백로그 §5)
+- **commit**: e936e68 (v0.3.4)
+- **Cross-OS**:
+  - 사용자 가시 변경(E-8-a 클립보드 2컬럼 + E-12-a 노트 id 분열 fix)
+    → **Windows mirror 완료** (`f7592a1`, 핸드오프 `437b3e0` 이행). 좌우 배치
+    규칙·노트 id 안정화 정합성 검수 통과 (Win: 좌 Mac/우 Win, 노트 1개 보장).
+  - 오프라인 큐/캐시(E-10-i/j, E-5-b/c)는 Windows 가 셰어를 로컬 NTFS 로 써서
+    조건부 불필요 → 의도적 스킵. 향후 Windows 가 네트워크 드라이브 구성 시
+    `windows_gui/share-manager/MAC_PARITY_HANDOFF.md` §3 이식.
+  - minor(미해결): Windows `newNote()` 의 `updated_by.host` 하드코딩
+    (`DESKTOP-Q0S7LSQ`) — 첫 저장 후 백엔드 host_info 로 교체되어 무해하나
+    다른 머신선 첫 렌더 부정확. Windows 측 후속.
 
 ### SP-E-1 · E-8-b SharedClipboardPanel 제거 — Notes 와 기능 중복
 
