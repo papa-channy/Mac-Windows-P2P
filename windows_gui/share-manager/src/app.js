@@ -131,8 +131,7 @@ let activeThemeDef = null;     // raw icon-theme.json content
 let activeThemeBaseDir = null; // directory of the json (for resolving relative iconPath)
 
 // ─── DOM refs ───────────────────────────────────────────────────
-const $navPinned = document.getElementById('nav-pinned');
-const $navTools  = document.getElementById('nav-tools');
+const $actionGrid = document.getElementById('action-grid');
 const $navLoghub = document.getElementById('nav-loghub');
 const $panelLog    = document.getElementById('panel-log');
 const $logTitle    = document.getElementById('log-title');
@@ -166,7 +165,6 @@ const $treeShortcuts = document.getElementById('tree-shortcuts');
 const $panelSettings = document.getElementById('panel-settings');
 const $dropZone   = document.getElementById('drop-zone');
 const $dropZonePick = document.getElementById('drop-zone-pick');
-const $settingsBtn = document.getElementById('settings-btn');
 // Settings inputs
 const $depthValue = document.getElementById('depth-value');
 const $depthDec   = document.getElementById('depth-dec');
@@ -208,7 +206,7 @@ const $noteDelete   = document.getElementById('note-delete');
 const $noteSaveStatus = document.getElementById('note-save-status');
 // Clipboard refs
 const $panelClipboard = document.getElementById('panel-clipboard');
-const $clipTimeline   = document.getElementById('clip-timeline');
+const $clipSplit      = document.getElementById('clip-os-split');
 const $clipRefresh    = document.getElementById('clip-refresh');
 const $clipClear      = document.getElementById('clip-clear');
 const $nav     = document.getElementById('nav');
@@ -282,7 +280,7 @@ async function fetchGroup(group) {
 async function refreshAll() {
   setStatus('새로고침 중…');
   for (const g of NAV_GROUPS) { await fetchGroup(g); }
-  renderPinned();
+  renderActionGrid();
   renderNav();
   renderView();
   setStatus('마지막 갱신: ' + new Date().toLocaleTimeString('ko-KR'));
@@ -1013,11 +1011,20 @@ function onNoteEdited() {
   state.notes.saveTimer = setTimeout(saveCurrentNote, 600);
 }
 
+// 새 노트 id 를 프론트에서 미리 mint 한다. 새 노트에 id 가 없으면 백엔드
+// save_note 가 매 저장마다 새 UUID 를 만들어, 디바운스 자동저장이 첫 저장의
+// await 완료 전 재발동하면 메모 1개가 여러 파일로 분열된다 (Mac E-12-a).
+function newNoteId() {
+  const raw = (window.crypto?.randomUUID?.()
+    ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`).replace(/-/g, '');
+  return 'note-' + raw;
+}
+
 async function saveCurrentNote() {
   if (!state.notes.current) return;
   try {
     const updated = await invoke('save_note', {
-      id: state.notes.current.id || null,
+      id: state.notes.current.id || newNoteId(),   // null 방지: 만약을 위한 fallback
       title: state.notes.current.title || '',
       body: state.notes.current.body || '',
     });
@@ -1031,9 +1038,10 @@ async function saveCurrentNote() {
 }
 
 function newNote() {
+  if (state.notes.saveTimer) clearTimeout(state.notes.saveTimer);
   state.notes.selectedId = null;
   state.notes.current = {
-    id: '',
+    id: newNoteId(),            // ← 입력 전에 안정적인 id 를 미리 고정
     title: '',
     body: '',
     created_at: new Date().toISOString(),
@@ -1091,76 +1099,121 @@ function looksLikeUrl(s) {
   return /^https?:\/\//i.test((s || '').trim());
 }
 
-function renderClipboardPanel() {
-  $clipTimeline.innerHTML = '';
-  if (state.clipboard.entries.length === 0) {
-    $clipTimeline.innerHTML = `
-      <div class="empty" style="padding:40px 24px;">
-        <div class="empty-icon">📋</div>
-        <div class="empty-title">아직 기록이 없어요</div>
-        <div class="empty-hint">어디서든 텍스트를 복사하면 양쪽 호스트가 자동으로 기록해요.</div>
-      </div>`;
-    return;
-  }
-  for (const e of state.clipboard.entries) {
-    const el = document.createElement('div');
-    el.className = 'clip-entry';
-    const badge = osBadge(e.os);
+// Windows 빌드의 navigator 는 host OS 를 반영 → 'windows'. (Mac 미러 빌드라면
+// 'macos' 가 나와 좌우 컬럼이 자동 반전된다.)
+function detectLocalOs() {
+  return /Win/i.test(navigator.userAgent) ? 'windows' : 'macos';
+}
+function osLabel(os, isLocal) {
+  const name = os === 'macos' ? 'Mac' : 'Windows';
+  return isLocal ? `내 클립보드 · ${name}` : `${name} 클립보드`;
+}
 
-    if (e.kind === 'image') {
-      const dims = (e.width && e.height) ? `${e.width}×${e.height}` : '';
-      const sz = (e.size_bytes || e.bytes) ? fmtBytes(e.size_bytes || e.bytes) : '';
-      el.innerHTML = `
-        <div class="clip-entry-head">
-          <span class="clip-entry-os ${badge.cls}">${escape(badge.label)}</span>
-          <span class="clip-entry-host" title="${escape(e.host || '')}">${escape(e.host || '?')}</span>
-          <span class="clip-entry-kind">🖼 이미지 ${escape(dims)} · ${escape(sz)}</span>
-          <span class="clip-entry-time">${escape(fmtRelative(e.ts))}</span>
-        </div>
-        <div class="clip-entry-thumb-wrap"><div class="clip-entry-thumb" data-ref="${escape(e.image_ref || '')}"></div></div>
-      `;
-      // Lazy-load thumbnail via asset protocol
-      const thumb = el.querySelector('.clip-entry-thumb');
-      (async () => {
-        try {
-          const path = await invoke('clipboard_image_path', { imageRef: e.image_ref });
-          const url = window.__TAURI__.core.convertFileSrc(path);
-          const img = new Image();
-          img.className = 'clip-thumb-img';
-          img.src = url;
-          img.onerror = () => { thumb.innerHTML = '<span class="clip-thumb-expired">🖼 만료됨 (30일 경과)</span>'; };
-          thumb.appendChild(img);
-        } catch (_) {
-          thumb.innerHTML = '<span class="clip-thumb-expired">🖼 (이미지 없음)</span>';
-        }
-      })();
-      el.addEventListener('click', async () => {
-        try {
-          await invoke('copy_image_to_os_clipboard', { imageRef: e.image_ref });
-          toast('이미지를 내 OS 클립보드로 복사됨', 'success');
-        } catch (err) { toast('복사 실패: ' + err, 'error'); }
-      });
-    } else {
-      const content = e.content || '';
-      const preview = content.length > 600 ? content.slice(0, 600) + '…' : content;
-      const urlClass = looksLikeUrl(content) ? ' url' : '';
-      el.innerHTML = `
-        <div class="clip-entry-head">
-          <span class="clip-entry-os ${badge.cls}">${escape(badge.label)}</span>
-          <span class="clip-entry-host" title="${escape(e.host || '')}">${escape(e.host || '?')}</span>
-          <span class="clip-entry-time">${escape(fmtRelative(e.ts))}</span>
-        </div>
-        <div class="clip-entry-text${urlClass}" title="${escape(content)}">${escape(preview)}</div>
-      `;
-      el.addEventListener('click', async () => {
-        try {
-          await invoke('copy_to_os_clipboard', { text: content });
-          toast('내 OS 클립보드로 복사됨', 'success');
-        } catch (err) { toast('복사 실패: ' + err, 'error'); }
-      });
-    }
-    $clipTimeline.appendChild(el);
+// OS별 좌우 2컬럼 카드 레이아웃 (Mac E-8-a 미러). 좌 = 상대 OS, 우 = 내 OS.
+// 각 컬럼은 독립적으로 newest-first → OS 분리 + 시간순 정렬 동시 만족.
+function renderClipboardPanel() {
+  const localOs  = detectLocalOs();                            // 'windows'
+  const remoteOs = localOs === 'macos' ? 'windows' : 'macos';  // 'macos'
+
+  const all = state.clipboard.entries || [];
+  const remoteEntries = all.filter(e => e.os === remoteOs);
+  const localEntries  = all.filter(e => e.os !== remoteOs);
+
+  $clipSplit.innerHTML = '';
+  // 좌측 = remote, 우측 = local
+  $clipSplit.appendChild(renderClipColumn(remoteOs, false, remoteEntries));
+  $clipSplit.appendChild(renderClipColumn(localOs,  true,  localEntries));
+}
+
+function renderClipColumn(os, isLocal, entries) {
+  const col = document.createElement('div');
+  col.className = 'clip-col ' + (isLocal ? 'local' : 'remote');
+
+  const badge = osBadge(os);
+  const head = document.createElement('header');
+  head.className = 'clip-col-head';
+  head.innerHTML = `
+    <span class="clip-entry-os ${badge.cls}">${escape(badge.label)}</span>
+    <span class="clip-col-title">${escape(osLabel(os, isLocal))}</span>
+    <span class="clip-col-count">${entries.length}건</span>`;
+  col.appendChild(head);
+
+  if (entries.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'clip-col-empty';
+    empty.textContent = isLocal
+      ? '내 클립보드 기록이 없어요. 복사하면 여기 쌓여요.'
+      : '상대 호스트 기록이 없어요.';
+    col.appendChild(empty);
+    return col;
   }
+
+  const body = document.createElement('div');
+  body.className = 'clip-col-body';
+  for (const e of entries) {
+    body.appendChild(e.kind === 'image' ? renderClipImageCard(e) : renderClipTextCard(e));
+  }
+  col.appendChild(body);
+  return col;
+}
+
+function clipCardHead(e) {
+  return `
+    <div class="clip-card-head">
+      <span class="clip-card-host" title="${escape(e.host || '')}">${escape(e.host || '?')}</span>
+      <span class="clip-card-time">${escape(fmtRelative(e.ts))}</span>
+    </div>`;
+}
+
+function renderClipTextCard(e) {
+  const content = e.content || '';
+  const preview = content.length > 600 ? content.slice(0, 600) + '…' : content;
+  const urlClass = looksLikeUrl(content) ? ' url' : '';
+  const card = document.createElement('button');
+  card.className = 'clip-card';
+  card.title = '클릭 → 내 클립보드로 복사';
+  card.innerHTML = clipCardHead(e) +
+    `<div class="clip-card-text${urlClass}">${escape(preview)}</div>`;
+  card.addEventListener('click', async () => {
+    try {
+      await invoke('copy_to_os_clipboard', { text: content });
+      toast('내 OS 클립보드로 복사됨', 'success');
+    } catch (err) { toast('복사 실패: ' + err, 'error'); }
+  });
+  return card;
+}
+
+function renderClipImageCard(e) {
+  const dims = (e.width && e.height) ? `${e.width}×${e.height}` : '';
+  const sz = (e.size_bytes || e.bytes) ? fmtBytes(e.size_bytes || e.bytes) : '';
+  const card = document.createElement('button');
+  card.className = 'clip-card clip-card-image';
+  card.title = '클릭 → 내 클립보드로 복사';
+  card.innerHTML = clipCardHead(e) +
+    `<div class="clip-card-thumb-wrap" data-ref="${escape(e.image_ref || '')}"></div>
+     <span class="clip-card-imgmeta">${escape(dims)}${dims ? ' · ' : ''}${escape(sz)}</span>`;
+  const wrap = card.querySelector('.clip-card-thumb-wrap');
+  // Lazy-load thumbnail via asset protocol
+  (async () => {
+    try {
+      const path = await invoke('clipboard_image_path', { imageRef: e.image_ref });
+      const url = window.__TAURI__.core.convertFileSrc(path);
+      const img = new Image();
+      img.className = 'clip-card-thumb';
+      img.src = url;
+      img.onerror = () => { wrap.innerHTML = '<div class="clip-card-missing">이미지 로드 실패 / 만료됨</div>'; };
+      wrap.appendChild(img);
+    } catch (_) {
+      wrap.innerHTML = '<div class="clip-card-missing">이미지 로드 실패 / 만료됨</div>';
+    }
+  })();
+  card.addEventListener('click', async () => {
+    try {
+      await invoke('copy_image_to_os_clipboard', { imageRef: e.image_ref });
+      toast('이미지를 내 OS 클립보드로 복사됨', 'success');
+    } catch (err) { toast('복사 실패: ' + err, 'error'); }
+  });
+  return card;
 }
 
 function startClipboardPolling() {
@@ -1185,9 +1238,8 @@ async function clearOwnClipboardHistory() {
 }
 
 function refreshIconsInView() {
-  renderPinned();
+  renderActionGrid();
   renderNav();
-  renderTools();
   renderItems();
   if (state.treePath) {
     navigateTree(state.treePath).catch(err => console.warn('tree refresh:', err));
@@ -1246,32 +1298,36 @@ async function runSpeedTest() {
 }
 
 // ─── Rendering ──────────────────────────────────────────────────
-function renderPinned() {
-  $navPinned.innerHTML = '';
-  // Top pinned: only 빠른 전송 (primary entry point)
-  const el = navItemEl('Fast-Forward', svgIcon('rocket'), '', () => {
-    state.view = VIEW_TREE;
-    renderPinned(); renderNav(); renderTools(); renderView();
-  });
-  if (state.view === VIEW_TREE) el.classList.add('active');
-  $navPinned.appendChild(el);
+// 상단 2열 액션 카드 그리드 (Mac 미러). 6개 액션을 카드형으로 통합:
+// Fast Forward / Notes / Clipboard / Git Status (뷰 전환, active 표시) +
+// Refresh / Settings (Refresh 는 액션이라 active 없음).
+function renderActionGrid() {
+  $actionGrid.innerHTML = '';
+  const actions = [
+    { view: VIEW_TREE,      iconName: 'rocket',       label: 'Fast Forward', onClick: () => switchView(VIEW_TREE) },
+    { view: VIEW_NOTES,     iconName: 'notebook-pen', label: 'Notes',        onClick: () => switchView(VIEW_NOTES) },
+    { view: VIEW_CLIPBOARD, iconName: 'clipboard',    label: 'Clipboard',    onClick: () => switchView(VIEW_CLIPBOARD) },
+    { view: VIEW_GIT,       iconName: 'git-branch',   label: 'Git Status',   onClick: () => switchView(VIEW_GIT) },
+    { view: null,           iconName: 'refresh-cw',   label: 'Refresh',      onClick: () => { refreshAll().catch(e => toast(String(e), 'error')); } },
+    { view: VIEW_SETTINGS,  iconName: 'settings',     label: 'Settings',     onClick: () => switchView(state.view === VIEW_SETTINGS ? VIEW_TREE : VIEW_SETTINGS) },
+  ];
+  for (const a of actions) {
+    const card = document.createElement('button');
+    card.className = 'action-card';
+    if (a.view && state.view === a.view) card.classList.add('active');
+    card.title = a.label;
+    card.innerHTML = svgIcon(a.iconName) + `<span class="action-card-label">${escape(a.label)}</span>`;
+    card.addEventListener('click', a.onClick);
+    $actionGrid.appendChild(card);
+  }
 }
 
-function renderTools() {
-  $navTools.innerHTML = '';
-  const tools = [
-    { id: VIEW_NOTES,     iconName: 'notebook-pen', label: 'Notes' },
-    { id: VIEW_CLIPBOARD, iconName: 'clipboard',    label: 'Clipboard' },
-    { id: VIEW_GIT,       iconName: 'git-branch',   label: 'Git' },
-  ];
-  for (const t of tools) {
-    const el = navItemEl(t.label, svgIcon(t.iconName), '', () => {
-      state.view = t.id;
-      renderPinned(); renderNav(); renderTools(); renderView();
-    });
-    if (state.view === t.id) el.classList.add('active');
-    $navTools.appendChild(el);
-  }
+// 사이드바에서 뷰를 전환하는 공통 헬퍼. state.view 를 바꾸고 사이드바 +
+// 본문을 다시 그린다. (액션 카드 active 표시는 renderView 안에서 동기화.)
+function switchView(view) {
+  state.view = view;
+  renderNav();
+  renderView();
 }
 
 function renderLogHub() {
@@ -1292,7 +1348,7 @@ function renderLogHub() {
     const el = navItemEl(c.label, svgIcon(c.iconName), '', () => {
       state.view = VIEW_LOG;
       state.log.category = c.id;
-      renderPinned(); renderNav(); renderTools(); renderView();
+      renderNav(); renderView();
     });
     if (state.view === VIEW_LOG && state.log.category === c.id) el.classList.add('active');
     sub.appendChild(el);
@@ -1519,7 +1575,7 @@ function renderGitL1Dashboard() {
           hosts: {},
         });
       }
-      repoMap.get(key).hosts[s.host] = Object.assign({ os: s.os }, r);
+      repoMap.get(key).hosts[s.host] = Object.assign({ os: s.os, scanned_at: s.scanned_at }, r);
     }
   }
   const g = state.settings.git || {};
@@ -1583,17 +1639,21 @@ function renderGitL1Dashboard() {
 }
 
 function renderGitL1Card(s) {
+  // ADR-0005: unified layout — no stripe div, no conflict-only div.
+  // All verdicts render via the SAME structure; chip color is the only diff.
   const e = s.entry;
   const macDirty = s.mac ? (s.mac.dirty || 0) : null;
   const winDirty = s.win ? (s.win.dirty || 0) : null;
   const remSha = s.rem && s.rem.default_sha ? s.rem.default_sha.slice(0, 7) : '—';
+  // ADR-0006: real scan time (most recent across hosts) instead of hard-coded "방금 전 스캔"
+  const scanTimes = Object.values(e.hosts || {}).map(h => h && h.scanned_at).filter(Boolean).sort();
+  const lastScan = scanTimes.length ? fmtRelative(scanTimes[scanTimes.length - 1]) : '데이터 없음';
   return `
     <div class="git-card git-card-${s.kind}" data-or="${escape(e.ownerRepo || '')}">
-      ${s.kind === 'conflict' ? '<div class="git-card-stripe"></div>' : ''}
       <div class="git-card-head">
         <div class="git-card-title-wrap">
           <h3 class="git-card-name">${escape(e.label)}</h3>
-          <div class="git-card-meta">${svgIcon('clock')}<span>방금 전 스캔</span></div>
+          <div class="git-card-meta">${svgIcon('clock')}<span>${escape(lastScan)} 스캔</span></div>
         </div>
         <span class="git-card-badge git-card-badge-${s.kind}">
           ${svgIcon(GIT_STATUS_ICON[s.kind])}<span>${escape(s.label)}</span>
@@ -1607,11 +1667,6 @@ function renderGitL1Card(s) {
         ${gitNodeBlock('win', s.win, winDirty)}
         <span class="git-card-chev">${svgIcon('chevron-right')}</span>
       </div>
-      ${s.overlaps.length ? `
-        <div class="git-card-conflict">
-          ${svgIcon('shield-alert')}
-          <span><b>${s.overlaps.length}개 파일</b>이 양쪽 머신에서 동시 수정 중입니다.</span>
-        </div>` : ''}
     </div>`;
 }
 
@@ -1815,22 +1870,118 @@ function renderGitL2Lanes(ownerRepo) {
   const macBehind = macHost ? (macHost.repo.behind || 0) : 0;
   const winAhead  = winHost ? (winHost.repo.ahead || winHost.repo.unpushed || 0) : 0;
   const winBehind = winHost ? (winHost.repo.behind || 0) : 0;
+  const macDirty  = macHost ? (macHost.repo.dirty || 0) : 0;
+  const winDirty  = winHost ? (winHost.repo.dirty || 0) : 0;
 
-  // status summary chip (refined: SVG icon + clean wording)
+  // ADR-0006: verdict-row — large chip + diagnostic sentence (verdict-action mapping).
+  // Pass summary.kind so L1 ("충돌 임박") and L2 always agree on the verdict.
+  const v = gitL2Verdict({ macHost, winHost, macAhead, macBehind, winAhead, winBehind, macDirty, winDirty, overlaps: summary.overlaps, summaryKind: summary.kind });
   $gitDetailSummary.innerHTML = `
-    <span class="git-l2-status ${summary.kind}">${svgIcon(GIT_STATUS_ICON[summary.kind])}<span>${escape(summary.label)}</span></span>
-    ${summary.overlaps.length ? `<span class="git-l2-overlap">${svgIcon('file-warning')}<span><b>${summary.overlaps.length}개 파일</b> 동시 수정 중</span></span>` : ''}
+    <span class="git-l2-verdict-chip ${v.kind}">${svgIcon(GIT_STATUS_ICON[v.kind])}<span>${escape(v.title)}</span></span>
+    <div class="git-l2-verdict-text"><b>${escape(v.head)}</b>${v.desc ? `<span class="git-l2-verdict-sep">·</span>${escape(v.desc)}` : ''}</div>
   `;
+
+  // ADR-0006: lane shell with absolute-positioned connector chips between lanes
+  const macConn = gitL2Connector('mac', macAhead, macBehind);
+  const winConn = gitL2Connector('win', winAhead, winBehind);
+
+  // Footer meta
+  const scanRel = macHost ? fmtRelative(macHost.scanned_at) : (winHost ? fmtRelative(winHost.scanned_at) : '—');
+  const commitN = state.gitDetail.graph?.per_branch?.[state.gitDetail.branch]?.commits?.length || 0;
+  const ancSha  = state.gitDetail.graph?.per_branch?.[state.gitDetail.branch]?.common_ancestor || '';
+  const ancShort = ancSha ? ancSha.slice(0, 7) : '범위 밖';
 
   $gitDetailBody.innerHTML = `
     <div class="git-l2-shell">
-      ${summary.overlaps.length ? '<div class="git-l2-pulse"></div>' : ''}
+      <div class="git-l2-connector c1 ${macConn.kind}">
+        <div class="git-l2-connector-line"></div>
+        <span class="git-l2-connector-chip ${macConn.kind}">${svgIcon(macConn.icon)}<span>${escape(macConn.text)}</span></span>
+      </div>
+      <div class="git-l2-connector c2 ${winConn.kind}">
+        <div class="git-l2-connector-line"></div>
+        <span class="git-l2-connector-chip ${winConn.kind}">${svgIcon(winConn.icon)}<span>${escape(winConn.text)}</span></span>
+      </div>
       ${gitLaneCol(macHost, 'mac', 'apple', 'macOS 로컬', summary.overlaps, macAhead, macBehind)}
       ${gitLaneOrigin(rem, ownerRepo)}
       ${gitLaneCol(winHost, 'win', 'windows', 'Windows 로컬', summary.overlaps, winAhead, winBehind)}
     </div>
-    ${gitConnectorBar(macAhead, macBehind, winAhead, winBehind)}
+    <footer class="git-l2-footer">
+      <div class="git-l2-footer-meta">
+        <span class="git-l2-meta-item">${svgIcon('clock')}<span>${escape(scanRel)} 스캔</span></span>
+        <span class="git-l2-meta-item">${svgIcon('git-commit')}<span>${commitN} 커밋 분석</span></span>
+        <span class="git-l2-meta-item">${svgIcon('git-branch')}<span>공통 조상 <code class="mono">${escape(ancShort)}</code></span></span>
+      </div>
+      <div class="git-l2-footer-actions">
+        <button class="git-l2-btn" id="git-l2-all-commits" type="button">전체 커밋 보기</button>
+        <button class="git-l2-btn" id="git-l2-dag-toggle" type="button">DAG 보기</button>
+        <button class="git-l2-btn primary" id="git-l2-sync" type="button">Sync 실행</button>
+      </div>
+    </footer>
   `;
+
+  // ADR-0006: footer action button handlers
+  const allBtn  = $gitDetailBody.querySelector('#git-l2-all-commits');
+  const dagBtn  = $gitDetailBody.querySelector('#git-l2-dag-toggle');
+  const syncBtn = $gitDetailBody.querySelector('#git-l2-sync');
+  if (allBtn) allBtn.addEventListener('click', () => {
+    state.gitDetail.mode = 'syncmap';
+    renderGitDetailBody();
+  });
+  if (dagBtn) dagBtn.addEventListener('click', () => {
+    state.gitDetail.mode = state.gitDetail.mode === 'dag' ? 'lanes' : 'dag';
+    if (state.gitDetail.mode === 'lanes') {
+      renderGitL2Lanes(ownerRepo);
+    } else {
+      renderGitDetailBody();
+    }
+  });
+  if (syncBtn) syncBtn.addEventListener('click', () => {
+    toast('Sync 자동 실행은 Stage 4 (직결 트리거)에서 추가됩니다 — 우선 터미널에서 push/pull 권장', 'info');
+  });
+}
+
+// ADR-0006: verdict-action mapping (same rules as computeGitNarrative).
+// summaryKind comes from gitRepoSummary (L1 logic) so L1/L2 always agree.
+function gitL2Verdict(ctx) {
+  const { macHost, winHost, macAhead, macBehind, winAhead, winBehind, macDirty, winDirty, overlaps, summaryKind } = ctx;
+  if (summaryKind === 'conflict' || (overlaps && overlaps.length)) {
+    const fileCount = overlaps ? overlaps.length : 0;
+    const headTxt = fileCount > 0
+      ? `양쪽에서 같은 파일 ${fileCount}개 동시 수정 중`
+      : '양쪽 머신에서 동일 파일 수정 가능성';
+    return { kind: 'conflict', title: '충돌 임박', head: headTxt, desc: '머지 전 정리 필요 — Resolver 또는 충돌 레이더 사용' };
+  }
+  if (macAhead && winAhead) {
+    return { kind: 'diverged', title: '양쪽 발산', head: `Mac ↑${macAhead} / Win ↑${winAhead}`, desc: '양쪽 미푸시 — 통합 결정 후 한쪽씩 push' };
+  }
+  if (macAhead) {
+    return { kind: 'diverged', title: '발산', head: `Mac이 origin보다 ${macAhead} 커밋 앞섬`, desc: winHost ? 'Win은 origin과 동기화됨 · Mac에서 push 후 Win에서 pull' : 'Mac에서 push 권장 (Win 스캔 데이터 없음)' };
+  }
+  if (winAhead) {
+    return { kind: 'diverged', title: '발산', head: `Win이 origin보다 ${winAhead} 커밋 앞섬`, desc: macHost ? 'Mac은 깨끗하고 동기화됨 · Win에서 push 권장' : 'Win에서 push 권장 (Mac 스캔 데이터 없음)' };
+  }
+  if (macBehind || winBehind) {
+    const pulls = [];
+    if (macBehind) pulls.push(`Mac ↓${macBehind}`);
+    if (winBehind) pulls.push(`Win ↓${winBehind}`);
+    return { kind: 'diverged', title: '뒤처짐', head: pulls.join(', ') + ' pull 필요', desc: pulls.length === 2 ? '양쪽 모두 git pull 권장' : `${pulls[0].split(' ')[0]}에서 git pull 권장` };
+  }
+  if (macDirty || winDirty) {
+    return { kind: 'diverged', title: '미커밋 변경', head: `로컬 변경 ${macDirty + winDirty}개`, desc: '로컬 변경 커밋 후 push 권장' };
+  }
+  if (!macHost && !winHost) {
+    return { kind: 'partial', title: '데이터 없음', head: '호스트 스캔 데이터가 없습니다', desc: '"지금 스캔"으로 로컬 git 상태를 게시하세요' };
+  }
+  return { kind: 'synced', title: '동기화됨', head: '모든 호스트가 origin과 일치', desc: '안전하게 작업을 시작할 수 있습니다' };
+}
+
+// ADR-0006: connector chip between two lanes
+function gitL2Connector(host, ahead, behind) {
+  const label = host === 'mac' ? 'Mac' : 'Win';
+  if (!ahead && !behind) return { kind: 'synced', icon: 'check-circle-2', text: '동기화' };
+  if (ahead && behind)   return { kind: 'diverged', icon: 'alert-triangle', text: `${label} ↑${ahead} ↓${behind}` };
+  if (ahead)             return { kind: 'diverged', icon: 'arrow-up',       text: `${label} ↑ ${ahead}` };
+  return                        { kind: 'diverged', icon: 'arrow-down',     text: `${label} ↓ ${behind}` };
 }
 
 function gitConnectorBar(ma, mb, wa, wb) {
@@ -2682,13 +2833,13 @@ function renderNav() {
 
     const groupEl = document.createElement('div');
     groupEl.className = 'nav-group';
-    groupEl.innerHTML = `<div class="nav-group-header">${svgIcon(group.iconName)}<span>${escape(group.title)}</span></div>`;
+    groupEl.innerHTML = `<div class="nav-group-header">${svgIcon(group.iconName)}<span>${escape(group.title)}</span><span class="nav-group-chev">${svgIcon('chevron-right')}</span></div>`;
 
     // "전체" pseudo-item
     const allItem = navItemEl('All', svgIcon('asterisk'), allCount, () => {
       state.view = VIEW_ITEMS;
       state.selection = { group: group.id, categoryKey: null };
-      renderPinned(); renderNav(); renderTools(); renderView();
+      renderNav(); renderView();
     });
     if (state.view === VIEW_ITEMS && state.selection.group === group.id && state.selection.categoryKey == null) {
       allItem.classList.add('active');
@@ -2701,7 +2852,7 @@ function renderNav() {
       const el = navItemEl(cat.label, renderCategoryIconHtml(cat), n, () => {
         state.view = VIEW_ITEMS;
         state.selection = { group: group.id, categoryKey: cat.key };
-        renderPinned(); renderNav(); renderTools(); renderView();
+        renderNav(); renderView();
       });
       if (state.view === VIEW_ITEMS && state.selection.group === group.id && state.selection.categoryKey === cat.key) {
         el.classList.add('active');
@@ -2720,7 +2871,8 @@ function renderView() {
   $panelClipboard.classList.add('hidden');
   $panelLog.classList.add('hidden');
   $panelGit.classList.add('hidden');
-  $settingsBtn.classList.remove('active');
+  // 액션 카드 그리드의 active 표시를 현재 뷰와 동기화.
+  renderActionGrid();
 
   // Stop clipboard polling when leaving its view
   if (state.view !== VIEW_CLIPBOARD) stopClipboardPolling();
@@ -2743,7 +2895,6 @@ function renderView() {
     refreshGit();
   } else if (state.view === VIEW_SETTINGS) {
     $panelSettings.classList.remove('hidden');
-    $settingsBtn.classList.add('active');
     renderSettings();
   } else {
     $panelItems.classList.remove('hidden');
@@ -3147,7 +3298,6 @@ function setupHeaderActions() {
   });
 }
 
-document.getElementById('refresh-btn').addEventListener('click', refreshAll);
 $logRefresh.addEventListener('click', () => renderLogView());
 $gitScan.addEventListener('click', scanGitNow);
 $gitFetchRemote.addEventListener('click', fetchRemoteNow);
@@ -3162,10 +3312,6 @@ $treeHome.addEventListener('click', navigateTreeHome);
 $treeDesktop.addEventListener('click', navigateTreeDesktop);
 $dropZone.addEventListener('click', pickFilesAndSend);
 $dropZonePick.addEventListener('click', (e) => { e.stopPropagation(); pickFilesAndSend(); });
-$settingsBtn.addEventListener('click', () => {
-  state.view = (state.view === VIEW_SETTINGS) ? VIEW_TREE : VIEW_SETTINGS;
-  renderPinned(); renderNav(); renderTools(); renderView();
-});
 $depthDec.addEventListener('click', () => changeDepth(-1));
 $depthInc.addEventListener('click', () => changeDepth(+1));
 $addShortcut.addEventListener('click', addShortcut);
@@ -3294,15 +3440,13 @@ $clipClear.addEventListener('click', clearOwnClipboardHistory);
 setupModals();
 setupHeaderActions();
 
-// Paint static brand + sidebar action icons once.
+// Paint static brand icon once. (Action card icons are painted by renderActionGrid.)
 document.getElementById('brand-icon').innerHTML = svgIcon('arrow-left-right');
-document.getElementById('refresh-icon').innerHTML = svgIcon('refresh-cw');
-document.getElementById('settings-icon').innerHTML = svgIcon('settings');
 
 (async () => {
   await loadSettingsFromBackend().catch(e => console.error('load settings:', e));
   await applyActiveTheme().catch(e => console.error('apply theme:', e));
-  renderTools();
+  renderActionGrid();
   renderLogHub();
   await refreshAll().catch(e => { console.error('initial refresh failed:', e); setStatus('초기화 실패: ' + e); });
   await setupDragDrop().catch(e => console.error('drag-drop setup failed:', e));

@@ -47,8 +47,7 @@ button { font-family: inherit; }
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  padding: 18px 0;
-  gap: 8px;
+  padding: 18px 0 0;
 }
 
 .brand {
@@ -57,45 +56,67 @@ button { font-family: inherit; }
   gap: 12px;
   padding: 4px 18px 18px;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 .brand-icon {
   width: 40px; height: 40px;
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--accent), var(--accent-hi));
   color: white;
   border-radius: 11px;
   display: grid; place-items: center;
-  box-shadow: 0 4px 14px rgba(10, 132, 255, 0.20);
+  box-shadow: 0 4px 14px rgba(10, 132, 255, 0.22);
 }
 .brand-icon svg { width: 22px; height: 22px; }
 .brand-title { font-weight: 600; font-size: 13.5px; }
 .brand-subtitle { color: var(--text-sec); font-size: 11px; margin-top: 2px; }
 
-.nav-pinned { padding: 0 10px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
-.nav-pinned .nav-item {
-  padding: 11px 14px;
-  font-weight: 600;
-  font-size: 13px;
+/* ─── Action card grid (Mac mirror) — 6 actions in a 2-col grid ── */
+.action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 14px 14px;
+  border-bottom: 1px solid var(--border);
 }
-.nav-pinned .nav-item .nav-item-count { display: none; }
-
-.nav { flex: 1; overflow-y: auto; padding: 0 10px; }
-
-.nav-tools {
-  padding: 0 10px;
-  margin: 8px 0;
+.action-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  border-top: 1px solid var(--border);
-  padding-top: 12px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--text-sec);
+  font: inherit;
+  transition: border-color .12s, box-shadow .12s, transform .06s, background .12s, color .12s;
 }
-.nav-tools .nav-item {
-  padding: 11px 14px;
+.action-card:hover {
+  border-color: var(--text-dim);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  color: var(--text-pri);
+}
+.action-card:active { transform: scale(0.98); }
+.action-card svg { width: 20px; height: 20px; stroke-width: 2; }
+.action-card-label {
+  font-size: 11.5px;
   font-weight: 600;
-  font-size: 13px;
+  letter-spacing: .1px;
+  color: var(--text-pri);
+  text-align: center;
+  line-height: 1.2;
 }
-.nav-tools .nav-item .nav-item-count { display: none; }
+.action-card.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-hi));
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 6px 16px -6px rgba(10, 132, 255, 0.5);
+}
+.action-card.active .action-card-label { color: #fff; }
+
+.nav { flex: 1; overflow-y: auto; padding: 12px 10px 0; }
 
 /* ─── Active state (only ONE active at a time, anywhere) ──────── */
 .nav-item.active {
@@ -111,19 +132,20 @@ button { font-family: inherit; }
   background: rgba(255,255,255,0.25);
 }
 
-.nav-group { margin-bottom: 10px; }
-.nav-group { margin-bottom: 14px; }
+.nav-group { margin-bottom: 12px; }
 .nav-group-header {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 12px 12px 8px;
+  padding: 6px 12px 8px;
   color: var(--text-sec);
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.2px;
 }
 .nav-group-header svg { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.85; }
+.nav-group-chev { margin-left: auto; display: inline-flex; }
+.nav-group-chev svg { width: 14px; height: 14px; opacity: 0.5; }
 
 .nav-item {
   display: flex;
@@ -161,42 +183,14 @@ button { font-family: inherit; }
   color: white;
 }
 
-.refresh, .settings-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  justify-content: center;
-  margin: 4px 16px;
-  padding: 10px 14px;
-  background: var(--surface-2);
-  color: var(--text-sec);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.1s, color 0.1s, border-color 0.1s;
-  font-family: inherit;
-}
-.refresh:hover, .settings-btn:hover {
-  background: var(--surface-hi);
-  color: var(--text-pri);
-  border-color: var(--text-dim);
-}
-.settings-btn.active {
-  background: var(--accent);
-  color: white;
-  border-color: var(--accent);
-}
-.refresh-icon, .settings-icon {
-  display: inline-flex; align-items: center;
-}
-.refresh-icon svg, .settings-icon svg { width: 14px; height: 14px; }
-
 .status {
-  padding: 6px 18px;
+  padding: 10px 18px;
   font-size: 10.5px;
   color: var(--text-dim);
+  border-top: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ─── Main panel ──────────────────────────────────────────────── */
@@ -519,37 +513,54 @@ button { font-family: inherit; }
   align-items: center;
 }
 
-/* ─── Clipboard panel (unified timeline) ──────────────────────── */
-.clip-timeline-body {
+/* ─── Clipboard — OS-split 2-column card timeline (Mac E-8-a) ───── */
+.clip-os-split {
   flex: 1;
   overflow-y: auto;
-  padding: 18px 24px 32px;
-  max-width: 900px;
-  margin: 0 auto;
-  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+  padding: 0 28px 24px;
 }
-.clip-timeline { display: flex; flex-direction: column; gap: 6px; }
-.clip-entry {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 11px 14px;
-  cursor: pointer;
-  transition: background 0.1s, border-color 0.1s, transform 0.05s;
+.clip-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
 }
-.clip-entry:hover {
-  background: var(--surface-hi);
-  border-color: var(--text-dim);
-}
-.clip-entry:active { transform: scale(0.998); }
-.clip-entry-head {
+.clip-col-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  padding: 9px 11px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 10px -8px rgba(0, 0, 0, 0.18);
+}
+.clip-col.local .clip-col-head { border-color: var(--accent); }
+.clip-col-title { font-weight: 600; font-size: 12.5px; color: var(--text-pri); }
+.clip-col-count {
+  margin-left: auto;
   font-size: 11px;
   color: var(--text-sec);
-  margin-bottom: 5px;
+  font-variant-numeric: tabular-nums;
 }
+.clip-col-empty {
+  padding: 26px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-sec);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+.clip-col-body { display: flex; flex-direction: column; gap: 8px; }
+
+/* OS badge (also used in column head) */
 .clip-entry-os {
   padding: 2px 7px;
   border-radius: 4px;
@@ -559,53 +570,68 @@ button { font-family: inherit; }
   text-transform: uppercase;
   font-family: "Segoe UI Variable", system-ui, sans-serif;
 }
-.clip-entry-os-win {
-  background: rgba(10, 132, 255, 0.13);
-  color: #0a84ff;
-}
-.clip-entry-os-mac {
-  background: rgba(45, 164, 78, 0.13);
-  color: #2da44e;
-}
-.clip-entry-host {
-  font-family: Consolas, "SF Mono", monospace;
-  font-size: 10.5px;
-}
-.clip-entry-time { margin-left: auto; font-variant-numeric: tabular-nums; }
-.clip-entry-text {
-  font-size: 12.5px;
-  color: var(--text-pri);
-  font-family: Consolas, "SF Mono", monospace;
-  line-height: 1.5;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  word-break: break-all;
-}
-.clip-entry-text.url { color: var(--accent); }
-.clip-entry-kind { font-size: 10.5px; color: var(--text-sec); }
-.clip-entry-thumb-wrap { margin-top: 6px; }
-.clip-entry-thumb {
-  display: inline-block;
-  border-radius: 6px;
-  overflow: hidden;
+.clip-entry-os-win { background: rgba(10, 132, 255, 0.13); color: #0a84ff; }
+.clip-entry-os-mac { background: rgba(45, 164, 78, 0.13); color: #2da44e; }
+
+/* Card */
+.clip-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--surface);
   border: 1px solid var(--border);
-  background: var(--surface-low);
-  max-width: 320px;
-  max-height: 180px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.12s, box-shadow 0.12s, transform 0.06s;
+  font: inherit;
+  color: inherit;
 }
-.clip-thumb-img {
-  display: block;
-  max-width: 320px;
-  max-height: 180px;
+.clip-card:hover {
+  border-color: var(--text-dim);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.clip-card:active { transform: scale(0.997); }
+.clip-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--text-sec);
+}
+.clip-card-host { font-family: Consolas, "SF Mono", monospace; }
+.clip-card-time { margin-left: auto; font-variant-numeric: tabular-nums; }
+.clip-card-text {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-pri);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 7.5em;
+  overflow: hidden;
+}
+.clip-card-text.url { color: var(--accent); }
+.clip-card-thumb {
+  width: 100%;
+  max-height: 220px;
   object-fit: contain;
+  border-radius: 6px;
+  background: var(--surface-low);
 }
-.clip-thumb-expired {
-  display: inline-block;
-  padding: 16px 20px;
+.clip-card-missing {
+  padding: 24px;
+  text-align: center;
   font-size: 11.5px;
-  color: var(--text-dim);
+  color: var(--text-sec);
+  background: var(--surface-low);
+  border-radius: 6px;
+}
+.clip-card-imgmeta {
+  font-size: 11px;
+  color: var(--text-sec);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ─── Settings panel ──────────────────────────────────────────── */
@@ -1038,12 +1064,9 @@ button { font-family: inherit; }
 .git-card-chev { margin-left: 4px; color: var(--text-dim); font-size: 20px; font-weight: 700; }
 .git-card:hover .git-card-chev { color: var(--gc-mac); }
 
-.git-card-conflict {
-  margin-top: 12px; display: flex; align-items: center; gap: 8px;
-  background: rgba(225,29,72,0.08); color: #9f1239; padding: 8px 12px;
-  border: 1px solid rgba(225,29,72,0.20); border-radius: 8px; font-size: 12px;
-}
-.git-card-conflict b { font-weight: 800; }
+/* ADR-0005: .git-card-conflict legacy rule removed.
+   The class now appears only as a modifier on .git-card itself, not an inner div.
+   Verdict differences are conveyed by .git-card-badge-* color only. */
 
 /* === Layer 2: Swimlanes === */
 .git-detail-window { width: min(1280px, 96vw) !important; max-height: 92vh; }
@@ -1319,16 +1342,7 @@ button { font-family: inherit; }
 .git-card-chev { display: inline-flex; align-items: center; color: var(--text-dim); margin-left: 2px; }
 .git-card-chev svg { width: 18px; height: 18px; }
 .git-card:hover .git-card-chev { color: var(--gc-mac); transform: translateX(2px); transition: transform 0.15s, color 0.15s; }
-.git-card-conflict {
-  margin-top: 14px;
-  padding: 9px 14px;
-  border-radius: 10px;
-  font-size: 12px; color: #9f1239;
-  background: rgba(225,29,72,0.07);
-  border: 1px solid rgba(225,29,72,0.22);
-  display: inline-flex; align-items: center; gap: 8px; width: 100%;
-}
-.git-card-conflict svg { color: var(--gc-danger); width: 16px; height: 16px; }
+/* ADR-0005: second .git-card-conflict legacy block removed (was shrinking the card via align-items:center). */
 
 /* ── Layer 2 — refined ── */
 .git-detail-window .modal-header { padding: 16px 22px; border-bottom: 1px solid var(--border); }
@@ -1915,7 +1929,7 @@ button { font-family: inherit; }
 .git-card { padding: 22px 24px 20px !important; }
 .git-card-head { margin-bottom: 16px !important; }
 .git-card-bridge { padding: 16px 18px !important; }
-.git-card-conflict { margin-top: 16px !important; padding: 11px 16px !important; }
+/* ADR-0005: third .git-card-conflict legacy rule removed (used to set margin/padding on inner div which no longer exists). */
 
 .git-hero { gap: 16px !important; margin-bottom: 22px !important; }
 .git-hero-card { padding: 22px 26px !important; }
@@ -2775,3 +2789,421 @@ button { font-family: inherit; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--surface-hi); border-radius: 6px; border: 2px solid var(--surface); }
 ::-webkit-scrollbar-thumb:hover { background: var(--border); }
+
+/* ─────────────────────────────────────────────────────────────
+   ADR-0005 — L1 Card Unified Layout (2026-05-24)
+   All verdicts share the SAME structure:
+     ┌─────────────────────────────────────┐
+     │ Repo-name             [verdict-chip]│
+     │ 🕒 방금 전 스캔                       │
+     │ ┌─────────────────────────────────┐ │
+     │ │  🍎  ─ ─  🐙  ─ ─  🪟  ›        │ │
+     │ │ MAC      ORIGIN     WIN          │ │
+     │ │ Clean   a17c448   18 dirty       │ │
+     │ └─────────────────────────────────┘ │
+     └─────────────────────────────────────┘
+   ───────────────────────────────────────────────────────────── */
+/* The classes below were previously inner-div names. They now appear only as
+   verdict modifiers on .git-card itself (e.g. <div class="git-card git-card-conflict">),
+   so styling them here would shrink the card. Legacy rules removed above. */
+
+.git-page-title {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  letter-spacing: -0.015em !important;
+}
+.git-page-title svg { width: 22px; height: 22px; color: #1F883D; flex-shrink: 0; }
+
+.git-l1-grid { gap: 16px !important; }
+
+.git-card {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 14px !important;
+  padding: 18px 20px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;   /* children fill width — prevents any modifier (e.g. .git-card-conflict) from shrinking the bridge */
+  gap: 14px !important;
+  cursor: pointer !important;
+  transition: border-color 140ms, box-shadow 140ms, transform 140ms !important;
+  overflow: visible !important;
+  position: relative !important;
+  width: 100% !important;
+}
+.git-card::before { content: none !important; }
+.git-card::after  { content: none !important; }
+
+.git-card:hover {
+  border-color: var(--border-strong, #D0D0D8) !important;
+  box-shadow: 0 4px 14px rgba(15,17,21,0.05) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Head: grid 1fr auto */
+.git-card-head {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 12px !important;
+  align-items: start !important;
+  margin-bottom: 0 !important;
+}
+.git-card-title-wrap { min-width: 0 !important; }
+.git-card-name {
+  margin: 0 !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em !important;
+  font-family: "JetBrains Mono", "SF Mono", Consolas, ui-monospace, monospace !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  color: var(--text-pri, #0F1115) !important;
+}
+.git-card-meta {
+  margin-top: 4px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: var(--text-dim, #8A8E97) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+.git-card-meta svg { width: 12px !important; height: 12px !important; }
+
+/* Verdict chip */
+.git-card-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 5px 11px !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.005em !important;
+  border: 1px solid transparent !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+.git-card-badge svg { width: 12px !important; height: 12px !important; }
+.git-card-badge-synced   { background: rgba(31,136,61,0.10) !important; color: #1F883D !important; border-color: rgba(31,136,61,0.22) !important; }
+.git-card-badge-diverged { background: rgba(191,135,0,0.10) !important; color: #BF8700 !important; border-color: rgba(191,135,0,0.26) !important; }
+.git-card-badge-dirty    { background: rgba(191,135,0,0.10) !important; color: #BF8700 !important; border-color: rgba(191,135,0,0.26) !important; }
+.git-card-badge-conflict { background: rgba(207,34,46,0.10) !important; color: #B11C26 !important; border-color: rgba(207,34,46,0.30) !important; }
+.git-card-badge-partial  { background: var(--surface-2) !important; color: var(--text-sec, #4B4F58) !important; border-color: var(--border) !important; }
+
+/* Bridge box */
+.git-card-bridge {
+  padding: 14px 16px !important;
+  background: var(--surface-2, #F4F4F7) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  display: grid !important;
+  grid-template-columns: 1fr auto 1fr auto 1fr auto !important;
+  align-items: center !important;
+  gap: 14px !important;
+}
+
+/* Node */
+.gn {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 4px !important;
+  min-width: 0 !important;
+  flex: initial !important;
+}
+.gn-icon {
+  position: relative !important;
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 50% !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  display: grid !important;
+  place-items: center !important;
+  box-shadow: 0 1px 2px rgba(15,17,21,0.04) !important;
+}
+.gn-icon svg { width: 22px !important; height: 22px !important; }
+.gn.gn-mac    .gn-icon { color: #1B1B22 !important; }
+.gn.gn-remote .gn-icon { color: #1B1B22 !important; }
+.gn.gn-win    .gn-icon { color: #00A4EF !important; }
+.gn.off       .gn-icon { color: #C7C7CD !important; }
+
+.gn-led {
+  position: absolute !important;
+  bottom: -1px !important;
+  right: -1px !important;
+  width: 11px !important;
+  height: 11px !important;
+  border-radius: 50% !important;
+  border: 2px solid var(--surface-2, #F4F4F7) !important;
+  background: #1F883D !important;
+  box-shadow: none !important;
+}
+.gn-icon::after { content: none !important; }
+
+.gn-label {
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.05em !important;
+  color: var(--text-dim, #8A8E97) !important;
+  margin-top: 4px !important;
+}
+.gn-third {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  min-height: 18px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+}
+.gn-mono  { font-family: "JetBrains Mono", "SF Mono", Consolas, ui-monospace, monospace !important; font-size: 12px !important; color: var(--text-sec, #4B4F58) !important; font-weight: 600 !important; }
+.gn-clean { color: #1F883D !important; display: inline-flex !important; align-items: center !important; gap: 3px !important; font-weight: 600 !important; font-size: 12px !important; background: transparent !important; padding: 0 !important; border-radius: 0 !important; }
+.gn-clean svg { width: 12px !important; height: 12px !important; }
+.gn-mute  { color: var(--text-dim, #8A8E97) !important; }
+.gn-dirty { color: #BF8700 !important; font-weight: 700 !important; background: rgba(191,135,0,0.12) !important; padding: 2px 9px !important; border-radius: 999px !important; font-size: 11px !important; }
+
+/* Connector line */
+.gn-link {
+  height: 2px !important;
+  min-width: 24px !important;
+  width: 100% !important;
+  background: repeating-linear-gradient(
+    to right,
+    var(--border-strong, #D0D0D8) 0 4px,
+    transparent 4px 8px
+  ) !important;
+  border: 0 !important;
+  align-self: center !important;
+  margin-bottom: 18px !important;  /* align vertically with center of 44px icons */
+}
+
+/* Chevron */
+.git-card-chev {
+  display: inline-flex !important;
+  align-items: center !important;
+  color: var(--text-dim, #8A8E97) !important;
+  margin-left: 2px !important;
+  margin-bottom: 18px !important;
+  transition: color 140ms, transform 140ms !important;
+}
+.git-card-chev svg { width: 18px !important; height: 18px !important; }
+.git-card:hover .git-card-chev { color: var(--text-sec, #4B4F58) !important; transform: translateX(2px) !important; }
+
+/* Hero metric row */
+.git-hero { gap: 14px !important; margin-bottom: 28px !important; }
+.git-hero-card {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  padding: 16px 18px !important;
+  display: grid !important;
+  grid-template-columns: 1fr auto !important;
+  align-items: center !important;
+  gap: 12px !important;
+  box-shadow: 0 1px 2px rgba(15,17,21,0.04) !important;
+}
+.git-hero-card::before { content: none !important; }
+.git-hero-card .ghc-body { display: flex !important; flex-direction: column !important; gap: 2px !important; }
+.git-hero-card .ghc-label {
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  color: var(--text-dim, #8A8E97) !important;
+}
+.git-hero-card .ghc-num {
+  font-size: 26px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.015em !important;
+  margin-top: 4px !important;
+  line-height: 1 !important;
+  color: var(--text-pri, #0F1115) !important;
+}
+.git-hero-card .ghc-sub {
+  font-size: 12px !important;
+  color: var(--text-dim, #8A8E97) !important;
+  font-weight: 500 !important;
+  margin-top: 4px !important;
+}
+.git-hero-card .ghc-ic {
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 10px !important;
+  background: var(--surface-2, #F4F4F7) !important;
+  color: var(--text-dim, #8A8E97) !important;
+  display: grid !important;
+  place-items: center !important;
+}
+.git-hero-card .ghc-ic svg { width: 18px !important; height: 18px !important; }
+.git-hero-card .ghc-ic.sync    { background: rgba(31,136,61,0.12) !important; color: #1F883D !important; }
+.git-hero-card .ghc-ic.danger  { background: rgba(207,34,46,0.12) !important; color: #CF222E !important; }
+.git-hero-card .ghc-ic.neutral { background: var(--surface-2)      !important; color: var(--text-dim) !important; }
+
+.git-hero-card.synced .ghc-num { color: #1F883D !important; }
+.git-hero-card.danger .ghc-num { color: #CF222E !important; }
+.git-hero-card.safe   .ghc-num { color: var(--text-pri, #0F1115) !important; }
+
+/* ─────────────────────────────────────────────────────────────
+   ADR-0006 — L2 Detail Modal mockup-v2 alignment (2026-05-24)
+   - verdict-row: large chip + diagnostic sentence
+   - connector chips between lanes (absolute positioning)
+   - footer: meta info + action buttons (replaces connbar)
+   ───────────────────────────────────────────────────────────── */
+
+/* Legacy connbar no longer used */
+.git-l2-connbar { display: none !important; }
+
+/* Verdict row */
+#git-detail-summary {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  padding: 12px 22px 4px !important;
+  flex-wrap: wrap !important;
+}
+.git-l2-verdict-chip {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 7px 14px !important;
+  border-radius: 999px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.005em !important;
+  border: 1px solid transparent !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+.git-l2-verdict-chip svg { width: 14px !important; height: 14px !important; }
+.git-l2-verdict-chip.synced   { background: rgba(31,136,61,0.10) !important; color: #1F883D !important; border-color: rgba(31,136,61,0.22) !important; }
+.git-l2-verdict-chip.diverged { background: rgba(191,135,0,0.10) !important; color: #BF8700 !important; border-color: rgba(191,135,0,0.26) !important; }
+.git-l2-verdict-chip.warn     { background: rgba(191,135,0,0.10) !important; color: #BF8700 !important; border-color: rgba(191,135,0,0.26) !important; }
+.git-l2-verdict-chip.conflict { background: rgba(207,34,46,0.10) !important; color: #B11C26 !important; border-color: rgba(207,34,46,0.30) !important; }
+.git-l2-verdict-chip.partial  { background: var(--surface-2)      !important; color: var(--text-sec, #4B4F58) !important; border-color: var(--border) !important; }
+.git-l2-verdict-chip.danger   { background: rgba(207,34,46,0.10) !important; color: #B11C26 !important; border-color: rgba(207,34,46,0.30) !important; }
+
+.git-l2-verdict-text {
+  font-size: 13.5px;
+  color: var(--text-sec, #4B4F58);
+  line-height: 1.45;
+  min-width: 0;
+}
+.git-l2-verdict-text b { color: var(--text-pri, #0F1115); font-weight: 700; }
+.git-l2-verdict-sep   { margin: 0 8px; color: var(--text-dim, #B4B7BD); }
+
+/* Lane shell with connector overlay */
+.git-l2-shell {
+  position: relative !important;
+  display: grid !important;
+  grid-template-columns: 1fr 1fr 1fr !important;
+  gap: 28px !important;
+  padding: 8px 0 14px !important;
+}
+.git-l2-connector {
+  position: absolute;
+  top: 52px;
+  bottom: 32px;
+  width: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  z-index: 10;
+}
+.git-l2-connector.c1 { left: calc(33.333% - 14px); }
+.git-l2-connector.c2 { left: calc(66.666% - 14px); }
+.git-l2-connector-line {
+  flex: 1;
+  width: 2px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--border-strong, #D0D0D8) 0 4px,
+    transparent 4px 8px
+  );
+}
+.git-l2-connector-chip {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  background: var(--surface, #FFFFFF);
+  border: 1px solid var(--border-strong, #D0D0D8);
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: auto;
+  box-shadow: 0 1px 3px rgba(15,17,21,0.06);
+}
+.git-l2-connector-chip svg { width: 11px; height: 11px; }
+.git-l2-connector-chip.synced   { color: #1F883D; border-color: rgba(31,136,61,0.40); }
+.git-l2-connector-chip.diverged { color: #BF8700; border-color: rgba(191,135,0,0.44); }
+.git-l2-connector-chip.conflict { color: #B11C26; border-color: rgba(207,34,46,0.40); }
+
+/* Footer (meta + actions) */
+.git-l2-footer {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 14px 22px !important;
+  background: var(--surface-2, #F4F4F7) !important;
+  border-top: 1px solid var(--border) !important;
+  font-size: 12px !important;
+  color: var(--text-dim, #8A8E97) !important;
+  flex-wrap: wrap !important;
+  gap: 12px !important;
+  margin-top: 12px !important;
+}
+.git-l2-footer-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.git-l2-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.git-l2-meta-item svg { width: 11px; height: 11px; }
+.git-l2-meta-item code {
+  background: var(--surface, #FFFFFF);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: "JetBrains Mono", "SF Mono", Consolas, monospace;
+  font-size: 11px;
+  color: var(--text-sec, #4B4F58);
+}
+.git-l2-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.git-l2-btn {
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: var(--surface, #FFFFFF);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text-sec, #4B4F58);
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms;
+}
+.git-l2-btn:hover {
+  background: var(--surface-2, #F4F4F7);
+  border-color: var(--border-strong, #D0D0D8);
+}
+.git-l2-btn.primary {
+  background: #0969DA;
+  border-color: #0969DA;
+  color: #FFFFFF;
+}
+.git-l2-btn.primary:hover { background: #0860C7; border-color: #0860C7; }

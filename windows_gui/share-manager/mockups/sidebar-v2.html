@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>Sidebar v2 — action card grid (Mac mirror)</title>
+<style>
+/* ─────────────────────────────────────────────────────────────
+   Sidebar v2 mockup — Mac 참고 디자인 미러
+   핵심 변화: 흩어져 있던 6개 액션(Fast-Forward / Notes / Clipboard /
+   Git / Refresh / Settings)을 상단 2열 카드 그리드로 통합.
+
+     기존(Windows)                  신규(Mac mirror)
+     ─────────────                  ────────────────
+     nav-pinned: Fast-Forward       ┌──────────┐┌──────────┐
+     nav-tools:  Notes              │ ⚡ Fast  ││ 📝 Notes │
+                 Clipboard          │  Forward ││          │
+                 Git                └──────────┘└──────────┘
+     [Refresh] (full-width btn)     ┌──────────┐┌──────────┐
+     [Settings] (full-width btn)    │📋Clipbrd ││⎇GitStatus│
+                                    └──────────┘└──────────┘
+                                    ┌──────────┐┌──────────┐
+                                    │↻ Refresh ││⚙Settings │
+                                    └──────────┘└──────────┘
+
+   라이브 앱 토큰을 그대로 임베드 → style.css 에 1:1 이식 가능.
+   ───────────────────────────────────────────────────────────── */
+
+/* ─── Live app tokens (src/style.css 와 동일) ─── */
+:root {
+  --surface:      #FFFFFF;
+  --surface-2:    #F4F4F7;
+  --surface-low:  #F8F8FA;
+  --surface-hi:   #ECECF1;
+  --text-pri:     #1B1B22;
+  --text-sec:     #6B6B75;
+  --text-dim:     #A0A0A8;
+  --accent:       #0A84FF;
+  --accent-hi:    #0066CC;
+  --border:       #E1E1E6;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%;
+  font-family: "Segoe UI Variable", "Segoe UI", "Malgun Gothic", sans-serif;
+  background: var(--surface); color: var(--text-pri); font-size: 13px;
+  -webkit-font-smoothing: antialiased; user-select: none;
+}
+.app { display: grid; grid-template-columns: 260px 1fr; height: 100vh; }
+
+/* ════════════ SIDEBAR v2 ════════════ */
+.sidebar {
+  background: var(--surface-low);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  padding: 18px 0 0;
+}
+
+/* Brand */
+.brand {
+  display: flex; align-items: center; gap: 12px;
+  padding: 4px 18px 18px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+.brand-icon {
+  width: 40px; height: 40px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-hi));
+  color: #fff; border-radius: 11px;
+  display: grid; place-items: center;
+  box-shadow: 0 4px 14px rgba(10,132,255,0.22);
+}
+.brand-icon svg { width: 22px; height: 22px; }
+.brand-title { font-weight: 600; font-size: 13.5px; }
+.brand-subtitle { color: var(--text-sec); font-size: 11px; margin-top: 2px; }
+
+/* ─── Action card grid (the new bit) ─── */
+.action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 14px 14px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+}
+.action-card {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 8px;
+  padding: 14px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--text-sec);
+  font: inherit;
+  transition: border-color .12s, box-shadow .12s, transform .06s, background .12s, color .12s;
+}
+.action-card:hover {
+  border-color: var(--text-dim);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  color: var(--text-pri);
+}
+.action-card:active { transform: scale(0.98); }
+.action-card svg { width: 20px; height: 20px; stroke-width: 2; }
+.action-card-label {
+  font-size: 11.5px; font-weight: 600; letter-spacing: .1px;
+  color: var(--text-pri);
+  text-align: center; line-height: 1.2;
+}
+/* Active card = accent gradient (matches nav active) */
+.action-card.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-hi));
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 6px 16px -6px rgba(10,132,255,0.5);
+}
+.action-card.active .action-card-label { color: #fff; }
+
+/* ─── Nav (In / Out / Log) ─── */
+.nav { flex: 1; overflow-y: auto; padding: 12px 10px 0; }
+.nav-group { margin-bottom: 12px; }
+.nav-group-header {
+  display: flex; align-items: center; gap: 9px;
+  padding: 6px 12px 8px;
+  color: var(--text-sec); font-size: 11.5px; font-weight: 600;
+  letter-spacing: .2px;
+}
+.nav-group-header svg { width: 14px; height: 14px; opacity: .85; }
+.nav-group-header .chev {
+  margin-left: auto; width: 14px; height: 14px; opacity: .5;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 12px; border-radius: 8px; cursor: pointer;
+  color: var(--text-pri); transition: background .12s, color .12s;
+}
+.nav-item:hover { background: var(--surface-hi); }
+.nav-item-emoji {
+  width: 18px; height: 18px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-sec);
+}
+.nav-item-emoji svg { width: 17px; height: 17px; stroke-width: 2; }
+.nav-item-label { flex: 1; font-size: 12.5px; }
+.nav-item-count {
+  background: var(--surface-2); color: var(--text-sec);
+  font-size: 10px; padding: 2px 7px; border-radius: 9px;
+  min-width: 20px; text-align: center; font-variant-numeric: tabular-nums;
+}
+.nav-item.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-hi));
+  color: #fff;
+}
+.nav-item.active .nav-item-emoji { color: #fff; }
+.nav-item.active .nav-item-count { background: rgba(255,255,255,0.25); color: #fff; }
+
+/* ─── Footer status ─── */
+.status {
+  padding: 10px 18px;
+  font-size: 10.5px; color: var(--text-dim);
+  border-top: 1px solid var(--border);
+  font-family: Consolas, "SF Mono", monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Faux main (context only) */
+.main { background: var(--surface); display: grid; place-items: center; color: var(--text-dim); }
+.main .ph { text-align: center; }
+.main .ph .big { font-size: 15px; color: var(--text-sec); margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <!-- Brand -->
+    <div class="brand">
+      <div class="brand-icon" id="i-brand"></div>
+      <div class="brand-text">
+        <div class="brand-title">Mac-Window</div>
+        <div class="brand-subtitle">Shared workspace</div>
+      </div>
+    </div>
+
+    <!-- Action card grid -->
+    <div class="action-grid" id="action-grid"></div>
+
+    <!-- Nav -->
+    <nav class="nav">
+      <div class="nav-group">
+        <div class="nav-group-header">
+          <span data-i="inbox"></span><span>In - from Mac</span><span class="chev" data-i="chevron-right"></span>
+        </div>
+        <div class="nav-item active">
+          <span class="nav-item-emoji" data-i="asterisk"></span>
+          <span class="nav-item-label">All</span>
+          <span class="nav-item-count">5</span>
+        </div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-header">
+          <span data-i="send"></span><span>Out - to Mac</span><span class="chev" data-i="chevron-right"></span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-item-emoji" data-i="asterisk"></span>
+          <span class="nav-item-label">All</span>
+          <span class="nav-item-count">30</span>
+        </div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-header">
+          <span data-i="scroll-text"></span><span>Log Hub</span><span class="chev" data-i="chevron-right"></span>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Footer -->
+    <div class="status">D:\Mac-Window_Share</div>
+  </aside>
+
+  <main class="main">
+    <div class="ph">
+      <div class="big">Sidebar v2 mockup</div>
+      <div>좌측 사이드바가 신규 디자인 — 액션 6개를 2열 카드 그리드로 통합</div>
+    </div>
+  </main>
+</div>
+
+<script>
+const ICONS = {
+  'arrow-left-right': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>',
+  'rocket': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>',
+  'notebook-pen': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4"/><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><path d="M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/></svg>',
+  'clipboard': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>',
+  'git-branch': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>',
+  'refresh-cw': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>',
+  'settings': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>',
+  'asterisk': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v12"/><path d="M17.196 9 6.804 15"/><path d="m6.804 9 10.392 6"/></svg>',
+  'scroll-text': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/></svg>',
+  'chevron-right': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
+  'inbox': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
+  'send': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></svg>',
+};
+// Action cards (Fast-Forward 는 기존 rocket 아이콘 유지 — 앱 전체 일관성)
+const ACTIONS = [
+  { i: 'rocket',       label: 'Fast Forward', active: false },
+  { i: 'notebook-pen', label: 'Notes',        active: false },
+  { i: 'clipboard',    label: 'Clipboard',    active: true  },
+  { i: 'git-branch',   label: 'Git Status',   active: false },
+  { i: 'refresh-cw',   label: 'Refresh',      active: false },
+  { i: 'settings',     label: 'Settings',     active: false },
+];
+const grid = document.getElementById('action-grid');
+for (const a of ACTIONS) {
+  const b = document.createElement('button');
+  b.className = 'action-card' + (a.active ? ' active' : '');
+  b.innerHTML = ICONS[a.i] + `<span class="action-card-label">${a.label}</span>`;
+  b.onclick = () => {
+    document.querySelectorAll('.action-card').forEach(c => c.classList.remove('active'));
+    b.classList.add('active');
+  };
+  grid.appendChild(b);
+}
+document.getElementById('i-brand').innerHTML = ICONS['arrow-left-right'];
+document.querySelectorAll('[data-i]').forEach(el => { el.innerHTML = ICONS[el.dataset.i] || ''; });
+</script>
+</body>
+</html>

@@ -12,27 +12,15 @@
         <div class="brand-icon" id="brand-icon"></div>
         <div class="brand-text">
           <div class="brand-title">Mac-Window</div>
-          <div class="brand-subtitle">Share-Manager</div>
+          <div class="brand-subtitle">Shared workspace</div>
         </div>
       </div>
 
-      <div class="nav-pinned" id="nav-pinned"></div>
+      <div class="action-grid" id="action-grid"></div>
 
       <nav class="nav" id="nav"></nav>
 
       <div class="nav-loghub" id="nav-loghub"></div>
-
-      <div class="nav-tools" id="nav-tools"></div>
-
-      <button id="refresh-btn" class="refresh" title="Refresh">
-        <span class="refresh-icon" id="refresh-icon"></span>
-        <span>Refresh</span>
-      </button>
-
-      <button id="settings-btn" class="settings-btn" title="Settings">
-        <span class="settings-icon" id="settings-icon"></span>
-        <span>Settings</span>
-      </button>
 
       <div class="status" id="status">초기화 중…</div>
     </aside>
@@ -137,16 +125,14 @@
         <header class="main-header">
           <div>
             <h2>📋 클립보드 (양쪽 통합)</h2>
-            <div class="subtitle">양쪽 호스트가 OS 클립보드를 1.5초마다 자동 기록. 항목 클릭 → 내 OS 클립보드로 복사.</div>
+            <div class="subtitle">좌측은 상대 OS · 우측은 내 OS · 카드 클릭 → 내 OS 클립보드로 복사.</div>
           </div>
           <div class="header-actions">
             <button id="clip-refresh" class="ghost-btn">↻ 다시 읽기</button>
             <button id="clip-clear" class="ghost-btn">🗑 내 기록 지우기</button>
           </div>
         </header>
-        <div class="clip-timeline-body">
-          <div id="clip-timeline" class="clip-timeline"></div>
-        </div>
+        <div id="clip-os-split" class="clip-os-split"></div>
       </section>
 
       <!-- LOG PANEL: send/recv/error/compressed-images/worklog -->
@@ -169,7 +155,7 @@
       <section id="panel-git" class="panel hidden">
         <header class="main-header">
           <div>
-            <h2>🌿 Git 현황</h2>
+            <h2 class="git-page-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>Git 현황</h2>
             <div id="git-subtitle" class="subtitle">레포별 Mac-로컬 / Win-로컬 동기화 상태</div>
           </div>
           <div class="header-actions">
