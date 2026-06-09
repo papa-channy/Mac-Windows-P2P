@@ -109,10 +109,10 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 
 ## 4. 우선순위 backport 백로그
 
-**Windows ← Mac (HIGH)**
-1. `git_op_*` 5개 (interactive git) — F-7
-2. PAT cross-host sync (age+ssh) 3개 — F-3
-3. single-instance plugin — M-7-a
+**Windows ← Mac (HIGH)** → 핸드오프 발행됨: `windows_gui/share-manager/MAC_PARITY_HANDOFF_GIT.md`
+1. `git_op_*` 5개 (interactive git) — F-7 · G1
+2. PAT cross-host sync (age+ssh) 3개 — F-3 · G2
+3. single-instance plugin — M-7-a · G3
 
 **Windows ← Mac (MED)**
 4. notify (native+webhook) — H-2/3/4
@@ -120,8 +120,8 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 6. send_path_force — D-8-b
 
 **Mac ← Windows**
-7. RepoCard scanned_at 하드코딩 → 실제값 (버그)
-8. ADR-0005/0006 git L1/L2 디자인 정렬
+7. ~~RepoCard scanned_at 하드코딩 → 실제값~~ ✅ **완료** (collectSummaries 가 host별 최신 scanned_at 집계 → RepoCard fmtRelative 표시)
+8. ~~ADR-0005/0006 git L1/L2 디자인 정렬~~ ◑ **부분 완료** — ADR-0005(단일 layout)는 Mac RepoCard 가 이미 충족 + scanned_at 적용. ADR-0006 핵심(L2 verdict-row 큰 chip+진단문)은 `GitDetailModal` 에 적용(VerdictRow). connector chip 절대위치 / footer meta-actions 는 기존 ConnectorBar 로 기능 충족 — cosmetic 잔여만 후속.
 
 **확인 필요**
 9. Windows `send-to-mac.ps1` 의 RAW_SECRET 차단 보장 (D3)

@@ -174,12 +174,16 @@ function collectSummaries(store: ReturnType<typeof useGitStore>): RepoCardSummar
       const augmented: RepoStatus & { os: string } = { ...r, os: snap.os };
       if (existing) {
         existing.byHost[snap.host] = augmented;
+        if (!existing.scannedAt || snap.scanned_at > existing.scannedAt) {
+          existing.scannedAt = snap.scanned_at;
+        }
       } else {
         map.set(key, {
           ownerRepo: r.owner_repo ?? null,
           label: r.owner_repo ?? lastSegment(r.path),
           byHost: { [snap.host]: augmented },
           remote: null,
+          scannedAt: snap.scanned_at,
         });
       }
     }

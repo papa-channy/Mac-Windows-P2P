@@ -146,7 +146,14 @@ export function GitDetailModal({
           onOpenInspector={() => onOpenInspector(ownerRepo)}
           onClose={onClose}
         />
-        <StatusChip kind={kind} overlaps={overlaps.length} />
+        <VerdictRow
+          kind={kind}
+          macAhead={macAhead}
+          macBehind={macBehind}
+          winAhead={winAhead}
+          winBehind={winBehind}
+          overlaps={overlaps.length}
+        />
 
         <GitOpsBar repoPath={macHost?.repo.path ?? null} />
 
@@ -254,22 +261,89 @@ const KIND_LABEL: Record<string, string> = {
   conflict: "충돌 임박",
 };
 
-function StatusChip({ kind, overlaps }: { kind: string; overlaps: number }) {
+// ADR-0006: large verdict row — big chip + one-line diagnosis + recommended
+// action. Same verdict→action mapping the narrative uses, computed from the
+// already-derived ahead/behind/overlap counts (no RepoGraph fetch needed).
+function deriveVerdict(
+  kind: string,
+  ma: number,
+  mb: number,
+  wa: number,
+  wb: number,
+  overlaps: number,
+): { headline: string; action: string } {
+  if (overlaps > 0)
+    return {
+      headline: "충돌 임박",
+      action: "양쪽에서 같은 파일 수정 중 · 머지 전 정리 필요",
+    };
+  if (ma > 0 && wa > 0)
+    return {
+      headline: `양쪽 발산 · Mac ↑${ma} / Win ↑${wa}`,
+      action: "양쪽 미푸시 — 통합 결정 후 한쪽씩 push",
+    };
+  if (ma > 0)
+    return {
+      headline: `Mac이 origin보다 ${ma}커밋 앞섬`,
+      action: "Mac에서 push 후 Win에서 pull 권장",
+    };
+  if (wa > 0)
+    return {
+      headline: `Win이 origin보다 ${wa}커밋 앞섬`,
+      action: "Mac은 깨끗하고 동기화됨 · Win에서 push 권장",
+    };
+  if (mb > 0 || wb > 0)
+    return {
+      headline: "뒤처짐 · pull 필요",
+      action: "원격이 앞서 있어요 · git pull 권장",
+    };
+  if (kind === "dirty")
+    return {
+      headline: "미커밋 변경",
+      action: "로컬 변경 커밋 후 push 권장",
+    };
+  if (kind === "partial")
+    return {
+      headline: "단일 호스트",
+      action: "한쪽 호스트만 이 레포를 보고 있어요",
+    };
+  return { headline: "동기화됨", action: "모든 호스트가 origin과 일치" };
+}
+
+function VerdictRow({
+  kind,
+  macAhead,
+  macBehind,
+  winAhead,
+  winBehind,
+  overlaps,
+}: {
+  kind: string;
+  macAhead: number;
+  macBehind: number;
+  winAhead: number;
+  winBehind: number;
+  overlaps: number;
+}) {
   const Icon = KIND_ICON[kind] ?? CircleDot;
+  const { headline, action } = deriveVerdict(
+    kind,
+    macAhead,
+    macBehind,
+    winAhead,
+    winBehind,
+    overlaps,
+  );
   return (
-    <div className="git-detail-summary">
-      <span className={`git-l2-status ${kind}`}>
-        <Icon size={13} />
+    <div className={`git-l2-verdict-row ${kind}`}>
+      <span className={`git-l2-verdict-chip ${kind}`}>
+        <Icon size={14} />
         <span>{KIND_LABEL[kind]}</span>
       </span>
-      {overlaps > 0 && (
-        <span className="git-l2-overlap">
-          <FileWarning size={13} />
-          <span>
-            <b>{overlaps}개 파일</b> 동시 수정 중
-          </span>
-        </span>
-      )}
+      <div className="git-l2-verdict-text">
+        <b>{headline}</b>
+        <span>{action}</span>
+      </div>
     </div>
   );
 }

@@ -19,6 +19,7 @@ import {
 // badge; the standalone import keeps tree-shaking happy.
 import type { RepoStatus, RemoteRepoState } from "../../lib/api";
 import { ThreeNodeBridge } from "./ThreeNodeBridge";
+import { fmtRelative } from "../../lib/format";
 
 export type RepoCardKind =
   | "synced"
@@ -33,6 +34,8 @@ export interface RepoCardSummary {
   /** every host's status indexed by host name */
   byHost: Record<string, RepoStatus & { os: string }>;
   remote: RemoteRepoState | null;
+  /** newest scanned_at across all hosts that reported this repo (RFC3339) */
+  scannedAt?: string | null;
 }
 
 interface Props {
@@ -129,7 +132,11 @@ export function RepoCard({ summary, onClick }: Props) {
           </h3>
           <div className="git-card-meta">
             <Clock size={11} />
-            <span>방금 전 스캔</span>
+            <span>
+              {summary.scannedAt
+                ? `${fmtRelative(summary.scannedAt)} 스캔`
+                : "스캔 정보 없음"}
+            </span>
           </div>
         </div>
         <span
