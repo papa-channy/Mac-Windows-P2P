@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.3.5",
+    "date": "2026-06-10",
+    "title": "Git 대시보드 정밀화 + 시크릿 차단 정합 (Windows와 동일 정책)",
+    "highlights": [
+      "🌿 Git 카드의 '스캔 시각'이 실제 스캔 시각으로 표시 (이전엔 '방금 전 스캔' 고정) — 호스트별 최신 스캔 시각 집계",
+      "🌿 Git 상세(L2)에 큰 진단 배지 추가 — 'Mac이 origin보다 2커밋 앞섬 · Win에서 push 권장' 같은 한 줄 진단 + 권장 액션",
+      "🔒 시크릿 파일 차단(RAW_SECRET)을 Windows와 동일한 셰어 정책으로 통일 — 같은 파일이 어느 OS에서 보내든 동일하게 차단/허용",
+      "🔒 SSH 개인키(id_rsa/id_ed25519 등)가 차단 목록에서 빠져있던 누출 경로 차단 + 네트워크 모드(open/closed) 반영"
+    ],
+    "notes": "Git 대시보드 L1 카드의 scanned_at 하드코딩을 실제값으로 교체(ADR-0005 정합), L2 상세 모달에 verdict-row(큰 배지 + 진단문 + 권장 액션) 추가(ADR-0006). RAW_SECRET 차단을 A안으로 재구현 — Mac이 하드코딩 패턴을 버리고 Windows sender와 동일한 셰어 정책 소스(policy.json network_mode + _secrets_policy/{mode}.shareignore)를 읽어, 송신 OS에 따라 차단 여부가 갈리던 비대칭을 해소. PowerShell -like 호환 glob + ! negation(템플릿 허용) + fail-closed fallback. ssh 개인키 누출 경로 즉시 차단. cargo 70/70. Windows 측 정렬은 핸드오프(MAC_PARITY_HANDOFF_SECRETS.md) 발행. 식별자 F-8/F-9, D-5-a, Spotlight·PARITY_MATRIX D3."
+  },
+  {
     "version": "0.3.4",
     "date": "2026-06-01",
     "title": "클립보드 2컬럼 카드 레이아웃 + 오프라인 복원력 (노트/클립보드)",
