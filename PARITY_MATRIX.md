@@ -73,7 +73,7 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 |---|---|---|---|---|---|
 | D1 | 클립보드 폴 분기 | text 성공 시 `continue`(image 스킵) | text 후 image 도 시도 | 한 사이클 text+image 동시 변경 시 타임라인 미세 불일치 (실질 드묾) | **Windows → Mac**: text 성공 시 continue. minor |
 | D2 | verify 디렉토리 감지 | `manifest.mode=="directory"` 신뢰 | 실제 `abs.is_dir()` 탐사 | 정상 경로 동일. manifest 손상 시 결과 갈림 | 둘 중 하나로 통일 (manifest mode 명시 검증 권장) |
-| D3 | RAW_SECRET 적용 (방식·패턴 비대칭) | **하드코딩 고정** 패턴, network_mode 무시 (raw_secret.rs) | **policy + 셰어 `_secrets_policy/{mode}.shareignore` 동적**, closed=서명·인증서·SSH만 차단 (send-to-mac.ps1) | **양방향 누출**: ①closed 모드서 `.env`/`*.pem`/`*.key` 가 Win→Mac 통과(Mac이면 차단됨) ②`id_rsa`/`id_ed25519` 등 SSH키가 Mac→Win 통과(Mac raw_secret 에 패턴 없음) | **A안(권장)**: Mac 도 셰어 `_secrets_policy` 단일 소스 읽게 → byte-identical. **즉시**: Mac raw_secret 에 ssh키/`*.pfx`/`*.gpg.key` 추가. 상세: 2026-06-10 브리핑 |
+| D3 | RAW_SECRET 적용 | **A안 적용됨** — Mac `raw_secret.rs` 가 이제 셰어 `_secrets_policy/{mode}.shareignore` + `policy.json` 단일 소스를 읽음 (glob + `!`negation + fail-closed). network_mode 반영. cargo 70/70 | Windows 는 이미 동일 소스 읽음 — negation/fallback 정렬만 핸드오프(`MAC_PARITY_HANDOFF_SECRETS.md` S1/S2) | ◑ **Mac 완료 / Windows S1·S2 대기** | Windows S1(negation)·S2(fail-closed) 적용 시 ✅. ssh키 누출(②)은 Mac 측 즉시 해소됨 |
 
 ### 3-B. Mac 앞섬 → Windows backport 필요
 

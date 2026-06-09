@@ -466,8 +466,9 @@ mod tests {
         let req = make_request(&share, source, "documents", false);
         let err = send(&req).unwrap_err();
         match err {
-            TransferError::RawSecretBlocked { rule, .. } => {
-                assert!(rule.contains(".env"));
+            // rule is now a fixed label; the matched glob is in `pattern`.
+            TransferError::RawSecretBlocked { pattern, .. } => {
+                assert!(pattern.contains(".env"), "pattern was {pattern}");
             }
             other => panic!("expected RawSecretBlocked, got {other:?}"),
         }
