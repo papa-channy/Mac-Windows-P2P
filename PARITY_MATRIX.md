@@ -73,7 +73,7 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 |---|---|---|---|---|---|
 | D1 | 클립보드 폴 분기 | text 성공 시 `continue`(image 스킵) | text 후 image 도 시도 | 한 사이클 text+image 동시 변경 시 타임라인 미세 불일치 (실질 드묾) | **Windows → Mac**: text 성공 시 continue. minor |
 | D2 | verify 디렉토리 감지 | `manifest.mode=="directory"` 신뢰 | 실제 `abs.is_dir()` 탐사 | 정상 경로 동일. manifest 손상 시 결과 갈림 | 둘 중 하나로 통일 (manifest mode 명시 검증 권장) |
-| D3 | RAW_SECRET 적용 | `engine::send` 전 차단 (Rust) | `send-to-mac.ps1` PowerShell 위임 — 차단 여부 불명확 | 민감파일 송신 차단이 Windows 에서 누락 가능 | **확인 필요** — Windows PS 스크립트에 RAW_SECRET 체크 보장 |
+| D3 | RAW_SECRET 적용 (방식·패턴 비대칭) | **하드코딩 고정** 패턴, network_mode 무시 (raw_secret.rs) | **policy + 셰어 `_secrets_policy/{mode}.shareignore` 동적**, closed=서명·인증서·SSH만 차단 (send-to-mac.ps1) | **양방향 누출**: ①closed 모드서 `.env`/`*.pem`/`*.key` 가 Win→Mac 통과(Mac이면 차단됨) ②`id_rsa`/`id_ed25519` 등 SSH키가 Mac→Win 통과(Mac raw_secret 에 패턴 없음) | **A안(권장)**: Mac 도 셰어 `_secrets_policy` 단일 소스 읽게 → byte-identical. **즉시**: Mac raw_secret 에 ssh키/`*.pfx`/`*.gpg.key` 추가. 상세: 2026-06-10 브리핑 |
 
 ### 3-B. Mac 앞섬 → Windows backport 필요
 
