@@ -73,7 +73,7 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 |---|---|---|---|---|---|
 | D1 | 클립보드 폴 분기 | text 성공 시 `continue`(image 스킵) | text 후 image 도 시도 | 한 사이클 text+image 동시 변경 시 타임라인 미세 불일치 (실질 드묾) | **Windows → Mac**: text 성공 시 continue. minor |
 | D2 | verify 디렉토리 감지 | `manifest.mode=="directory"` 신뢰 | 실제 `abs.is_dir()` 탐사 | 정상 경로 동일. manifest 손상 시 결과 갈림 | 둘 중 하나로 통일 (manifest mode 명시 검증 권장) |
-| D3 | RAW_SECRET 적용 | **A안 적용됨** — Mac `raw_secret.rs` 가 이제 셰어 `_secrets_policy/{mode}.shareignore` + `policy.json` 단일 소스를 읽음 (glob + `!`negation + fail-closed). network_mode 반영. cargo 70/70 | Windows 는 이미 동일 소스 읽음 — negation/fallback 정렬만 핸드오프(`MAC_PARITY_HANDOFF_SECRETS.md` S1/S2) | ◑ **Mac 완료 / Windows S1·S2 대기** | Windows S1(negation)·S2(fail-closed) 적용 시 ✅. ssh키 누출(②)은 Mac 측 즉시 해소됨 |
+| D3 | RAW_SECRET 적용 | **A안 적용됨** — Mac `raw_secret.rs` 가 이제 셰어 `_secrets_policy/{mode}.shareignore` + `policy.json` 단일 소스를 읽음 (glob + `!`negation + fail-closed). network_mode 반영. cargo 70/70 | Windows 는 이미 동일 소스 읽음 — negation/fallback 정렬만 핸드오프(`MAC_PARITY_HANDOFF_SECRETS.md` S1/S2) | ✅ **해소** — Windows S1(negation)+S2(fail-closed) 적용, 양쪽 동일 판정 검증 | Windows S1(negation)·S2(fail-closed) 적용 시 ✅. ssh키 누출(②)은 Mac 측 즉시 해소됨 |
 
 ### 3-B. Mac 앞섬 → Windows backport 필요
 
@@ -124,7 +124,7 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 8. ~~ADR-0005/0006 git L1/L2 디자인 정렬~~ ◑ **부분 완료** — ADR-0005(단일 layout)는 Mac RepoCard 가 이미 충족 + scanned_at 적용. ADR-0006 핵심(L2 verdict-row 큰 chip+진단문)은 `GitDetailModal` 에 적용(VerdictRow). connector chip 절대위치 / footer meta-actions 는 기존 ConnectorBar 로 기능 충족 — cosmetic 잔여만 후속.
 
 **확인 필요**
-9. Windows `send-to-mac.ps1` 의 RAW_SECRET 차단 보장 (D3)
+9. ~~Windows `send-to-mac.ps1` 의 RAW_SECRET 차단 보장 (D3)~~ ✅ 완료 (`_secret-policy.ps1` + S1/S2)
 
 ---
 
