@@ -91,6 +91,7 @@ if (-not $folderMap.ContainsKey($category)) {
     exit 64
 }
 
+. (Join-Path $PSScriptRoot '_secret-policy.ps1')
 # Load shared policy (gates RAW_SECRET behavior per network_mode).
 $policyPath = Join-Path $SHARE_ROOT '00_System\10_Config\global\policy.json'
 $networkMode = 'closed'  # safe default
@@ -108,24 +109,24 @@ if (Test-Path -LiteralPath $policyPath) {
 }
 $secretsPolicyFile = if ($networkMode -eq 'open') { 'open-network.shareignore' } else { 'closed-network.shareignore' }
 $secretsPolicyPath = Join-Path $SHARE_ROOT "00_System\10_Config\ignore_rules\_secrets_policy\$secretsPolicyFile"
+$allowPatterns = New-Object System.Collections.ArrayList
 if (Test-Path -LiteralPath $secretsPolicyPath) {
-    foreach ($line in Get-Content -LiteralPath $secretsPolicyPath -Encoding UTF8) {
-        $t = $line.Trim()
-        if (-not $t) { continue }
-        if ($t.StartsWith('#')) { continue }
-        if ($t.StartsWith('!')) { continue }   # negation patterns: handled elsewhere if needed
-        [void]$blockPatterns.Add($t)
-    }
+    # S1: '!' lines become allow exceptions (allow wins over block at match time).
+    $parsed = ConvertTo-SecretPatterns (Get-Content -LiteralPath $secretsPolicyPath -Encoding UTF8)
+    foreach ($p in $parsed.Block) { [void]$blockPatterns.Add($p) }
+    foreach ($p in $parsed.Allow) { [void]$allowPatterns.Add($p) }
 }
-Dbg "policy network_mode=$networkMode  block_patterns=$($blockPatterns.Count)"
+# S2: fail-closed. If no policy was readable, seed conservative defaults instead of
+# passing everything (Mac does the same).
+if ($blockPatterns.Count -eq 0) {
+    $def = Get-DefaultSecretPatterns
+    foreach ($p in $def.Block) { [void]$blockPatterns.Add($p) }
+    foreach ($p in $def.Allow) { [void]$allowPatterns.Add($p) }
+}
+Dbg "policy network_mode=$networkMode  block_patterns=$($blockPatterns.Count)  allow_patterns=$($allowPatterns.Count)"
 
-$nameLower = $item.Name.ToLower()
-$blocked = $null
-foreach ($pat in $blockPatterns) {
-    $patLower = $pat.ToLower()
-    # PowerShell's -like handles simple wildcards (* and ?).
-    if ($nameLower -like $patLower) { $blocked = $pat; break }
-}
+# Allow-first decision (negation honored). Mac raw_secret.rs uses the same precedence.
+$blocked = Test-SecretBlock -Name $item.Name -Block $blockPatterns -Allow $allowPatterns
 if ($blocked) {
     $modeLabel = if ($networkMode -eq 'open') { 'OPEN-NETWORK (모든 시크릿 차단)' } else { 'CLOSED-NETWORK (서명/인증서/SSH 키만 차단)' }
     Show-Error "BLOCKED (RAW_SECRET): '$blocked' matched.`n`n현재 정책: $modeLabel.`n.env / API 키 등이 자동 차단됐다면 'closed' 모드인지 확인하거나 policy.json 을 수정하세요."
