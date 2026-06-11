@@ -3,7 +3,16 @@ mod share;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    use tauri::Manager;
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+    use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec![]),
+        ))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -11,7 +20,57 @@ pub fn run() {
         .setup(|app| {
             commands::start_clipboard_poller(app.handle().clone());
             commands::start_file_watcher(app.handle().clone());
+
+            // Background-resident clipboard: a tray icon keeps the app (and its
+            // clipboard poller) alive after the window is closed, so live clipboard
+            // sharing no longer requires keeping the window open on both hosts.
+            let open_i = MenuItem::with_id(app, "open", "열기", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "완전 종료", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&open_i, &quit_i])?;
+            let _tray = TrayIconBuilder::with_id("main-tray")
+                .icon(app.default_window_icon().unwrap().clone())
+                .tooltip("Mac-Window 공유 — 클립보드 백그라운드 동기화 중")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "open" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                        }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
+            // Auto-start on login so the background clipboard sync is always available.
+            let _ = app.autolaunch().enable();
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Closing the window hides it to the tray instead of quitting, keeping
+            // the clipboard poller alive. Use the tray "완전 종료" item to exit.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::share_root,
