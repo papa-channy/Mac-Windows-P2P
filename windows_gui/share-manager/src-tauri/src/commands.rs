@@ -1364,7 +1364,8 @@ pub struct HostGitSnapshot {
 
 /// Richer git runner than `run_git`: captures stdout+stderr+exit code for
 /// interactive ops surfaced to the user. Mirrors Mac `git.rs` run_git_op (F-7).
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[allow(dead_code)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GitOpResult {
     pub ok: bool,
     pub stdout: String,
@@ -1372,6 +1373,7 @@ pub struct GitOpResult {
     pub exit_code: Option<i32>,
 }
 
+#[allow(dead_code)]
 fn run_git_op(repo: &Path, args: &[&str]) -> GitOpResult {
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(repo).args(args);
@@ -1394,6 +1396,7 @@ fn run_git_op(repo: &Path, args: &[&str]) -> GitOpResult {
 
 /// Append a git-op outcome to the local jsonl log (reuses existing `append_log`;
 /// "send" on success / "error" on failure — both are allowed categories).
+#[allow(dead_code)]
 fn log_git_op(op: &str, repo: &Path, r: &GitOpResult) {
     let category = if r.ok { "send" } else { "error" };
     append_log(
@@ -2831,7 +2834,13 @@ mod gitop_tests {
 
     #[test]
     fn run_git_op_fail_captures_stderr() {
-        let dir = std::env::temp_dir().join(format!("mw-gitop-nope-{}", std::process::id()));
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static M: AtomicUsize = AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "mw-gitop-nope-{}-{}",
+            std::process::id(),
+            M.fetch_add(1, Ordering::SeqCst)
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap(); // exists but is NOT a git repo
         let r = run_git_op(&dir, &["status"]);
