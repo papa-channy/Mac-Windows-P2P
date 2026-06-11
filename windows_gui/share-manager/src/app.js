@@ -1916,6 +1916,14 @@ function renderGitL2Lanes(ownerRepo) {
         <button class="git-l2-btn" id="git-l2-dag-toggle" type="button">DAG 보기</button>
         <button class="git-l2-btn primary" id="git-l2-sync" type="button">Sync 실행</button>
       </div>
+      <div class="git-l2-ops" id="git-l2-ops">
+        <button class="git-l2-btn" data-op="fetch" type="button">Fetch</button>
+        <button class="git-l2-btn" data-op="pull" type="button">Pull</button>
+        <button class="git-l2-btn" data-op="push" type="button">Push</button>
+        <button class="git-l2-btn" data-op="stash" type="button">Stash</button>
+        <button class="git-l2-btn" data-op="stash_pop" type="button">Stash Pop</button>
+        <span class="git-l2-opresult" id="git-l2-opresult"></span>
+      </div>
     </footer>
   `;
 
@@ -1936,7 +1944,36 @@ function renderGitL2Lanes(ownerRepo) {
     }
   });
   if (syncBtn) syncBtn.addEventListener('click', () => {
-    toast('Sync 자동 실행은 Stage 4 (직결 트리거)에서 추가됩니다 — 우선 터미널에서 push/pull 권장', 'info');
+    toast('Sync 자동 실행은 Stage 4 (직결 트리거)에서 추가됩니다 — 우선 아래 Fetch/Pull/Push 사용', 'info');
+  });
+
+  // G1: interactive git ops on the local (Windows) repo for this owner/repo.
+  const winRepoPath = (winHost && winHost.repo && winHost.repo.path)
+    ? winHost.repo.path
+    : gitRepoPathForHost(ownerRepo, 'windows');
+  const opResult = $gitDetailBody.querySelector('#git-l2-opresult');
+  const opCmd = {
+    fetch: 'git_op_fetch', pull: 'git_op_pull', push: 'git_op_push',
+    stash: 'git_op_stash', stash_pop: 'git_op_stash_pop',
+  };
+  $gitDetailBody.querySelectorAll('.git-l2-ops [data-op]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!winRepoPath) { toast('Windows 로컬 레포 경로를 찾을 수 없어요', 'error'); return; }
+      const op = btn.dataset.op;
+      btn.disabled = true;
+      try {
+        const r = await invoke(opCmd[op], { repoPath: winRepoPath });
+        const raw = r.ok ? (r.stdout || '완료') : (r.stderr || '실패');
+        const summary = raw.split('\n')[0].slice(0, 120);
+        if (opResult) opResult.textContent = `[방금] ${op}: ${summary}`;
+        toast(`${op} ${r.ok ? '성공' : '실패'}: ${summary}`, r.ok ? 'success' : 'error');
+      } catch (e) {
+        if (opResult) opResult.textContent = `[방금] ${op}: ${e}`;
+        toast(`${op} 오류: ${e}`, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
   });
 }
 

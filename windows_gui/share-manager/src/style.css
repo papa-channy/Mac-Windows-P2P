@@ -3207,3 +3207,23 @@ button { font-family: inherit; }
   color: #FFFFFF;
 }
 .git-l2-btn.primary:hover { background: #0860C7; border-color: #0860C7; }
+
+/* ─── Git L2 interactive ops row (G1) ─────────────────────────── */
+.git-l2-ops {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.git-l2-opresult {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-sec);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+.git-l2-ops .git-l2-btn:disabled { opacity: 0.5; cursor: default; }
