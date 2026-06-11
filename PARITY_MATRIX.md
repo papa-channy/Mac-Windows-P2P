@@ -79,7 +79,7 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 
 | 기능 | Mac 식별자 | 우선순위 | 비고 |
 |---|---|---|---|
-| interactive git ops (fetch/pull/push/stash/stash_pop) | F-7 | **HIGH** | Windows commands.rs 에 5개 명령 없음 |
+| interactive git ops (fetch/pull/push/stash/stash_pop) | F-7 | ✅ **완료** | git_op_* 5개 + L2 ops 버튼 행 (G1) |
 | PAT cross-host sync (age+ssh) | F-3/B-10 | **HIGH** | cross-host 핵심인데 Windows 미구현 (KEYRING 상수만 있음) |
 | GitHub check-runs (CI overlay) | F-6 | MED | Windows 미구현 |
 | 외부 알림 dispatch (native+webhook) | H-2/3/4 | MED | Windows 에 notify 동등물 없음 |
@@ -87,7 +87,7 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 | `read_file_preview` | D-13-a | LOW | Details 미리보기 |
 | 클립보드 상대 host 오프라인 캐시 | E-5-b/c | 조건부 | Windows 네트워크 드라이브 구성 시만 |
 | watcher `git-token` topic 감시 | M-2-b | LOW | Mac 발행하나 Windows 미감시 |
-| single-instance plugin | M-7-a | MED | Windows 두번째 실행 처리 부재 |
+| single-instance plugin | M-7-a | ✅ **완료** | tauri-plugin-single-instance 첫 plugin 등록 (G3) |
 
 ### 3-C. Windows 앞섬 → Mac backport 필요
 
@@ -96,6 +96,7 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 | L1 카드 unified layout | ADR-0005 | MED | Mac RepoCard 가 따라가야 |
 | L2 detail verdict-row + connector chip | ADR-0006 | MED | Mac GitDetailModal 정렬 |
 | **실제 scanned_at 표시** | app.js | **버그-Mac** | Mac RepoCard 가 `"방금 전 스캔"` **하드코딩** — 실제 데이터로 교체 필요 |
+| **클립보드 백그라운드 상주** (트레이+자동시작) | lib.rs (tray/close-to-tray/autostart) | HIGH | 창 닫아도 poller 생존 → 실시간 공유에 양측 창 불필요. 핸드오프: `MAC_HANDOFF_TRAY_CLIPBOARD.md` |
 
 ### 3-D. False-positive (에이전트 과장 — non-issue)
 
@@ -110,9 +111,9 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 ## 4. 우선순위 backport 백로그
 
 **Windows ← Mac (HIGH)** → 핸드오프 발행됨: `windows_gui/share-manager/MAC_PARITY_HANDOFF_GIT.md`
-1. `git_op_*` 5개 (interactive git) — F-7 · G1
+1. ~~`git_op_*` 5개 (interactive git) — F-7 · G1~~ ✅ 완료
 2. PAT cross-host sync (age+ssh) 3개 — F-3 · G2
-3. single-instance plugin — M-7-a · G3
+3. ~~single-instance plugin — M-7-a · G3~~ ✅ 완료
 
 **Windows ← Mac (MED)**
 4. notify (native+webhook) — H-2/3/4
