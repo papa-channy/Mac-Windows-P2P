@@ -17,6 +17,11 @@ Describe 'ConvertTo-SecretPatterns' {
         $r.Block.Count | Should Be 1
         $r.Block[0]    | Should Be 'id_rsa'
     }
+    It 'returns an indexable [string[]] for a single-element Block' {
+        $r = ConvertTo-SecretPatterns @('id_rsa')
+        $r.Block.Count | Should Be 1
+        $r.Block[0]    | Should Be 'id_rsa'
+    }
 }
 
 Describe 'Test-SecretBlock' {
@@ -34,6 +39,9 @@ Describe 'Test-SecretBlock' {
     }
     It 'returns null when nothing matches' {
         Test-SecretBlock -Name 'readme.md' -Block @('*.pem', 'id_rsa') | Should BeNullOrEmpty
+    }
+    It 'matches on basename when given a full path' {
+        Test-SecretBlock -Name 'C:\Users\foo\.env' -Block @('.env') | Should Be '.env'
     }
 }
 

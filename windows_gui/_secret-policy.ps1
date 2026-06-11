@@ -41,6 +41,7 @@ function Test-SecretBlock {
         [string[]] $Block = @(),
         [string[]] $Allow = @()
     )
+    $Name = [System.IO.Path]::GetFileName($Name)
     $n = $Name.ToLower()
     foreach ($pat in $Allow) {
         if ($n -like $pat.ToLower()) { return $null }
