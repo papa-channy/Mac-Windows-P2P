@@ -1364,7 +1364,6 @@ pub struct HostGitSnapshot {
 
 /// Richer git runner than `run_git`: captures stdout+stderr+exit code for
 /// interactive ops surfaced to the user. Mirrors Mac `git.rs` run_git_op (F-7).
-#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GitOpResult {
     pub ok: bool,
@@ -1373,7 +1372,6 @@ pub struct GitOpResult {
     pub exit_code: Option<i32>,
 }
 
-#[allow(dead_code)]
 fn run_git_op(repo: &Path, args: &[&str]) -> GitOpResult {
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(repo).args(args);
@@ -1396,7 +1394,6 @@ fn run_git_op(repo: &Path, args: &[&str]) -> GitOpResult {
 
 /// Append a git-op outcome to the local jsonl log (reuses existing `append_log`;
 /// "send" on success / "error" on failure — both are allowed categories).
-#[allow(dead_code)]
 fn log_git_op(op: &str, repo: &Path, r: &GitOpResult) {
     let category = if r.ok { "send" } else { "error" };
     append_log(
@@ -1409,6 +1406,53 @@ fn log_git_op(op: &str, repo: &Path, r: &GitOpResult) {
             "exit": r.exit_code,
         }),
     );
+}
+
+#[tauri::command]
+pub fn git_op_fetch(repo_path: String) -> Result<GitOpResult, String> {
+    let repo = Path::new(&repo_path);
+    if !repo.join(".git").exists() { return Err("레포 경로가 유효하지 않음".into()); }
+    let r = run_git_op(repo, &["fetch", "--all", "--prune"]);
+    log_git_op("fetch", repo, &r);
+    Ok(r)
+}
+
+#[tauri::command]
+pub fn git_op_pull(repo_path: String) -> Result<GitOpResult, String> {
+    let repo = Path::new(&repo_path);
+    if !repo.join(".git").exists() { return Err("레포 경로가 유효하지 않음".into()); }
+    // --ff-only: never start a merge on divergence; surface a clear error instead.
+    let r = run_git_op(repo, &["pull", "--ff-only"]);
+    log_git_op("pull", repo, &r);
+    Ok(r)
+}
+
+#[tauri::command]
+pub fn git_op_push(repo_path: String) -> Result<GitOpResult, String> {
+    let repo = Path::new(&repo_path);
+    if !repo.join(".git").exists() { return Err("레포 경로가 유효하지 않음".into()); }
+    let r = run_git_op(repo, &["push"]);
+    log_git_op("push", repo, &r);
+    Ok(r)
+}
+
+#[tauri::command]
+pub fn git_op_stash(repo_path: String, message: Option<String>) -> Result<GitOpResult, String> {
+    let repo = Path::new(&repo_path);
+    if !repo.join(".git").exists() { return Err("레포 경로가 유효하지 않음".into()); }
+    let msg = message.unwrap_or_else(|| "share-manager auto stash".to_string());
+    let r = run_git_op(repo, &["stash", "push", "-u", "-m", &msg]);
+    log_git_op("stash", repo, &r);
+    Ok(r)
+}
+
+#[tauri::command]
+pub fn git_op_stash_pop(repo_path: String) -> Result<GitOpResult, String> {
+    let repo = Path::new(&repo_path);
+    if !repo.join(".git").exists() { return Err("레포 경로가 유효하지 않음".into()); }
+    let r = run_git_op(repo, &["stash", "pop"]);
+    log_git_op("stash_pop", repo, &r);
+    Ok(r)
 }
 
 fn run_git(repo: &Path, args: &[&str]) -> Option<String> {
