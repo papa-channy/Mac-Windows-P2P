@@ -110,15 +110,18 @@ if (Test-Path -LiteralPath $policyPath) {
 $secretsPolicyFile = if ($networkMode -eq 'open') { 'open-network.shareignore' } else { 'closed-network.shareignore' }
 $secretsPolicyPath = Join-Path $SHARE_ROOT "00_System\10_Config\ignore_rules\_secrets_policy\$secretsPolicyFile"
 $allowPatterns = New-Object System.Collections.ArrayList
+$shareignoreRead = $false
 if (Test-Path -LiteralPath $secretsPolicyPath) {
     # S1: '!' lines become allow exceptions (allow wins over block at match time).
     $parsed = ConvertTo-SecretPatterns (Get-Content -LiteralPath $secretsPolicyPath -Encoding UTF8)
     foreach ($p in $parsed.Block) { [void]$blockPatterns.Add($p) }
     foreach ($p in $parsed.Allow) { [void]$allowPatterns.Add($p) }
+    $shareignoreRead = $true
 }
-# S2: fail-closed. If no policy was readable, seed conservative defaults instead of
-# passing everything (Mac does the same).
-if ($blockPatterns.Count -eq 0) {
+# S2: fail-closed. If the per-mode shareignore couldn't be read, or no block pattern
+# came from any source, seed the conservative defaults (block AND its allow exceptions)
+# instead of passing everything. Matches Mac's fallback (= the open-network list).
+if (-not $shareignoreRead -or $blockPatterns.Count -eq 0) {
     $def = Get-DefaultSecretPatterns
     foreach ($p in $def.Block) { [void]$blockPatterns.Add($p) }
     foreach ($p in $def.Allow) { [void]$allowPatterns.Add($p) }
@@ -256,6 +259,7 @@ $manifest = [ordered]@{
     policy_applied = @{
         network_mode      = $networkMode
         block_patterns    = $blockPatterns.Count
+        allow_patterns    = $allowPatterns.Count
         detected_languages= $detectedLanguages
         has_git           = $hasGit
     }
