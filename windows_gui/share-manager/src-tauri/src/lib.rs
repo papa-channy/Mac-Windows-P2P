@@ -9,6 +9,15 @@ pub fn run() {
     use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            // Second launch → reveal the existing (possibly tray-hidden) window
+            // instead of spawning another instance.
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
+                let _ = win.unminimize();
+                let _ = win.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             Some(vec![]),
