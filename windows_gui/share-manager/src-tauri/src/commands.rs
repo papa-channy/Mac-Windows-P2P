@@ -1362,6 +1362,52 @@ pub struct HostGitSnapshot {
     pub repos: Vec<RepoStatus>,
 }
 
+/// Richer git runner than `run_git`: captures stdout+stderr+exit code for
+/// interactive ops surfaced to the user. Mirrors Mac `git.rs` run_git_op (F-7).
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct GitOpResult {
+    pub ok: bool,
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: Option<i32>,
+}
+
+fn run_git_op(repo: &Path, args: &[&str]) -> GitOpResult {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(repo).args(args);
+    hide_console(&mut cmd);
+    match cmd.output() {
+        Ok(o) => GitOpResult {
+            ok: o.status.success(),
+            stdout: String::from_utf8_lossy(&o.stdout).trim().to_string(),
+            stderr: String::from_utf8_lossy(&o.stderr).trim().to_string(),
+            exit_code: o.status.code(),
+        },
+        Err(e) => GitOpResult {
+            ok: false,
+            stdout: String::new(),
+            stderr: format!("git exec failed: {e}"),
+            exit_code: None,
+        },
+    }
+}
+
+/// Append a git-op outcome to the local jsonl log (reuses existing `append_log`;
+/// "send" on success / "error" on failure — both are allowed categories).
+fn log_git_op(op: &str, repo: &Path, r: &GitOpResult) {
+    let category = if r.ok { "send" } else { "error" };
+    append_log(
+        category,
+        serde_json::json!({
+            "event": if r.ok { format!("git_{op}_ok") } else { format!("git_{op}_fail") },
+            "op": op,
+            "repo": repo.to_string_lossy(),
+            "stderr": r.stderr.lines().take(3).collect::<Vec<_>>().join("\n"),
+            "exit": r.exit_code,
+        }),
+    );
+}
+
 fn run_git(repo: &Path, args: &[&str]) -> Option<String> {
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(repo).args(args);
@@ -2746,4 +2792,65 @@ fn locate_pwsh() -> String {
         if Path::new(c).exists() { return c.to_string(); }
     }
     "pwsh.exe".to_string()
+}
+
+#[cfg(test)]
+mod gitop_tests {
+    use super::*;
+    use std::process::Command;
+
+    fn temp_repo() -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let n = N.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("mw-gitop-{}-{}", std::process::id(), n));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |args: &[&str]| {
+            Command::new("git").arg("-C").arg(&dir).args(args).output().unwrap();
+        };
+        run(&["init", "-q"]);
+        run(&["config", "user.email", "t@t.t"]);
+        run(&["config", "user.name", "t"]);
+        run(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(dir.join("a.txt"), "hello").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-q", "-m", "init"]);
+        dir
+    }
+
+    #[test]
+    fn run_git_op_ok_on_valid_repo() {
+        let dir = temp_repo();
+        let r = run_git_op(&dir, &["rev-parse", "--is-inside-work-tree"]);
+        assert!(r.ok);
+        assert_eq!(r.stdout, "true");
+        assert_eq!(r.exit_code, Some(0));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn run_git_op_fail_captures_stderr() {
+        let dir = std::env::temp_dir().join(format!("mw-gitop-nope-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap(); // exists but is NOT a git repo
+        let r = run_git_op(&dir, &["status"]);
+        assert!(!r.ok);
+        assert!(!r.stderr.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stash_roundtrip() {
+        let dir = temp_repo();
+        std::fs::write(dir.join("a.txt"), "changed").unwrap();
+        assert!(!run_git_op(&dir, &["status", "--porcelain"]).stdout.is_empty(), "expected dirty");
+        let s = run_git_op(&dir, &["stash", "push", "-u", "-m", "test"]);
+        assert!(s.ok, "stash push failed: {}", s.stderr);
+        assert!(run_git_op(&dir, &["status", "--porcelain"]).stdout.is_empty(), "expected clean after stash");
+        let p = run_git_op(&dir, &["stash", "pop"]);
+        assert!(p.ok, "stash pop failed: {}", p.stderr);
+        assert!(!run_git_op(&dir, &["status", "--porcelain"]).stdout.is_empty(), "expected dirty after pop");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
