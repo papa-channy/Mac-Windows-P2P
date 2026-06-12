@@ -8,7 +8,8 @@ param(
     [string] $SourcePath,
     [Parameter(Position = 1)]
     [string] $Category,
-    [switch] $NoGui
+    [switch] $NoGui,
+    [switch] $Force
 )
 
 $ErrorActionPreference = 'Stop'
@@ -150,7 +151,9 @@ $srcKindLabel = if ($isDir) { 'directory' } else { 'file' }
 Dbg "source is $srcKindLabel  target: $dstPath"
 
 if (Test-Path -LiteralPath $dstPath) {
-    if ($useGui) {
+    if ($Force) {
+        Dbg "force overwrite (-Force)"
+    } elseif ($useGui) {
         $confirm = [System.Windows.MessageBox]::Show(
             "Target already exists:`n$newName`n`nOverwrite?", 'Send to Mac', 'YesNo', 'Question')
         if ($confirm -ne 'Yes') { Dbg "user declined overwrite"; exit 0 }
