@@ -173,7 +173,7 @@ pub struct AppearanceSettings {
     pub icon_theme_path: Option<String>, // legacy single-path field, kept for back-compat
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NotificationSettings {
     #[serde(default)]
     pub enabled: bool,
@@ -191,6 +191,24 @@ pub struct NotificationSettings {
     pub on_verify_ok: bool,
     #[serde(default)]
     pub on_clipboard: bool,
+}
+
+// Manual Default so a freshly-defaulted struct matches the serde field
+// defaults (native + send/verify-fail on) — derived Default would set all
+// bools to false, diverging from a settings.json that omits those fields.
+impl Default for NotificationSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            native: true,
+            webhook_url: String::new(),
+            on_send_ok: true,
+            on_send_fail: true,
+            on_verify_fail: true,
+            on_verify_ok: false,
+            on_clipboard: false,
+        }
+    }
 }
 
 fn default_true() -> bool { true }
