@@ -2059,6 +2059,64 @@ mod pat_crypto_tests {
     }
 }
 
+#[allow(dead_code)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct CheckRunSummary {
+    pub total: u32,
+    pub success: u32,
+    pub failure: u32,
+    pub in_progress: u32,
+    pub neutral: u32,
+    /// Aggregated verdict: "success" / "failure" / "pending" / "neutral" / "none" / "error".
+    pub overall: String,
+    /// Click-through URL of the first run (GitHub Actions tab).
+    pub html_url: Option<String>,
+}
+
+#[allow(dead_code)]
+fn classify_check_runs(runs: &serde_json::Value) -> CheckRunSummary {
+    let mut s = CheckRunSummary::default();
+    let arr = match runs.get("check_runs").and_then(|v| v.as_array()) {
+        Some(a) => a,
+        None => {
+            s.overall = "none".into();
+            return s;
+        }
+    };
+    s.total = arr.len() as u32;
+    if s.total == 0 {
+        s.overall = "none".into();
+        return s;
+    }
+    for r in arr {
+        let status = r.get("status").and_then(|v| v.as_str()).unwrap_or("");
+        let conclusion = r.get("conclusion").and_then(|v| v.as_str()).unwrap_or("");
+        if status != "completed" {
+            s.in_progress += 1;
+        } else {
+            match conclusion {
+                "success" => s.success += 1,
+                "failure" | "timed_out" | "action_required" | "startup_failure" => s.failure += 1,
+                "neutral" | "skipped" | "stale" | "cancelled" => s.neutral += 1,
+                _ => s.neutral += 1,
+            }
+        }
+        if s.html_url.is_none() {
+            s.html_url = r.get("html_url").and_then(|v| v.as_str()).map(|s| s.to_string());
+        }
+    }
+    s.overall = if s.failure > 0 {
+        "failure".into()
+    } else if s.in_progress > 0 {
+        "pending".into()
+    } else if s.success > 0 {
+        "success".into()
+    } else {
+        "neutral".into()
+    };
+    s
+}
+
 fn gh_get(token: &str, url: &str) -> Result<serde_json::Value, String> {
     ureq::get(url)
         .set("Authorization", &format!("Bearer {token}"))
@@ -3131,5 +3189,65 @@ mod gitop_tests {
         assert!(p.ok, "stash pop failed: {}", p.stderr);
         assert!(!run_git_op(&dir, &["status", "--porcelain"]).stdout.is_empty(), "expected dirty after pop");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod check_run_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn empty_is_none() {
+        assert_eq!(classify_check_runs(&json!({"check_runs": []})).overall, "none");
+        assert_eq!(classify_check_runs(&json!({})).overall, "none");
+    }
+    #[test]
+    fn all_success() {
+        let v = json!({"check_runs":[
+            {"status":"completed","conclusion":"success","html_url":"u1"},
+            {"status":"completed","conclusion":"success","html_url":"u2"}
+        ]});
+        let s = classify_check_runs(&v);
+        assert_eq!(s.overall, "success");
+        assert_eq!(s.success, 2);
+        assert_eq!(s.total, 2);
+        assert_eq!(s.html_url.as_deref(), Some("u1"));
+    }
+    #[test]
+    fn failure_wins_over_success_and_pending() {
+        let v = json!({"check_runs":[
+            {"status":"completed","conclusion":"success"},
+            {"status":"in_progress","conclusion":null},
+            {"status":"completed","conclusion":"failure"}
+        ]});
+        let s = classify_check_runs(&v);
+        assert_eq!(s.overall, "failure");
+        assert_eq!(s.failure, 1);
+        assert_eq!(s.in_progress, 1);
+        assert_eq!(s.success, 1);
+    }
+    #[test]
+    fn pending_when_in_progress_no_failure() {
+        let v = json!({"check_runs":[
+            {"status":"completed","conclusion":"success"},
+            {"status":"queued","conclusion":null}
+        ]});
+        assert_eq!(classify_check_runs(&v).overall, "pending");
+    }
+    #[test]
+    fn neutral_only() {
+        let v = json!({"check_runs":[
+            {"status":"completed","conclusion":"skipped"},
+            {"status":"completed","conclusion":"neutral"}
+        ]});
+        let s = classify_check_runs(&v);
+        assert_eq!(s.overall, "neutral");
+        assert_eq!(s.neutral, 2);
+    }
+    #[test]
+    fn timed_out_counts_as_failure() {
+        let v = json!({"check_runs":[{"status":"completed","conclusion":"timed_out"}]});
+        assert_eq!(classify_check_runs(&v).overall, "failure");
     }
 }
