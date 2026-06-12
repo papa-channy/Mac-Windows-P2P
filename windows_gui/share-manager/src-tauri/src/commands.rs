@@ -2355,6 +2355,7 @@ fn classify_event_path(p: &Path) -> &'static str {
     if has("\\70_Clipboard\\") || has("/70_Clipboard/") { return "clipboard"; }
     if has("\\60_Notes\\") || has("/60_Notes/") { return "notes"; }
     if has("\\profiles\\") || has("/profiles/") { return "profiles"; }
+    if has("\\git-token\\") || has("/git-token/") { return "git-token"; }
     if has("\\90_Git\\") || has("/90_Git/") { return "git"; }
     ""
 }
@@ -2371,6 +2372,7 @@ pub fn start_file_watcher(app: tauri::AppHandle) {
             share.join("00_System").join("60_Notes"),
             share.join("00_System").join("90_Git"),
             share.join("00_System").join("10_Config").join("profiles"),
+            share.join("00_System").join("10_Config").join("git-token"),
         ];
         for p in &watch_paths {
             let _ = std::fs::create_dir_all(p);
