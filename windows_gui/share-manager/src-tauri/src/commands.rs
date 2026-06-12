@@ -643,6 +643,76 @@ pub fn desktop_directory() -> Result<String, String> {
     Ok(format!("{}\\Desktop", home))
 }
 
+// ─── Notifications (native toast + webhook) — M4 ───────────────
+#[derive(Debug, Clone, Copy)]
+pub enum NotifyEvent {
+    SendOk,
+    SendFail,
+    VerifyOk,
+    VerifyFail,
+}
+
+/// Pure gate: should this event fire under the user's settings?
+fn notify_allowed(s: &crate::share::NotificationSettings, ev: NotifyEvent) -> bool {
+    if !s.enabled {
+        return false;
+    }
+    match ev {
+        NotifyEvent::SendOk => s.on_send_ok,
+        NotifyEvent::SendFail => s.on_send_fail,
+        NotifyEvent::VerifyOk => s.on_verify_ok,
+        NotifyEvent::VerifyFail => s.on_verify_fail,
+    }
+}
+
+/// Slack/Discord-compatible JSON ({"text": "*title*\nbody"}). Pure.
+fn build_slack_payload(title: &str, body: &str) -> serde_json::Value {
+    serde_json::json!({ "text": format!("*{title}*\n{body}"), "username": "share-manager" })
+}
+
+fn post_webhook(url: &str, title: &str, body: &str) -> Result<(), String> {
+    ureq::post(url)
+        .timeout(std::time::Duration::from_secs(5))
+        .set("Content-Type", "application/json")
+        .send_json(build_slack_payload(title, body))
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn read_settings_for_notify(app: &tauri::AppHandle) -> crate::share::Settings {
+    let p = settings_path(app);
+    std::fs::read_to_string(&p)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+/// Best-effort fan-out: native toast + webhook. Never blocks the caller
+/// (webhook runs on a detached thread); never returns Err.
+fn notify_dispatch(app: &tauri::AppHandle, ev: NotifyEvent, title: &str, body: &str) {
+    use tauri_plugin_notification::NotificationExt;
+    let settings = read_settings_for_notify(app);
+    if !notify_allowed(&settings.notifications, ev) {
+        return;
+    }
+    if settings.notifications.native {
+        let _ = app.notification().builder().title(title).body(body).show();
+    }
+    let webhook = settings.notifications.webhook_url.trim().to_string();
+    if !webhook.is_empty() {
+        let (t, b) = (title.to_string(), body.to_string());
+        std::thread::spawn(move || {
+            let _ = post_webhook(&webhook, &t, &b);
+        });
+    }
+}
+
+#[tauri::command]
+pub fn notify_test(app: tauri::AppHandle) -> Result<(), String> {
+    notify_dispatch(&app, NotifyEvent::SendOk, "🔔 테스트 알림", "share-manager 알림이 정상 동작합니다.");
+    Ok(())
+}
+
 // ─── Settings ───────────────────────────────────────────────────
 fn settings_path(app: &tauri::AppHandle) -> PathBuf {
     let dir = app
@@ -3276,5 +3346,36 @@ mod check_run_tests {
     fn timed_out_counts_as_failure() {
         let v = json!({"check_runs":[{"status":"completed","conclusion":"timed_out"}]});
         assert_eq!(classify_check_runs(&v).overall, "failure");
+    }
+}
+
+#[cfg(test)]
+mod notify_tests {
+    use super::*;
+
+    #[test]
+    fn gate_respects_master_toggle() {
+        let mut s = crate::share::NotificationSettings { enabled: false, ..Default::default() };
+        s.on_send_ok = true;
+        assert!(!notify_allowed(&s, NotifyEvent::SendOk)); // master off → nothing
+        s.enabled = true;
+        assert!(notify_allowed(&s, NotifyEvent::SendOk));
+    }
+    #[test]
+    fn gate_respects_per_event() {
+        let s = crate::share::NotificationSettings {
+            enabled: true, on_send_ok: true, on_send_fail: false,
+            on_verify_ok: false, on_verify_fail: true, ..Default::default()
+        };
+        assert!(notify_allowed(&s, NotifyEvent::SendOk));
+        assert!(!notify_allowed(&s, NotifyEvent::SendFail));
+        assert!(!notify_allowed(&s, NotifyEvent::VerifyOk));
+        assert!(notify_allowed(&s, NotifyEvent::VerifyFail));
+    }
+    #[test]
+    fn slack_payload_shape() {
+        let v = build_slack_payload("타이틀", "본문");
+        assert_eq!(v.get("text").and_then(|x| x.as_str()), Some("*타이틀*\n본문"));
+        assert_eq!(v.get("username").and_then(|x| x.as_str()), Some("share-manager"));
     }
 }

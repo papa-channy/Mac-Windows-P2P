@@ -96,6 +96,7 @@ pub fn run() {
             commands::desktop_directory,
             commands::load_settings,
             commands::save_settings,
+            commands::notify_test,
             commands::check_connection,
             commands::speed_test_local,
             commands::pick_folder,
