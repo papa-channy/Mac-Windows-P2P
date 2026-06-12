@@ -2295,6 +2295,47 @@ async function renderGICommits(ownerRepo) {
     </div>`;
 }
 
+// Best-effort: overlay a small CI status badge on each commit dot using the
+// shared PAT. No token / API error → bare dots (no throw). M5 / F-6.
+async function overlayCheckRuns(ownerRepo, commits) {
+  const shas = (commits || []).map(c => c.sha).filter(Boolean);
+  if (!shas.length) return;
+  let runs;
+  try {
+    runs = await invoke('github_fetch_check_runs', { ownerRepo, shas });
+  } catch (_) {
+    return;
+  }
+  const CI_COLOR = {
+    success: '#2DA44E', failure: '#D11A2A', pending: '#D4A72C', neutral: '#8A8E97', error: '#8A8E97',
+  };
+  const NS = 'http://www.w3.org/2000/svg';
+  $gitInspectorBody.querySelectorAll('.gtl-river svg circle[data-sha]').forEach(el => {
+    const sha = el.getAttribute('data-sha');
+    const s = runs[sha];
+    if (!s || !s.overall || s.overall === 'none') return;
+    const color = CI_COLOR[s.overall];
+    if (!color) return;
+    const svg = el.ownerSVGElement;
+    if (!svg) return;
+    const cx = parseFloat(el.getAttribute('cx'));
+    const cy = parseFloat(el.getAttribute('cy'));
+    const r = parseFloat(el.getAttribute('r'));
+    const badge = document.createElementNS(NS, 'circle');
+    badge.setAttribute('cx', cx + r);
+    badge.setAttribute('cy', cy - r);
+    badge.setAttribute('r', '3');
+    badge.setAttribute('fill', color);
+    badge.setAttribute('stroke', '#FFFFFF');
+    badge.setAttribute('stroke-width', '1.5');
+    badge.setAttribute('pointer-events', 'none');
+    const title = document.createElementNS(NS, 'title');
+    title.textContent = `CI: ${s.overall} (✓${s.success} ✗${s.failure} ⏳${s.in_progress})`;
+    badge.appendChild(title);
+    svg.appendChild(badge);
+  });
+}
+
 async function renderGITimeline(ownerRepo) {
   // ADR-0004: 3-panel narrative — Status Summary + Graph + Selected Commit
   $gitInspectorBody.innerHTML = '<div class="gi-loading">3-소스 그래프 계산 중…</div>';
@@ -2324,6 +2365,9 @@ async function renderGITimeline(ownerRepo) {
         if (c) updateTimelineDetail(c, graph);
       });
     });
+
+    // M5: overlay CI check-run badges (best-effort; needs PAT).
+    overlayCheckRuns(ownerRepo, pb.commits).catch(() => {});
   } catch (e) {
     $gitInspectorBody.innerHTML = `<div class="gi-loading">실패: ${escape(String(e))}</div>`;
   }
