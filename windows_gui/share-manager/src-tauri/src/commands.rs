@@ -1807,6 +1807,49 @@ fn keyring_entry() -> Result<keyring::Entry, String> {
     keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| e.to_string())
 }
 
+/// age-encrypt `token` to an ssh-ed25519 public-key line (one recipient).
+/// Pure (no IO) — the PAT cross-host crypto core. Mirrors Mac git.rs.
+#[allow(dead_code)]
+fn encrypt_token_to_pubkey(token: &str, pubkey_line: &str) -> Result<Vec<u8>, String> {
+    use age::ssh::Recipient as SshRecipient;
+    use age::Encryptor;
+    use std::io::Write as _;
+    use std::str::FromStr;
+    let recipient = SshRecipient::from_str(pubkey_line)
+        .map_err(|e| format!("ssh 공개키 파싱 실패: {e:?}"))?;
+    let encryptor = Encryptor::with_recipients(vec![Box::new(recipient)])
+        .ok_or("recipient 가 비었음")?;
+    let mut out = Vec::new();
+    let mut writer = encryptor.wrap_output(&mut out).map_err(|e| format!("encrypt 시작 실패: {e}"))?;
+    writer.write_all(token.as_bytes()).map_err(|e| format!("encrypt write 실패: {e}"))?;
+    writer.finish().map_err(|e| format!("encrypt finish 실패: {e}"))?;
+    Ok(out)
+}
+
+/// age-decrypt ciphertext with an ssh-ed25519 private key (PEM text).
+/// `priv_label` is just a human label for parse errors. Pure (no IO).
+#[allow(dead_code)]
+fn decrypt_token_with_privkey(ciphertext: &[u8], priv_text: &str, priv_label: &str) -> Result<String, String> {
+    use age::Decryptor;
+    use std::io::Read as _;
+    let decryptor = match Decryptor::new(ciphertext).map_err(|e| e.to_string())? {
+        Decryptor::Recipients(d) => d,
+        Decryptor::Passphrase(_) => return Err("예상치 못한 passphrase age 파일".into()),
+    };
+    let identity = age::ssh::Identity::from_buffer(
+        std::io::BufReader::new(priv_text.as_bytes()),
+        Some(priv_label.to_string()),
+    )
+    .map_err(|e| format!("ssh 개인키 파싱 실패: {e}"))?;
+    let identities: Vec<Box<dyn age::Identity>> = vec![Box::new(identity)];
+    let mut reader = decryptor
+        .decrypt(identities.iter().map(|i| i.as_ref()))
+        .map_err(|e| format!("복호화 실패: {e}"))?;
+    let mut plaintext = String::new();
+    reader.read_to_string(&mut plaintext).map_err(|e| format!("복호화 read 실패: {e}"))?;
+    Ok(plaintext)
+}
+
 fn get_token() -> Option<String> {
     keyring_entry().ok().and_then(|e| e.get_password().ok())
 }
@@ -1832,6 +1875,39 @@ pub fn git_clear_token() -> Result<(), String> {
         Ok(_) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()),
         Err(x) => Err(x.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod pat_crypto_tests {
+    use super::*;
+    use std::process::Command;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn age_ssh_ed25519_roundtrip() {
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let dir = std::env::temp_dir()
+            .join(format!("mw-age-{}-{}", std::process::id(), N.fetch_add(1, Ordering::SeqCst)));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let key = dir.join("k");
+        let out = Command::new("ssh-keygen")
+            .args(["-t", "ed25519", "-N", "", "-C", "test", "-f"])
+            .arg(&key)
+            .output()
+            .expect("ssh-keygen must be on PATH");
+        assert!(out.status.success(), "ssh-keygen failed: {}", String::from_utf8_lossy(&out.stderr));
+        let pub_line = std::fs::read_to_string(key.with_extension("pub")).unwrap().trim().to_string();
+        let priv_text = std::fs::read_to_string(&key).unwrap();
+
+        let token = "ghp_TESTtoken1234567890";
+        let ct = encrypt_token_to_pubkey(token, &pub_line).expect("encrypt");
+        assert!(!ct.is_empty());
+        assert_ne!(&ct[..], token.as_bytes(), "ciphertext must differ from plaintext");
+        let pt = decrypt_token_with_privkey(&ct, &priv_text, &key.to_string_lossy()).expect("decrypt");
+        assert_eq!(pt.trim(), token);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 

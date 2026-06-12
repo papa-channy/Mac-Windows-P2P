@@ -31,6 +31,7 @@ chrono = { version = "0.4", features = ["serde"] }
 walkdir = "2"
 anyhow = "1"
 keyring = { version = "3", features = ["windows-native"] }
+age = { version = "0.10", features = ["ssh"] }
 ureq = { version = "2", features = ["json"] }
 
 [profile.release]
