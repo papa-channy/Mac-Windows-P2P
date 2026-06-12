@@ -325,6 +325,34 @@
           </section>
 
           <section class="settings-section">
+            <h3>알림</h3>
+            <div class="settings-row">
+              <div class="settings-label">알림 사용</div>
+              <div class="settings-control">
+                <label class="toggle-row"><input type="checkbox" id="notify-enabled"><span>전송/검증 결과를 알림으로 받기</span></label>
+                <label class="toggle-row"><input type="checkbox" id="notify-native"><span>OS 네이티브 토스트</span></label>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">Webhook (Slack/Discord)</div>
+              <div class="settings-control">
+                <input id="notify-webhook" type="text" class="text-input" placeholder="https://hooks.slack.com/services/...">
+                <span class="settings-hint">Incoming Webhook URL. <code>{"text": "..."}</code> 형식 — Slack/Discord 호환.</span>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">이벤트별</div>
+              <div class="settings-control">
+                <label class="toggle-row"><input type="checkbox" id="notify-on-send-ok"><span>전송 성공</span></label>
+                <label class="toggle-row"><input type="checkbox" id="notify-on-send-fail"><span>전송 실패</span></label>
+                <label class="toggle-row"><input type="checkbox" id="notify-on-verify-ok"><span>검증 통과</span></label>
+                <label class="toggle-row"><input type="checkbox" id="notify-on-verify-fail"><span>검증 실패</span></label>
+                <button id="notify-test" class="ghost-btn" style="margin-top:8px">🔔 테스트 알림</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section">
             <h3>외관</h3>
             <div class="settings-row">
               <div class="settings-label">아이콘 테마</div>

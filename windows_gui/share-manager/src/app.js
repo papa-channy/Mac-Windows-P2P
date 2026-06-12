@@ -121,6 +121,7 @@ const DEFAULT_SETTINGS = {
   appearance: { icon_theme: 'default', icon_themes: [], icon_theme_path: null },
   integrity: { auto_verify_on_receive: true, show_manual_button: true },
   git: { extra_roots: [], exclude_dirs: [], scan_enabled: true, owners: [], only_mine: true },
+  notifications: { enabled: false, native: true, webhook_url: '', on_send_ok: true, on_send_fail: true, on_verify_ok: false, on_verify_fail: true, on_clipboard: false },
 };
 
 // Cached policy from shared policy.json (loaded on settings open)
@@ -149,6 +150,14 @@ const $gitDetailTitle   = document.getElementById('git-detail-title');
 const $gitDetailBranch  = document.getElementById('git-detail-branch');
 const $gitDetailMode    = document.getElementById('git-detail-mode');
 const $gitDetailSummary = document.getElementById('git-detail-summary');
+const $notifyEnabled    = document.getElementById('notify-enabled');
+const $notifyNative     = document.getElementById('notify-native');
+const $notifyWebhook    = document.getElementById('notify-webhook');
+const $notifyOnSendOk   = document.getElementById('notify-on-send-ok');
+const $notifyOnSendFail = document.getElementById('notify-on-send-fail');
+const $notifyOnVerifyOk = document.getElementById('notify-on-verify-ok');
+const $notifyOnVerifyFail = document.getElementById('notify-on-verify-fail');
+const $notifyTest       = document.getElementById('notify-test');
 const $gitDetailBody    = document.getElementById('git-detail-body');
 const $gitInspector     = document.getElementById('git-inspector');
 const $gitInspectorTitle= document.getElementById('git-inspector-title');
@@ -650,6 +659,33 @@ function renderSettings() {
   renderThemeCatalog();
   // Policy & profiles
   renderPolicyAndProfiles();
+  // Notifications
+  renderNotificationSettings();
+}
+
+function renderNotificationSettings() {
+  const n = state.settings.notifications || DEFAULT_SETTINGS.notifications;
+  $notifyEnabled.checked    = !!n.enabled;
+  $notifyNative.checked     = n.native !== false;
+  $notifyWebhook.value      = n.webhook_url || '';
+  $notifyOnSendOk.checked   = n.on_send_ok !== false;
+  $notifyOnSendFail.checked = n.on_send_fail !== false;
+  $notifyOnVerifyOk.checked = !!n.on_verify_ok;
+  $notifyOnVerifyFail.checked = n.on_verify_fail !== false;
+}
+
+async function saveNotificationSettings() {
+  state.settings.notifications = {
+    enabled: $notifyEnabled.checked,
+    native: $notifyNative.checked,
+    webhook_url: ($notifyWebhook.value || '').trim(),
+    on_send_ok: $notifyOnSendOk.checked,
+    on_send_fail: $notifyOnSendFail.checked,
+    on_verify_ok: $notifyOnVerifyOk.checked,
+    on_verify_fail: $notifyOnVerifyFail.checked,
+    on_clipboard: false,
+  };
+  await persistSettings();
 }
 
 async function renderPolicyAndProfiles() {
@@ -3522,6 +3558,14 @@ $gitSshGen.addEventListener('click', async () => {
 $gitSshCopy.addEventListener('click', async () => {
   try { await invoke('copy_to_os_clipboard', { text: $gitSshPubkey.value }); toast('공개키 복사됨', 'success'); }
   catch (e) { toast('복사 실패: ' + e, 'error'); }
+});
+[$notifyEnabled, $notifyNative, $notifyOnSendOk, $notifyOnSendFail, $notifyOnVerifyOk, $notifyOnVerifyFail]
+  .forEach(el => el.addEventListener('change', saveNotificationSettings));
+$notifyWebhook.addEventListener('change', saveNotificationSettings);
+$notifyTest.addEventListener('click', async () => {
+  await saveNotificationSettings();
+  try { await invoke('notify_test'); toast('테스트 알림 보냄', 'success'); }
+  catch (e) { toast('테스트 실패: ' + e, 'error'); }
 });
 
 $gitOnlyMine.addEventListener('change', async () => {
