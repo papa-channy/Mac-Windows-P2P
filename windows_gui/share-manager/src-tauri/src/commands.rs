@@ -2059,7 +2059,6 @@ mod pat_crypto_tests {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct CheckRunSummary {
     pub total: u32,
@@ -2073,7 +2072,6 @@ pub struct CheckRunSummary {
     pub html_url: Option<String>,
 }
 
-#[allow(dead_code)]
 fn classify_check_runs(runs: &serde_json::Value) -> CheckRunSummary {
     let mut s = CheckRunSummary::default();
     let arr = match runs.get("check_runs").and_then(|v| v.as_array()) {
@@ -2115,6 +2113,35 @@ fn classify_check_runs(runs: &serde_json::Value) -> CheckRunSummary {
         "neutral".into()
     };
     s
+}
+
+/// Fetch GitHub Actions check-run summaries for a batch of commit SHAs.
+/// Sequential per SHA (no batch API); a single 404/403 yields overall="error"
+/// for that sha without failing the batch. Reuses the cross-host PAT (G2).
+#[tauri::command]
+pub fn github_fetch_check_runs(
+    owner_repo: String,
+    shas: Vec<String>,
+) -> Result<std::collections::HashMap<String, CheckRunSummary>, String> {
+    let token = get_token().ok_or("등록된 토큰이 없습니다")?;
+    let mut out = std::collections::HashMap::new();
+    for sha in shas {
+        if sha.is_empty() {
+            continue;
+        }
+        let url = format!("https://api.github.com/repos/{owner_repo}/commits/{sha}/check-runs?per_page=20");
+        match gh_get(&token, &url) {
+            Ok(v) => {
+                out.insert(sha, classify_check_runs(&v));
+            }
+            Err(_) => {
+                let mut s = CheckRunSummary::default();
+                s.overall = "error".into();
+                out.insert(sha, s);
+            }
+        }
+    }
+    Ok(out)
 }
 
 fn gh_get(token: &str, url: &str) -> Result<serde_json::Value, String> {

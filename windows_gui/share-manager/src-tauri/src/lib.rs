@@ -133,6 +133,7 @@ pub fn run() {
             commands::git_share_pat_to_peers,
             commands::git_pull_pat_from_share,
             commands::github_fetch_remote,
+            commands::github_fetch_check_runs,
             commands::read_remote_cache,
             commands::load_policy,
             commands::save_policy,
