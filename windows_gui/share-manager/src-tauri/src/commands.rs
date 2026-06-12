@@ -242,8 +242,14 @@ fn dir_hash_combined(root: &Path) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn verify_transfer(transfer_id: String) -> Result<VerifyResult, String> {
-    run_verify(&transfer_id)
+pub fn verify_transfer(app: tauri::AppHandle, transfer_id: String) -> Result<VerifyResult, String> {
+    let r = run_verify(&transfer_id);
+    match &r {
+        Ok(v) if v.ok => notify_dispatch(&app, NotifyEvent::VerifyOk, "✓ 검증 통과", &transfer_id),
+        Ok(_) => notify_dispatch(&app, NotifyEvent::VerifyFail, "✗ 검증 실패", &transfer_id),
+        Err(_) => {}
+    }
+    r
 }
 
 fn run_verify(transfer_id: &str) -> Result<VerifyResult, String> {
@@ -327,7 +333,7 @@ fn run_verify(transfer_id: &str) -> Result<VerifyResult, String> {
 }
 
 #[tauri::command]
-pub fn send_path(source_path: String, category: String) -> Result<String, String> {
+pub fn send_path(app: tauri::AppHandle, source_path: String, category: String) -> Result<String, String> {
     // Validate category early
     if crate::share::category_by_key(&category).is_none() {
         return Err(format!("unknown category: {category}"));
@@ -363,6 +369,8 @@ pub fn send_path(source_path: String, category: String) -> Result<String, String
             "event": "send_fail", "source": source_path, "category": category,
             "exit": out.status.code(), "stderr": stderr.trim(),
         }));
+        notify_dispatch(&app, NotifyEvent::SendFail, "✗ 전송 실패",
+            &format!("{}: {}", source_path, stderr.lines().next().unwrap_or("")));
         return Err(format!("send failed (exit {:?}): {}\n{}", out.status.code(), stderr, stdout));
     }
 
@@ -374,11 +382,13 @@ pub fn send_path(source_path: String, category: String) -> Result<String, String
     append_log("send", serde_json::json!({
         "event": "send_ok", "source": source_path, "category": category, "transfer_id": tid,
     }));
+    notify_dispatch(&app, NotifyEvent::SendOk, "✓ Mac로 전송 완료",
+        &format!("{} → {}", source_path, category));
     Ok(tid)
 }
 
 #[tauri::command]
-pub fn send_path_force(source_path: String, category: String) -> Result<String, String> {
+pub fn send_path_force(app: tauri::AppHandle, source_path: String, category: String) -> Result<String, String> {
     // Same as send_path but passes -Force to the sender so an existing
     // target is overwritten instead of refused (M3 / D-8-b).
     if crate::share::category_by_key(&category).is_none() {
@@ -412,6 +422,8 @@ pub fn send_path_force(source_path: String, category: String) -> Result<String, 
             "event": "send_fail", "source": source_path, "category": category,
             "exit": out.status.code(), "stderr": stderr.trim(), "forced": true,
         }));
+        notify_dispatch(&app, NotifyEvent::SendFail, "✗ 전송 실패 (overwrite)",
+            &format!("{}: {}", source_path, stderr.lines().next().unwrap_or("")));
         return Err(format!("send failed (exit {:?}): {}\n{}", out.status.code(), stderr, stdout));
     }
     let tid = stdout
@@ -421,6 +433,8 @@ pub fn send_path_force(source_path: String, category: String) -> Result<String, 
     append_log("send", serde_json::json!({
         "event": "send_ok", "source": source_path, "category": category, "transfer_id": tid, "forced": true,
     }));
+    notify_dispatch(&app, NotifyEvent::SendOk, "✓ Mac로 전송 완료 (overwrite)",
+        &format!("{} → {}", source_path, category));
     Ok(tid)
 }
 
@@ -2780,7 +2794,7 @@ fn read_verify_status(transfer_id: &str) -> Option<String> {
 /// Auto-verify any received (mac→windows) transfer that has no cached
 /// result yet. Writes the cache + a recv/error log entry. Returns count.
 #[tauri::command]
-pub fn auto_verify_pending() -> Result<u32, String> {
+pub fn auto_verify_pending(app: tauri::AppHandle) -> Result<u32, String> {
     let dir = manifests_dir(Direction::MacToWindows);
     let mut done = 0u32;
     if let Ok(rd) = std::fs::read_dir(&dir) {
@@ -2799,11 +2813,13 @@ pub fn auto_verify_pending() -> Result<u32, String> {
                             "event": "verify_ok", "transfer_id": r.transfer_id,
                             "checked": r.checked, "direction": r.direction,
                         }));
+                        notify_dispatch(&app, NotifyEvent::VerifyOk, "✓ 검증 통과", &r.transfer_id);
                     } else {
                         append_log("error", serde_json::json!({
                             "event": "verify_fail", "transfer_id": r.transfer_id,
                             "mismatches": r.mismatches, "missing": r.missing, "direction": r.direction,
                         }));
+                        notify_dispatch(&app, NotifyEvent::VerifyFail, "✗ 검증 실패", &r.transfer_id);
                     }
                     done += 1;
                 }
