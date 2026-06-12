@@ -83,7 +83,7 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 | PAT cross-host sync (age+ssh) | F-3/B-10 | ✅ **완료** | git_publish/share/pull + git-token watch + 자동 import (G2) |
 | GitHub check-runs (CI overlay) | F-6 | MED | Windows 미구현 |
 | 외부 알림 dispatch (native+webhook) | H-2/3/4 | MED | Windows 에 notify 동등물 없음 |
-| `send_path_force` (overwrite) | D-8-b | MED | Windows 덮어쓰기 송신 경로 |
+| `send_path_force` (overwrite) | D-8-b | ✅ **완료** | send-to-mac.ps1 -Force + send_path_force + 덮어쓰기 확인 (M3) |
 | `read_file_preview` | D-13-a | LOW | Details 미리보기 |
 | 클립보드 상대 host 오프라인 캐시 | E-5-b/c | 조건부 | Windows 네트워크 드라이브 구성 시만 |
 | watcher `git-token` topic 감시 | M-2-b | LOW | Mac 발행하나 Windows 미감시 |
@@ -118,7 +118,7 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 **Windows ← Mac (MED)** → 핸드오프 발행됨: `windows_gui/share-manager/MAC_PARITY_HANDOFF_MED.md`
 4. notify (native+webhook) — H-2/3/4 · M4
 5. github_fetch_check_runs — F-6 · M5
-6. send_path_force — D-8-b · M3
+6. ~~send_path_force — D-8-b · M3~~ ✅ 완료
 
 **Mac ← Windows**
 7. ~~RepoCard scanned_at 하드코딩 → 실제값~~ ✅ **완료** (collectSummaries 가 host별 최신 scanned_at 집계 → RepoCard fmtRelative 표시)
