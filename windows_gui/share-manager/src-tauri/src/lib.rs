@@ -86,6 +86,7 @@ pub fn run() {
             commands::list_transfers,
             commands::read_manifest,
             commands::send_path,
+            commands::send_path_force,
             commands::open_path,
             commands::reveal_in_explorer,
             commands::list_directory,

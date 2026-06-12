@@ -377,6 +377,53 @@ pub fn send_path(source_path: String, category: String) -> Result<String, String
     Ok(tid)
 }
 
+#[tauri::command]
+pub fn send_path_force(source_path: String, category: String) -> Result<String, String> {
+    // Same as send_path but passes -Force to the sender so an existing
+    // target is overwritten instead of refused (M3 / D-8-b).
+    if crate::share::category_by_key(&category).is_none() {
+        return Err(format!("unknown category: {category}"));
+    }
+    if !Path::new(&source_path).exists() {
+        return Err(format!("source missing: {source_path}"));
+    }
+    let here = current_script_root();
+    let send_ps1 = here.join("send-to-mac.ps1");
+    if !send_ps1.exists() {
+        return Err(format!("send-to-mac.ps1 not found at {}", send_ps1.display()));
+    }
+    let pwsh = locate_pwsh();
+    let mut cmd = Command::new(pwsh);
+    cmd.args([
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", send_ps1.to_string_lossy().as_ref(),
+        &source_path,
+        "-Category", &category,
+        "-NoGui",
+        "-Force",
+    ]);
+    hide_console(&mut cmd);
+    let out = cmd.output().map_err(|e| format!("failed to launch pwsh: {e}"))?;
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+    if !out.status.success() {
+        append_log("error", serde_json::json!({
+            "event": "send_fail", "source": source_path, "category": category,
+            "exit": out.status.code(), "stderr": stderr.trim(), "forced": true,
+        }));
+        return Err(format!("send failed (exit {:?}): {}\n{}", out.status.code(), stderr, stdout));
+    }
+    let tid = stdout
+        .lines()
+        .find_map(|l| l.strip_prefix("transfer_id: ").map(|r| r.trim().to_string()))
+        .unwrap_or_else(|| stdout.trim().to_string());
+    append_log("send", serde_json::json!({
+        "event": "send_ok", "source": source_path, "category": category, "transfer_id": tid, "forced": true,
+    }));
+    Ok(tid)
+}
+
 // ─── HTML dependency pre-flight (avoid shipping a bare .html) ───
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HtmlAsset {
