@@ -81,7 +81,7 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 |---|---|---|---|
 | interactive git ops (fetch/pull/push/stash/stash_pop) | F-7 | ✅ **완료** | git_op_* 5개 + L2 ops 버튼 행 (G1) |
 | PAT cross-host sync (age+ssh) | F-3/B-10 | ✅ **완료** | git_publish/share/pull + git-token watch + 자동 import (G2) |
-| GitHub check-runs (CI overlay) | F-6 | MED | Windows 미구현 |
+| GitHub check-runs (CI overlay) | F-6 | ✅ **완료** | github_fetch_check_runs + 타임라인 dot 배지 (M5) |
 | 외부 알림 dispatch (native+webhook) | H-2/3/4 | MED | Windows 에 notify 동등물 없음 |
 | `send_path_force` (overwrite) | D-8-b | ✅ **완료** | send-to-mac.ps1 -Force + send_path_force + 덮어쓰기 확인 (M3) |
 | `read_file_preview` | D-13-a | LOW | Details 미리보기 |
@@ -117,7 +117,7 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 
 **Windows ← Mac (MED)** → 핸드오프 발행됨: `windows_gui/share-manager/MAC_PARITY_HANDOFF_MED.md`
 4. notify (native+webhook) — H-2/3/4 · M4
-5. github_fetch_check_runs — F-6 · M5
+5. ~~github_fetch_check_runs — F-6 · M5~~ ✅ 완료
 6. ~~send_path_force — D-8-b · M3~~ ✅ 완료
 
 **Mac ← Windows**
