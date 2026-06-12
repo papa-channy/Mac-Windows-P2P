@@ -40,6 +40,24 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // Login autostart (LaunchAgent on macOS) so the clipboard poller is
+        // always resident — the other host's *live* clipboard reaches the
+        // share without this Mac's window being open. Mirror of the Windows
+        // tauri-plugin-autostart. See MAC_HANDOFF_TRAY_CLIPBOARD.md.
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None::<Vec<&str>>,
+        ))
+        // Close-to-tray: the red window button hides instead of quitting so
+        // the poller thread keeps running in the background. (macOS already
+        // keeps the process alive on window close, but this makes the intent
+        // explicit and matches the Windows behavior.)
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
+        })
         .setup(|app| {
             clipboard::start_poller(app.handle().clone());
             watcher::start(app.handle().clone());
@@ -49,6 +67,16 @@ pub fn run() {
             // they're on when they re-launch / re-foreground the app.
             if let Some(win) = app.get_webview_window("main") {
                 apply_macos_space_behavior(&win);
+            }
+
+            // Menu-bar (NSStatusItem) tray — keeps the app reachable while
+            // it lives in the background, with Open / Quit actions.
+            build_tray(app.handle())?;
+
+            // Enable login autostart (idempotent).
+            {
+                use tauri_plugin_autostart::ManagerExt;
+                let _ = app.autolaunch().enable();
             }
 
             handle_launch_args(app.handle().clone());
@@ -315,6 +343,50 @@ fn hostname_or(fallback: &str) -> String {
         }
     }
     std::env::var("HOSTNAME").unwrap_or_else(|_| fallback.into())
+}
+
+// ─── Menu-bar tray (NSStatusItem) ──────────────────────────────────
+
+fn build_tray(app: &AppHandle) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+    let open_i = MenuItem::with_id(app, "open", "열기", true, None::<&str>)?;
+    let quit_i = MenuItem::with_id(app, "quit", "완전 종료", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open_i, &quit_i])?;
+
+    let _tray = TrayIconBuilder::with_id("main-tray")
+        .icon(app.default_window_icon().unwrap().clone())
+        .tooltip("share-manager")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, e| match e.id.as_ref() {
+            "open" => reveal_main_window(app),
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, e| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = e
+            {
+                reveal_main_window(tray.app_handle());
+            }
+        })
+        .build(app)?;
+    Ok(())
+}
+
+/// Show + focus the main window (used by tray click / "열기" / Reopen).
+fn reveal_main_window(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        apply_macos_space_behavior(&win);
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+    }
 }
 
 // ─── macOS — make our window follow the user across Spaces ─────────

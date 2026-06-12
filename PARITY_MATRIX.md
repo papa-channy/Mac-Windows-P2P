@@ -96,7 +96,7 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 | L1 카드 unified layout | ADR-0005 | MED | Mac RepoCard 가 따라가야 |
 | L2 detail verdict-row + connector chip | ADR-0006 | MED | Mac GitDetailModal 정렬 |
 | **실제 scanned_at 표시** | app.js | **버그-Mac** | Mac RepoCard 가 `"방금 전 스캔"` **하드코딩** — 실제 데이터로 교체 필요 |
-| **클립보드 백그라운드 상주** (트레이+자동시작) | lib.rs (tray/close-to-tray/autostart) | HIGH | 창 닫아도 poller 생존 → 실시간 공유에 양측 창 불필요. 핸드오프: `MAC_HANDOFF_TRAY_CLIPBOARD.md` |
+| **클립보드 백그라운드 상주** (트레이+자동시작) | lib.rs (tray/close-to-tray/autostart) | ✅ **완료** | Mac 도 미러: tauri-plugin-autostart(LaunchAgent) + autolaunch().enable() + NSStatusItem 트레이(열기/완전종료) + CloseRequested→hide. poller 는 기존 독립 스레드라 창 hide 무관. 핸드오프: `MAC_HANDOFF_TRAY_CLIPBOARD.md` |
 
 ### 3-D. False-positive (에이전트 과장 — non-issue)
 

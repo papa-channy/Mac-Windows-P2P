@@ -840,6 +840,13 @@
 ### M-9 Auto-verify sweep
 - **M-9-a** `auto_verify_pending` trigger 시점 (on mount / on transfers-changed) · `App.tsx` · feature · cross-ref D-8-f
 
+### M-10 백그라운드 상주 (트레이 + 자동시작 + close-to-tray)
+- **M-10-a** `tauri-plugin-autostart` 플러그인 등록 (LaunchAgent) + `autolaunch().enable()` · `lib.rs` setup · plugin · meta: `cross-os` (Windows 미러)
+- **M-10-b** `build_tray` — NSStatusItem 메뉴바 트레이 (열기 / 완전 종료 + 좌클릭 복원) · `lib.rs` · function
+- **M-10-c** `reveal_main_window` — show+unminimize+focus (트레이/메뉴/Reopen 공용) · `lib.rs` · helper
+- **M-10-d** close-to-tray — `WindowEvent::CloseRequested` → hide + prevent_close (poller 생존) · `lib.rs` · feature
+- **M-10-e** `autostart:*` capability 권한 · `capabilities/default.json` · config-key (cross-ref B-12-b)
+
 ---
 
 ## N — Service vendor (Swift) — SendToWindowsLauncher
