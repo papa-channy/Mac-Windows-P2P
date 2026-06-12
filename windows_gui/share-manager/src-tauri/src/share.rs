@@ -173,6 +173,26 @@ pub struct AppearanceSettings {
     pub icon_theme_path: Option<String>, // legacy single-path field, kept for back-compat
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct NotificationSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_true")]
+    pub native: bool,
+    #[serde(default)]
+    pub webhook_url: String,
+    #[serde(default = "default_true")]
+    pub on_send_ok: bool,
+    #[serde(default = "default_true")]
+    pub on_send_fail: bool,
+    #[serde(default = "default_true")]
+    pub on_verify_fail: bool,
+    #[serde(default)]
+    pub on_verify_ok: bool,
+    #[serde(default)]
+    pub on_clipboard: bool,
+}
+
 fn default_true() -> bool { true }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -238,6 +258,8 @@ pub struct Settings {
     pub integrity: IntegritySettings,
     #[serde(default)]
     pub git: GitSettings,
+    #[serde(default)]
+    pub notifications: NotificationSettings,
 }
 
 impl Default for Settings {
@@ -258,6 +280,7 @@ impl Default for Settings {
             },
             integrity: IntegritySettings::default(),
             git: GitSettings::default(),
+            notifications: NotificationSettings::default(),
         }
     }
 }
