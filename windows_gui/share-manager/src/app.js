@@ -3502,7 +3502,7 @@ document.getElementById('brand-icon').innerHTML = svgIcon('arrow-left-right');
   }).catch(() => {});
 
   // File-watcher driven refresh (no polling). Rust emits "share-changed"
-  // events with topic ∈ {transfers, clipboard, notes, profiles}. Frontend
+  // events with topic ∈ {transfers, clipboard, notes, profiles, git, git-token}. Frontend
   // refreshes only the relevant slice and only if it's visible-ish.
   try {
     const { listen } = window.__TAURI__.event;

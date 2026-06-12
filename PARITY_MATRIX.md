@@ -80,7 +80,7 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 | 기능 | Mac 식별자 | 우선순위 | 비고 |
 |---|---|---|---|
 | interactive git ops (fetch/pull/push/stash/stash_pop) | F-7 | ✅ **완료** | git_op_* 5개 + L2 ops 버튼 행 (G1) |
-| PAT cross-host sync (age+ssh) | F-3/B-10 | **HIGH** | cross-host 핵심인데 Windows 미구현 (KEYRING 상수만 있음) |
+| PAT cross-host sync (age+ssh) | F-3/B-10 | ✅ **완료** | git_publish/share/pull + git-token watch + 자동 import (G2) |
 | GitHub check-runs (CI overlay) | F-6 | MED | Windows 미구현 |
 | 외부 알림 dispatch (native+webhook) | H-2/3/4 | MED | Windows 에 notify 동등물 없음 |
 | `send_path_force` (overwrite) | D-8-b | MED | Windows 덮어쓰기 송신 경로 |
@@ -112,7 +112,7 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 
 **Windows ← Mac (HIGH)** → 핸드오프 발행됨: `windows_gui/share-manager/MAC_PARITY_HANDOFF_GIT.md`
 1. ~~`git_op_*` 5개 (interactive git) — F-7 · G1~~ ✅ 완료
-2. PAT cross-host sync (age+ssh) 3개 — F-3 · G2
+2. ~~PAT cross-host sync (age+ssh) 3개 — F-3 · G2~~ ✅ 완료
 3. ~~single-instance plugin — M-7-a · G3~~ ✅ 완료
 
 **Windows ← Mac (MED)**
