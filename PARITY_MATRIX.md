@@ -115,10 +115,10 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 2. ~~PAT cross-host sync (age+ssh) 3개 — F-3 · G2~~ ✅ 완료
 3. ~~single-instance plugin — M-7-a · G3~~ ✅ 완료
 
-**Windows ← Mac (MED)**
-4. notify (native+webhook) — H-2/3/4
-5. github_fetch_check_runs — F-6
-6. send_path_force — D-8-b
+**Windows ← Mac (MED)** → 핸드오프 발행됨: `windows_gui/share-manager/MAC_PARITY_HANDOFF_MED.md`
+4. notify (native+webhook) — H-2/3/4 · M4
+5. github_fetch_check_runs — F-6 · M5
+6. send_path_force — D-8-b · M3
 
 **Mac ← Windows**
 7. ~~RepoCard scanned_at 하드코딩 → 실제값~~ ✅ **완료** (collectSummaries 가 host별 최신 scanned_at 집계 → RepoCard fmtRelative 표시)
