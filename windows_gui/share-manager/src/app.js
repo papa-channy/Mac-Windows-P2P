@@ -3407,6 +3407,12 @@ $gitTokenSave.addEventListener('click', async () => {
   $gitTokenStatus.textContent = '검증 중…';
   try {
     await invoke('git_set_token', { token: tok });
+    // G2: publish my ssh pubkey + push PAT to peers (best-effort; needs an ssh key).
+    try {
+      await invoke('git_publish_host_pubkey');
+      const shared = await invoke('git_share_pat_to_peers');
+      if (shared > 0) toast(`PAT를 ${shared}개 호스트에 자동 공유함`, 'success');
+    } catch (_) {}
     const info = await invoke('git_test_token');
     const owners = [info.login, ...(info.orgs || [])].filter(Boolean);
     gitSettings().owners = owners;
@@ -3439,6 +3445,7 @@ $gitSshGen.addEventListener('click', async () => {
   $gitSshGen.disabled = true;
   try {
     const pub = await invoke('git_generate_ssh_key');
+    try { await invoke('git_publish_host_pubkey'); } catch (_) {}
     $gitSshPubkey.value = pub;
     $gitSshPubkey.style.display = 'block';
     $gitSshCopy.style.display = 'inline-flex';
@@ -3489,6 +3496,11 @@ document.getElementById('brand-icon').innerHTML = svgIcon('arrow-left-right');
   await setupDragDrop().catch(e => console.error('drag-drop setup failed:', e));
   maybeAutoVerify();
 
+  // G2: on startup, import a PAT a peer may have shared while we were closed.
+  invoke('git_pull_pat_from_share').then((imported) => {
+    if (imported && state.view === VIEW_GIT) refreshGit().catch(() => {});
+  }).catch(() => {});
+
   // File-watcher driven refresh (no polling). Rust emits "share-changed"
   // events with topic ∈ {transfers, clipboard, notes, profiles}. Frontend
   // refreshes only the relevant slice and only if it's visible-ish.
@@ -3512,6 +3524,14 @@ document.getElementById('brand-icon').innerHTML = svgIcon('arrow-left-right');
           break;
         case 'git':
           if (state.view === VIEW_GIT) refreshGit().catch(() => {});
+          break;
+        case 'git-token':
+          invoke('git_pull_pat_from_share').then((imported) => {
+            if (imported) {
+              toast('다른 호스트에서 PAT를 받아 등록함', 'success');
+              if (state.view === VIEW_GIT) refreshGit().catch(() => {});
+            }
+          }).catch(() => {});
           break;
       }
     });
