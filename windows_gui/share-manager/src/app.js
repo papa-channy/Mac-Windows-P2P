@@ -3197,6 +3197,26 @@ async function htmlAssetGate(paths) {
   return { action: 'proceed', paths }; // 'proceed' = send as-is
 }
 
+// Send one path; if the target already exists (PS exit 20), ask to overwrite
+// and retry with the force variant. Throws on real failure / declined overwrite.
+async function sendOne(p, category) {
+  try {
+    await invoke('send_path', { sourcePath: p, category });
+  } catch (e) {
+    const msg = String(e);
+    if (msg.includes('Target already exists') || msg.includes('exit Some(20)')) {
+      const name = p.split(/[\\/]/).pop();
+      if (window.confirm(`"${name}" 이(가) 이미 있어요. 덮어쓸까요?`)) {
+        await invoke('send_path_force', { sourcePath: p, category });
+      } else {
+        throw new Error('덮어쓰기 취소됨');
+      }
+    } else {
+      throw e;
+    }
+  }
+}
+
 async function sendBatch(paths, category) {
   const gate = await htmlAssetGate(paths);
   if (gate.action === 'cancel') { setStatus('전송 취소됨'); return; }
@@ -3208,7 +3228,7 @@ async function sendBatch(paths, category) {
   const errors = [];
   for (const p of paths) {
     try {
-      await invoke('send_path', { sourcePath: p, category });
+      await sendOne(p, category);
       ok++;
     } catch (e) {
       errors.push(`${p}: ${e}`);
@@ -3274,7 +3294,7 @@ async function submitDrop() {
   let errors = [];
   for (const p of sendPaths) {
     try {
-      await invoke('send_path', { sourcePath: p, category });
+      await sendOne(p, category);
       okCount++;
     } catch (e) {
       errors.push(`${p}: ${e}`);
