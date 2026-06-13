@@ -33,19 +33,13 @@ fn reveal_main_window(app: &tauri::AppHandle) {
     if let Some(mon) = monitor {
         let mp = mon.position();
         let ms = mon.size();
-        if let Ok(ws) = win.outer_size() {
-            // Clamp to 92% of the monitor so the window never overflows.
-            let max_w = ((ms.width as f64) * 0.92) as u32;
-            let max_h = ((ms.height as f64) * 0.92) as u32;
-            let w = ws.width.min(max_w.max(1));
-            let h = ws.height.min(max_h.max(1));
-            if w != ws.width || h != ws.height {
-                let _ = win.set_size(tauri::PhysicalSize::new(w, h));
-            }
-            let x = mp.x + (ms.width as i32 - w as i32) / 2;
-            let y = mp.y + (ms.height as i32 - h as i32) / 2;
-            let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-        }
+        // Always size to 2/3 × 2/3 of the active monitor, centered.
+        let w = ((ms.width as f64) * 2.0 / 3.0) as u32;
+        let h = ((ms.height as f64) * 2.0 / 3.0) as u32;
+        let _ = win.set_size(tauri::PhysicalSize::new(w.max(1), h.max(1)));
+        let x = mp.x + (ms.width as i32 - w as i32) / 2;
+        let y = mp.y + (ms.height as i32 - h as i32) / 2;
+        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
     }
 
     let _ = win.show();
@@ -55,7 +49,6 @@ fn reveal_main_window(app: &tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    use tauri::Manager;
     use tauri::menu::{Menu, MenuItem};
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
     use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
