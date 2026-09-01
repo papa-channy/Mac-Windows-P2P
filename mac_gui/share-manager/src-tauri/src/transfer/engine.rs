@@ -90,8 +90,11 @@ pub fn send(req: &TransferRequest) -> Result<TransferOutcome, TransferError> {
         }
     }
 
-    // (2) Naming
-    let final_name = naming::render(req.now, req.category.key, &req.source, is_dir, req.version);
+    // (2) Naming — keep the original filename (NFC-normalized only).
+    // The dated __v<NN> convention (naming::render) was dropped in 0.3.7 so
+    // recipients can find files by the name they saw on the sending host.
+    let (base, ext) = naming::split(&top_name, is_dir);
+    let final_name = format!("{base}{ext}");
 
     // (3) Destination
     let dest_dir = req.share_root
@@ -366,6 +369,7 @@ mod tests {
     use sha2::Digest;
     use std::io::Write as _;
     use tempfile::TempDir;
+    use unicode_normalization::UnicodeNormalization;
 
     fn make_request(share: &TempDir, source: PathBuf, cat_key: &str, overwrite: bool) -> TransferRequest {
         TransferRequest {
@@ -400,9 +404,10 @@ mod tests {
         // (a) destination file present with original bytes
         assert!(out.destination.exists());
         assert_eq!(std::fs::read(&out.destination).unwrap(), b"hello world");
-        assert!(out.destination
-            .file_name().unwrap().to_string_lossy()
-            .ends_with("__documents__note__v01.txt"));
+        assert_eq!(
+            out.destination.file_name().unwrap().to_string_lossy(),
+            "note.txt"
+        );
 
         // (b) manifest parses correctly
         let manifest_raw = std::fs::read(&out.manifest_path).unwrap();
@@ -425,6 +430,40 @@ mod tests {
         assert_eq!(lines.len(), 3);
         assert!(lines[0].contains("context-menu send:"));
         assert!(lines[2].contains(&format!("transfer_id={}", out.transfer_id)));
+    }
+
+    #[test]
+    fn file_keeps_original_filename() {
+        let share = tempfile::tempdir().unwrap();
+        let src_dir = tempfile::tempdir().unwrap();
+        let source = src_dir.path().join("AI-Studio_2026-09-01.zip");
+        write_file(&source, b"zipbytes");
+
+        let req = make_request(&share, source, "documents", false);
+        let out = send(&req).expect("send file");
+
+        assert_eq!(
+            out.destination.file_name().unwrap().to_string_lossy(),
+            "AI-Studio_2026-09-01.zip"
+        );
+        let parsed = manifest::decode(&std::fs::read(&out.manifest_path).unwrap()).unwrap();
+        assert_eq!(parsed.destination.primary_file, "AI-Studio_2026-09-01.zip");
+        assert_eq!(parsed.files[0].path, "AI-Studio_2026-09-01.zip");
+    }
+
+    #[test]
+    fn filename_is_nfc_normalized_but_otherwise_unchanged() {
+        let share = tempfile::tempdir().unwrap();
+        let src_dir = tempfile::tempdir().unwrap();
+        // NFD "가온.txt" (decomposed jamo) — must land as NFC on the share
+        let nfd_name = "가온.txt".chars().nfd().collect::<String>();
+        let source = src_dir.path().join(&nfd_name);
+        write_file(&source, b"nfc test");
+
+        let req = make_request(&share, source, "documents", false);
+        let out = send(&req).expect("send file");
+
+        assert_eq!(out.destination.file_name().unwrap().to_string_lossy(), "가온.txt");
     }
 
     #[test]
@@ -456,6 +495,21 @@ mod tests {
         assert!(sidecar.contains(&out.sha256));
     }
 
+    /// raw_secret::check reads the share policy via MW_SHARE_ROOT (not
+    /// req.share_root), so point it at an empty tempdir under ENV_LOCK —
+    /// otherwise the live share's network-mode policy decides the outcome.
+    fn with_isolated_secret_policy<F: FnOnce()>(f: F) {
+        let _g = crate::test_util::ENV_LOCK.lock().unwrap();
+        let td = tempfile::tempdir().unwrap();
+        let prev = std::env::var("MW_SHARE_ROOT").ok();
+        std::env::set_var("MW_SHARE_ROOT", td.path());
+        f();
+        match prev {
+            Some(v) => std::env::set_var("MW_SHARE_ROOT", v),
+            None => std::env::remove_var("MW_SHARE_ROOT"),
+        }
+    }
+
     #[test]
     fn raw_secret_block_top_level() {
         let share = tempfile::tempdir().unwrap();
@@ -464,7 +518,9 @@ mod tests {
         write_file(&source, b"SECRET=1");
 
         let req = make_request(&share, source, "documents", false);
-        let err = send(&req).unwrap_err();
+        let mut res = None;
+        with_isolated_secret_policy(|| res = Some(send(&req)));
+        let err = res.unwrap().unwrap_err();
         match err {
             // rule is now a fixed label; the matched glob is in `pattern`.
             TransferError::RawSecretBlocked { pattern, .. } => {
@@ -484,8 +540,9 @@ mod tests {
         write_file(&folder.join("service-account-prod.json"), b"{}");
 
         let req = make_request(&share, folder, "documents", false);
-        let err = send(&req).unwrap_err();
-        assert!(matches!(err, TransferError::RawSecretBlocked { .. }));
+        let mut res = None;
+        with_isolated_secret_policy(|| res = Some(send(&req)));
+        assert!(matches!(res.unwrap().unwrap_err(), TransferError::RawSecretBlocked { .. }));
     }
 
     #[test]

@@ -39,6 +39,9 @@ pub fn split(name: &str, is_directory: bool) -> (String, String) {
     (nfc, String::new())
 }
 
+// Legacy (pre-0.3.7) renderers/parser kept for files already on the share
+// that carry the dated __v<NN> convention.
+#[allow(dead_code)]
 pub fn render_components(c: &Components) -> String {
     format!(
         "{date}__{key}__{base}__v{ver:02}{ext}",
@@ -50,6 +53,7 @@ pub fn render_components(c: &Components) -> String {
     )
 }
 
+#[allow(dead_code)]
 pub fn render(
     date: DateTime<Local>,
     category_key: &str,
@@ -73,6 +77,7 @@ pub fn render(
 
 /// Reverse-parse a rendered filename. Returns None if shape doesn't match.
 /// Basenames may contain "__", so we tokenize from the tail.
+#[allow(dead_code)]
 pub fn parse(filename: &str) -> Option<Components> {
     let nfc: String = filename.nfc().collect();
 

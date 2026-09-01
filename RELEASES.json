@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.3.7",
+    "date": "2026-09-01",
+    "title": "전송 파일명 원본 유지 — 리네임 규칙 제거",
+    "highlights": [
+      "📦 Windows로 보낸 파일이 이제 원본 이름 그대로 도착 — '2026-09-01__documents__이름__v01.zip' 같은 프리픽스/버전 리네임 제거",
+      "받는 쪽에서 보낸 파일명으로 바로 검색/식별 가능 ('파일을 찾을 수 없다' 혼란 해소)",
+      "같은 이름 재전송 시엔 기존과 동일하게 충돌 안내 후 덮어쓰기(force) 재전송",
+      "한글 파일명 NFC 정규화는 유지 (Windows 호환)"
+    ],
+    "notes": "engine.rs (2) Naming 단계에서 naming::render(<날짜>__<카테고리>__<이름>__v<NN>) 대신 원본 파일명(NFC 정규화만)을 사용. 매니페스트 primary_file/files[].path 도 원본명으로 기록되므로 Windows GUI 매칭·verify 는 무변경 호환. transfer_id·매니페스트/체크섬/로그 사이드카 파일명은 기존 규칙 유지. 레거시 naming::render/parse 는 셰어에 남은 기존 파일명 해석용으로 보존. 추가로 raw_secret 엔진 테스트가 라이브 셰어 정책에 좌우되던 격리 버그 수정(MW_SHARE_ROOT 격리). cargo 72/72. Windows→Mac 방향 리네임 제거는 Windows 측 parity 백로그."
+  },
+  {
     "version": "0.3.6",
     "date": "2026-06-13",
     "title": "클립보드 백그라운드 상주 — 메뉴바 + 로그인 자동시작",
