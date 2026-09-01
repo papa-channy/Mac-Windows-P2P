@@ -120,6 +120,10 @@ OS가 달라도 셰어에 쓰는 형식이 byte-identical 이라 cross-host 작�
 5. ~~github_fetch_check_runs — F-6 · M5~~ ✅ 완료
 6. ~~send_path_force — D-8-b · M3~~ ✅ 완료
 
+**Windows ← Mac (NAMING)** → 핸드오프 발행됨: `windows_gui/share-manager/MAC_PARITY_HANDOFF_NAMING.md`
+- [ ] 송신 파일명 원본 유지 (리네임 제거, Mac v0.3.7 `e77fd97` 미러) — W1
+- [ ] pwsh stdout CP949→UTF-8 (한글 transfer_id 깨짐) — W2
+
 **Mac ← Windows**
 7. ~~RepoCard scanned_at 하드코딩 → 실제값~~ ✅ **완료** (collectSummaries 가 host별 최신 scanned_at 집계 → RepoCard fmtRelative 표시)
 8. ~~ADR-0005/0006 git L1/L2 디자인 정렬~~ ◑ **부분 완료** — ADR-0005(단일 layout)는 Mac RepoCard 가 이미 충족 + scanned_at 적용. ADR-0006 핵심(L2 verdict-row 큰 chip+진단문)은 `GitDetailModal` 에 적용(VerdictRow). connector chip 절대위치 / footer meta-actions 는 기존 ConnectorBar 로 기능 충족 — cosmetic 잔여만 후속.
